@@ -126,6 +126,7 @@ from thermoctl.web.device_views import router as devices_router
 from thermoctl.web.glossary_views import router as glossary_router
 from thermoctl.web.kiosk_admin_views import router as kiosk_admin_router
 from thermoctl.web.kiosk_views import router as kiosk_router
+from thermoctl.web.mapping_map_views import router as mapping_map_router
 from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.oauth_views import router as oauth_consent_router
 from thermoctl.web.passkey_views import router as passkey_router
@@ -1316,6 +1317,7 @@ def create_app() -> FastAPI:
     app.include_router(changes_router)
     app.include_router(devices_router)
     app.include_router(device_assignment_router)
+    app.include_router(mapping_map_router)
     app.include_router(zone_router)
     app.include_router(modes_router)
     app.include_router(passkey_router)

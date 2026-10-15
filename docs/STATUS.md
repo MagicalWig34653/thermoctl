@@ -11,7 +11,11 @@ Letzte Aktualisierung: 2026-10-15.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
-## Login-Weiterleitung (Branch `feature/login-weiterleitung`, nicht gemergt)
+## 0.17.0 (2026-10-15) -- vorbereitet, noch nicht freigegeben
+
+Zwei Neuerungen, beide gemergt (`main`): Login-Weiterleitung und Zuordnungskarte. 0.16.0 ist freigegeben (Tag, GitHub-Release).
+
+### Login-Weiterleitung
 
 - Geschützte Seiten ohne Sitzung antworten für **Browser** (`Accept: text/html`) mit 303 auf
   `/login?return_to=<Seite>` statt `401 {"detail": ...}`; nach der Anmeldung (Formular und Passkey) geht es dorthin
@@ -26,7 +30,65 @@ Letzte Aktualisierung: 2026-10-15.
 - Geprüft: `tests/test_login_weiterleitung.py`; volle Suite SQLite 6536 Tests, 0 Fehler, 7 übersprungen.
   **Nicht ausprobiert:** echter Browser, Ingress-Betrieb, MariaDB.
 
-## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
+### Zuordnungskarte
+
+Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleibt unverändert, außer dass auch sie die Regel „ein Aktor, eine Zone" durchsetzt).
+
+- Seite `/devices/map` (Navigation „Zuordnungskarte", Recht `device.read`, Zonenfilter wie die Zuordnung):
+  Geräte und Zonen sind frei verschiebbare Knoten auf einer Fläche (Hintergrund ziehen = Pan, Mausrad/Knöpfe/
+  Zwei-Finger-Geste = Zoom, „Einpassen", „Automatisch anordnen" nach Datenfluss: Fühler links, Zonen Mitte,
+  reine Empfänger rechts). Linien folgen den Knoten live. Positionen, Ansicht, eingeklappte Knoten und der Schalter
+  „technische Werte zeigen" liegen pro Browser in `localStorage` (ohne funktioniert die Seite). Suchfeld, Knoten
+  einklappbar, Tastatur (Anschluss wählen, zweiten wählen, Esc; Pfeiltasten verschieben den fokussierten Knoten).
+  Ohne JavaScript: Kartenliste und Tabelle „Verbindungen".
+- **Richtung:** Werte fließen immer Ausgang → Eingang. Ausgänge sitzen rechts am Knoten, Eingänge links, Pfeil-
+  Symbol in der Farbe der Wertart, Hinweis am Anschluss („Ausgang: liefert Temperatur"), Legende auf der Seite.
+  Ziehen geht von jedem Ende aus; die Gegenrichtung findet die Domäne (`can_connect` ist symmetrisch).
+- **Modell** (`domain/mapping_map.py`): Messwerte sind Geräte-Ausgänge und gehen auf Zonen-Eingänge (Messquelle,
+  Fensterkontakt); der Heizbefehl ist ein Zonen-Ausgang und geht auf einen Geräte-Eingang (Schalter, Thermostat,
+  Rolle `actuator`). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%. Regeln in dieser
+  Reihenfolge: technischer Wert nie; derselbe Knoten nie, Zone↔Zone nie; Ausgang↔Ausgang und Eingang↔Eingang
+  nie; Wertart gleich und bekannt; Fähigkeit der Zonenstelle (`REQUIRED_CAPABILITY`; ein Sollwert ist keine
+  Messquelle); Sperre des Eingangs (`may_be_written`); keine Doppelzuordnung; die Messquelle nimmt nur ein Gerät
+  (erst lösen). Batterie, Verbindungsqualität, Erreichbarkeit, Tastendruck und Werte ohne Wertart erscheinen nur
+  hinter „technische Werte zeigen" und sind nie verbindbar.
+- Die Seite rechnet nichts nach: `data-payload` liefert Anschlusskennungen, Ablehnungen (mit Begründungstabelle)
+  und zwei feste Texte für „gleiche Seite".
+- Gespeichert wird nur zwischen Zone und Gerät (`POST /devices/map/connect` mit `from_id`/`to_id` in beliebiger
+  Reihenfolge, `POST /devices/map/disconnect`; Recht `device.manage` je Zone; über `assign_device`/
+  `set_temperature_source`/`detach_device`). Zwischen zwei Geräten (Temperatur → Eingang `°C`) ist nur ein Entwurf
+  gezeichnet („nicht gespeichert"); der Server lehnt das mit 422 ab. Datenmodell dafür offen.
+- **Mehrfachzuordnung** (Regeln in `can_connect`, Tests `tests/test_mapping_map_multi.py`): Ein Fühler darf Messquelle
+  **mehrerer** Zonen sein (offener Grundriss), ein Kontakt Fensterkontakt mehrerer Zonen; mehrere Kontakte und mehrere
+  Aktoren je Zone gehen ohnehin. Die Regelkette liest je Zone über `Device.id` (`advance_zone_state`), nichts nimmt
+  „ein Gerät, eine Zone" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*
+  Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen"): `publishing`/`shadow_run`
+  entscheiden und schreiben je Zone, zwei Zonen mit gegensätzlichem Bedarf würden dasselbe Gerät abwechselnd
+  schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Entscheidung des
+  Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.
+  Die Regel liegt in der Domäne (`assign_device`/`swap_device`, `ActuatorInAnotherZone`, `check_actuator_exclusive`);
+  Zuordnungsseite (Zuordnen und Tauschen) und Karte zeigen deren Meldung, `can_connect` bezieht nur den Wortlaut und zeigt
+  die Ablehnung vorab. REST und MCP haben keinen Zuordnungsendpunkt (Wächtertest: `ZoneDevice(...)` wird nur in der Domäne
+  angelegt). Sie gilt nur für **neue** Zuordnungen: Doppelzuordnungen im Bestand bleiben (keine Migration), werden
+  angezeigt und lassen sich weiter bearbeiten (Betriebsart, Ausgleich, Sortierung) und lösen. **Restlücke:** zwei
+  gleichzeitige Zuordnungen desselben Geräts zu zwei Zonen sind ohne Datenbank-Constraint nicht vollständig auszuschließen;
+  Prüfung und Einfügen liegen in einer Transaktion, die Prüfung sperrt die Gerätezeile (`SELECT ... FOR UPDATE`; von Hand gegen MariaDB mit zwei Threads
+  geprüft: keine zweite Zeile, die zweite Anfrage endet aber mit DB-Fehler 1020 statt sauberer Meldung; SQLite sperrt keine
+  Zeilen, dort ungeprüft). Ein gleichzeitiges Einfügen derselben Zeile ergibt in der Karte 409 statt 500. Mehrere Fühler → eine Messquelle
+  bleibt abgelehnt (keine Mischung im Modell). Luftfeuchte, Anwesenheit, Helligkeit haben keinen Zonen-Eingang
+  (nur Anzeige/Entwurf auf Geräte-Eingänge mit Einheit `%`/`°C`).
+- **Linien entfernen:** Linie anklicken/antippen oder mit Tab anwählen markiert sie (dicker, Schatten), knapp über
+  ihrer Mitte erscheint „× Entfernen"; Entf/Backspace auf der fokussierten Linie entfernt sie ebenso, die Tabelle
+  „Verbindungen" behält „Lösen". Gespeichert: `POST /devices/map/disconnect` (CSRF, `device.manage` der Zone),
+  danach Neuladen mit kurzer Bestätigung unten; bei Fehler bleibt die Linie, der Grund steht unten. Entwürfe werden
+  lokal entfernt (kein Request). `detach_device` sendet dem Gerät **keinen** Ausschaltbefehl: Ein gelöster Aktor
+  behält seinen letzten Zustand, die Bestätigung sagt das. Linien laufen unter den Karten; liegt eine Linienmitte
+  hinter einer Karte, die Karte verschieben oder die Linie per Tab anwählen.
+- Geprüft: `tests/test_mapping_map.py`, `tests/test_mapping_map_multi.py`, Smoke-Test,
+  `browser_tests/test_mapping_map.py` (Ziehen, Zoom/Pan, gültig/ungültig, Entfernen per Maus/Tastatur/Entwurf/Fehlschlag,
+  Fan-out, Aktor in zweiter Zone). Nur SQLite.
+
+## 0.16.0 (2026-10-14) -- freigegeben
 
 Gebaut und gemergt (`main`), Version angehoben, `CHANGELOG.md` und Add-on-Changelog vorbereitet: drei
 Betriebsarten je Thermostatventil und die Datenfluss-Seite. 0.15.0 ist freigegeben (Tag, GitHub-Release, Add-on-Repository

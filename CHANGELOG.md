@@ -9,6 +9,39 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.17.0 — 2026-10-15
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration.** Nichts ist von Hand zu tun.
+- **Ein Gerät kann nur noch Aktor einer Zone sein.** Eine Zone darf mehrere Ventile haben, ein Ventil
+  aber nur einer Zone dienen: Zwei Zonen mit gegensätzlichem Bedarf würden dasselbe Ventil sonst
+  abwechselnd schalten, an Hysterese und Mindestschaltdauer vorbei. Die Regel gilt für **neue**
+  Zuordnungen (Zuordnungsseite, Gerätetausch, Karte). Ein Ventil, das schon zwei Zonen dient, bleibt
+  wie es ist und lässt sich weiter bearbeiten und lösen; es wird nicht automatisch geändert.
+- **Abgelaufene Sitzung führt jetzt zum Login:** Wer ohne Anmeldung eine Seite im Browser öffnet,
+  landet auf der Anmeldung und kommt danach zur gewünschten Seite zurück. REST und MCP antworten
+  unverändert mit 401.
+- **Ein Aktor, der in der Karte oder auf der Zuordnungsseite gelöst wird, bekommt keinen
+  Ausschaltbefehl** (wie bisher). Ein gerade geöffnetes Ventil behält seinen letzten Zustand.
+
+### Neu
+
+- **Seite „Zuordnungskarte“** (`/devices/map`, Navigation „System“, Recht `device.read`; Verbinden und
+  Lösen mit `device.manage` je Zone): Geräte und Zonen sind frei verschiebbare Knoten auf einer
+  Fläche mit Verschieben und Zoomen. Ausgänge (liefern einen Wert) liegen rechts, Eingänge (nehmen
+  einen Wert oder Befehl an) links, farbig nach Wertart. Eine Linie von einem Ausgang auf einen Eingang
+  ordnet zu: Temperatur an die Messquelle einer Zone, Kontakt als Fensterkontakt, der Heizbefehl
+  einer Zone an das Schalt- oder Thermostat-Eingang eines Geräts. Unpassendes wird mit Begründung
+  abgelehnt. Linien lassen sich anklicken und entfernen. Ein Fühler oder Kontakt darf mehreren Zonen
+  dienen. Verbindungen von Gerät zu Gerät werden nur als Entwurf gezeichnet und nicht gespeichert.
+  Bedienung mit Maus, Touch und Tastatur; ohne JavaScript bleibt eine Verbindungsliste. Die bisherige
+  Zuordnungsseite bleibt.
+- **Anmeldung merkt sich die Zielseite** (siehe oben), auch beim Anmelden mit Passkey. Das Ziel wird
+  streng geprüft: nur ein eigener Pfad, nie ein fremder Host.
+
+---
+
 ## 0.16.0 — 2026-10-14
 
 ### Beim Upgrade zu wissen
