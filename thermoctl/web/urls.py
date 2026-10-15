@@ -22,7 +22,7 @@ attribute to the same prefix (`base_url`, further below, covers a third: telling
 browser's own JavaScript where the prefix is).
 """
 
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from fastapi import Request
 
@@ -79,17 +79,24 @@ def safe_return_to(value: str | None) -> str | None:
     `Location` header, so it is an open-redirect candidate: only a single-slash,
     un-prefixed path with an optional query passes. No scheme, no host, no `//`, no
     backslash (some browsers read `/\\host` as `//host`), no control characters, no
-    fragment. The prefix of the deployment is added by the caller, never taken from
+    fragment, no dot segments. Every one of these is checked on the percent-decoded
+    form as well: a browser resolves `/%2e%2e/x` like `/../x`, which would climb out of
+    the deployment's prefix. The prefix itself is added by the caller, never taken from
     here.
     """
     if value is None or not value.startswith("/") or len(value) > _MAX_RETURN_LENGTH:
         return None
-    if value.startswith("//") or "\\" in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
-        return None
-    parts = urlsplit(value)
-    if parts.scheme or parts.netloc or parts.fragment or ".." in parts.path.split("/"):
-        return None
-    path = parts.path
-    if any(path == p.rstrip("/") or path.startswith(p) for p in _NO_RETURN_PREFIXES):
-        return None
+    for candidate in (value, unquote(value)):
+        if candidate.startswith("//") or "\\" in candidate:
+            return None
+        if any(ord(c) < 32 or ord(c) == 127 for c in candidate):
+            return None
+        parts = urlsplit(candidate)
+        if parts.scheme or parts.netloc or parts.fragment:
+            return None
+        if ".." in parts.path.split("/") or "." in parts.path.split("/"):
+            return None
+        path = parts.path
+        if any(path == p.rstrip("/") or path.startswith(p) for p in _NO_RETURN_PREFIXES):
+            return None
     return value

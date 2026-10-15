@@ -1433,7 +1433,10 @@ def create_app() -> FastAPI:
             answer: Response = Response(status_code=401)
             answer.headers["HX-Redirect"] = login
             return answer
-        return RedirectResponse(login, status_code=303)
+        redirect = RedirectResponse(login, status_code=303)
+        # The answer depends on cookie and `Accept`; nothing in between may keep it.
+        redirect.headers["Cache-Control"] = "no-store"
+        return redirect
 
     @app.exception_handler(Forbidden)
     async def forbidden_handler(request: Request, exc: Forbidden) -> Response:

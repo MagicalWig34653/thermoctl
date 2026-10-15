@@ -17,6 +17,7 @@ HTML = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
 def test_page_redirects_browser_to_login_with_way_back(client: TestClient) -> None:
     response = client.get("/zones?filter=a%20b", headers=HTML, follow_redirects=False)
     assert response.status_code == 303
+    assert response.headers["cache-control"] == "no-store"
     wanted = quote("/zones?filter=a%20b", safe="")
     assert response.headers["location"] == f"/login?return_to={wanted}"
 
@@ -36,9 +37,8 @@ def test_api_and_mcp_paths_never_redirect(client: TestClient) -> None:
 
 def test_post_without_session_goes_to_login_without_way_back(client: TestClient) -> None:
     response = client.post("/zones/1/devices/detach", headers=HTML, follow_redirects=False)
-    assert response.status_code in (303, 404, 405)
-    if response.status_code == 303:
-        assert response.headers["location"] == "/login"
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
 
 
 def test_htmx_gets_header_and_the_page_it_is_on(client: TestClient) -> None:
@@ -89,6 +89,15 @@ def test_prefix_is_added_once_and_stripped_from_current_url(client_with_prefix: 
         "/zones#frag",
         "/zones\r\nSet-Cookie: a=b",
         "/../etc",
+        "/%2e%2e/x",
+        "/%2E%2E/%2e%2e/x",
+        "/./x",
+        "/%2fevil.com/x",
+        "/%5cevil.com",
+        "/%6cogin",
+        "/%6cogout",
+        "/%61pi/v1/zones",
+        "/zones%0d%0aSet-Cookie:a=b",
         "/login",
         "/logout",
         "/setup",
@@ -153,3 +162,21 @@ def test_login_ignores_loop_and_foreign_targets(
             follow_redirects=False,
         )
         assert result.headers["location"] == "/"
+
+
+def test_foreign_origin_in_current_url_keeps_only_the_path(client: TestClient) -> None:
+    response = client.get(
+        "/zones/history",
+        headers={"HX-Request": "true", "HX-Current-URL": "https://evil.example/zones?x=1"},
+        follow_redirects=False,
+    )
+    assert response.headers["HX-Redirect"] == f"/login?return_to={quote('/zones?x=1', safe='')}"
+
+
+def test_current_url_pointing_at_login_is_not_a_target(client: TestClient) -> None:
+    response = client.get(
+        "/zones/history",
+        headers={"HX-Request": "true", "HX-Current-URL": "http://testserver/login"},
+        follow_redirects=False,
+    )
+    assert response.headers["HX-Redirect"] == "/login"
