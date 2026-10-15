@@ -163,7 +163,7 @@
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "Fensterkontakt). Die Zone hat drei Ausgänge zum Thermostatventil: „Heizbefehl\" (Ein/Aus, Eingang",
       "Istwert ans Ventil geschrieben). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%; am",
-      "Korrektur der Zuordnungskarte (Betriebsart eines Thermostatventils folgt aus den Linien), gemergt; siehe Karten-Abschnitt",
+      "Korrektur der Zuordnungskarte (Betriebsart eines Thermostatventils folgt aus den Linien); Tag, Release, Abbild und",
       "Maus/Tastatur/Entwurf/Fehlschlag, Fan-out, Aktor in zweiter Zone, Betriebsart über Linien).",
       "Messquelle); Sollwert/Raumtemperatur nur an ihren eigenen Ventil-Eingang; Sperre des Eingangs (`may_be_written`;",
       "Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.",
