@@ -21,8 +21,10 @@ Seite bekommt das Ergebnis für jedes Paar fertig mitgeliefert und rechnet nicht
 Fassung der Regeln in JavaScript hat in `assignment.js` schon einmal veraltet. Der schreibende
 Endpunkt prüft vor dem Speichern erneut mit derselben Funktion.
 
-Was gespeichert werden kann, entscheidet weiterhin `domain/device_assignment.py`
-(`assign_device`, `set_temperature_source`, `REQUIRED_CAPABILITY`); diese Datei ergänzt nur die
+Was gespeichert werden kann, entscheidet weiterhin `domain/device_assignment.py` -- auch die Regel
+„ein Aktor, eine Zone" (`check_actuator_exclusive`); `can_connect` bezieht nur deren Wortlaut
+(`actuator_elsewhere_notice`) und zeigt die Ablehnung vorab an.
+Gespeichert wird über `assign_device`, `set_temperature_source`, `REQUIRED_CAPABILITY`; diese Datei ergänzt nur die
 feinere, anschlussgenaue Vorprüfung. Dieses Modul schreibt selbst nichts.
 """
 
@@ -38,7 +40,11 @@ from thermoctl.db.models.device import Device, DeviceCapabilityLink, DevicePrope
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.controller_channels import may_be_written
-from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY, TEMPERATURE_SOURCE
+from thermoctl.domain.device_assignment import (
+    REQUIRED_CAPABILITY,
+    TEMPERATURE_SOURCE,
+    actuator_elsewhere_notice,
+)
 
 Direction = Literal["out", "in"]
 NodeKind = Literal["device", "zone"]
@@ -247,11 +253,7 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
         if zone_port.slot == "actuator":
             elsewhere = [label for zone_id, label in device_port.actuator_zones if zone_id != zone_port.zone_id]
             if elsewhere:
-                return Verdict(
-                    False,
-                    f"'{device_port.node_name}' ist bereits Aktor {' und '.join(elsewhere)}; "
-                    "ein Gerät kann nur eine Zone heizen.",
-                )
+                return Verdict(False, actuator_elsewhere_notice(device_port.node_name, elsewhere))
     return Verdict(True, None, out, inp)
 
 

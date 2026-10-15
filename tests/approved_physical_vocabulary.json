@@ -174,8 +174,9 @@
       "Fan-out, Aktor in zweiter Zone). Nur SQLite.",
       "Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen\"): `publishing`/`shadow_run`",
       "lokal entfernt (kein Request). `detach_device` sendet dem Gerät **keinen** Ausschaltbefehl: Ein gelöster Aktor",
-      "schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Die Sperre",
-      "„ein Gerät, eine Zone\" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*"
+      "„ein Gerät, eine Zone\" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*",
+      "Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.",
+      "schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Entscheidung des"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -534,7 +535,12 @@
       "Nur ein Thermostatventil hat eine Betriebsart — dieses Gerät ist keines.",
       "actuator",
       "actuator",
-      "switch"
+      "switch",
+      "' ist bereits Aktor",
+      "; ein Gerät kann nur eine Zone heizen.",
+      "actuator",
+      "actuator",
+      "actuator"
     ],
     "thermoctl/domain/device_classes.py": [
       "switch",
@@ -574,8 +580,6 @@
       "actuator",
       "switch",
       "switch",
-      "' ist bereits Aktor",
-      "; ein Gerät kann nur eine Zone heizen.",
       "actuator",
       "actuator",
       "actuator"

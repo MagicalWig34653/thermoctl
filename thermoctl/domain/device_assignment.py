@@ -1,4 +1,7 @@
+from collections.abc import Sequence
+
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -14,6 +17,22 @@ from thermoctl.domain.thermostat_mode import (
 
 class AssignmentAlreadyExists(Exception):
     """The device already has this role in the zone."""
+
+
+class ActuatorInAnotherZone(Exception):
+    """The device already heats a different zone; one device heats only one zone.
+
+    `zones` are the `(id, name)` pairs of those other zones, so an adapter that must not
+    reveal a zone's name to this viewer can build its own wording with
+    `actuator_elsewhere_notice`.
+    """
+
+    def __init__(self, device_name: str, zones: Sequence[tuple[int, str]]) -> None:
+        self.zones = tuple(zones)
+        self.notice = actuator_elsewhere_notice(
+            device_name, [f"von Zone '{name}'" for _, name in zones]
+        )
+        super().__init__(self.notice)
 
 
 class CapabilityMissing(Exception):
@@ -43,6 +62,17 @@ REQUIRED_CAPABILITY: dict[str, tuple[frozenset[str], str]] = {
     "actuator": (frozenset({"switch", "thermostat"}), "hat keinen Schaltausgang"),
     "window_contact": (frozenset({"contact"}), "meldet keinen Kontakt"),
 }
+
+
+def actuator_elsewhere_notice(device_name: str, where: Sequence[str]) -> str:
+    """The one wording of "one device, one zone" -- also used by `mapping_map.can_connect`.
+
+    `where` are phrases such as `"von Zone 'Bad'"` or `"einer anderen Zone"`.
+    """
+    return (
+        f"'{device_name}' ist bereits Aktor {' und '.join(where)}; "
+        "ein Gerät kann nur eine Zone heizen."
+    )
 
 
 def _capabilities(session: Session, device: Device) -> set[str]:
@@ -93,6 +123,49 @@ def check_capability(session: Session, device: Device, slot: str | None) -> None
     )
 
 
+def _assignment_exists(session: Session, zone: Zone, device: Device, role: DeviceRole) -> bool:
+    return (
+        session.scalar(
+            select(ZoneDevice.id).where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_id == device.id,
+                ZoneDevice.device_role_id == role.id,
+            )
+        )
+        is not None
+    )
+
+
+def check_actuator_exclusive(session: Session, zone: Zone, device: Device) -> None:
+    """Rejects a device that is already the actuator of a zone **other than** `zone`.
+
+    The same zone is not a conflict here (a zone may have several valves; the identical
+    assignment is `AssignmentAlreadyExists`). Locks the device row first and reads the
+    existing assignments with a locking read, see `assign_device` ("Race").
+    """
+    session.execute(select(Device.id).where(Device.id == device.id).with_for_update())
+    other_zone_ids = list(
+        session.scalars(
+            select(ZoneDevice.zone_id)
+            .join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
+            .where(
+                ZoneDevice.device_id == device.id,
+                DeviceRole.code == "actuator",
+                ZoneDevice.zone_id != zone.id,
+            )
+            .with_for_update()
+        )
+    )
+    if not other_zone_ids:
+        return
+    rows = session.execute(
+        select(Zone.id, Zone.display_name)
+        .where(Zone.id.in_(other_zone_ids))
+        .order_by(Zone.id)
+    ).all()
+    raise ActuatorInAnotherZone(device.display_name, [(zid, name) for zid, name in rows])
+
+
 def assign_device(
     session: Session,
     zone: Zone,
@@ -102,21 +175,53 @@ def assign_device(
     actor_id: int | None,
     source: str = "web",
 ) -> ZoneDevice:
-    existing = session.scalar(
-        select(ZoneDevice.id).where(
-            ZoneDevice.zone_id == zone.id,
-            ZoneDevice.device_id == device.id,
-            ZoneDevice.device_role_id == role.id,
-        )
-    )
-    if existing is not None:
+    """Assigns a device to a zone in a role.
+
+    Besides the capability, one rule of the plant is enforced here and nowhere else (the
+    map's `can_connect` merely asks the same wording of it): **a device is the actuator of
+    at most one zone** (`ActuatorInAnotherZone`). The control chain decides and writes per
+    zone; two zones with opposite demand would switch the same valve back and forth, each
+    past the other's hysteresis and minimum switching duration.
+
+    The rule applies to **new** assignments only. A device that already heats two zones
+    (data from before the rule) stays as it is: editing, re-sorting and detaching such an
+    assignment never go through here.
+
+    **Race.** Two requests assigning the same actuator to two zones at the same moment
+    cannot be excluded completely without a database constraint (a unique index over
+    "actuator role, device" would need a migration, which was decided against). The check
+    sits directly before the insert in the same transaction, and takes a row lock on the
+    device plus a locking read of its actuator assignments (`SELECT ... FOR UPDATE`,
+    standard SQL; ignored by SQLite). Tried by hand against MariaDB with two threads: the
+    second request waits for the first to commit and then does **not** double-assign;
+    because MariaDB reads from a snapshot that is older by then, it fails with error 1020
+    ("Record has changed since last read") -- an error page instead of the clean
+    `ActuatorInAnotherZone` message, but no second row. Remaining gaps, stated plainly:
+    SQLite takes no row locks (its single writer lock serialises only the writes; the
+    outcome of two such requests is not verified here), the clean message is missing in
+    the MariaDB case above, and a `ZoneDevice` row written by any route other than this
+    function is not covered at all.
+    """
+    if _assignment_exists(session, zone, device, role):
         raise AssignmentAlreadyExists
     check_capability(session, device, role.code)
+    if role.code == "actuator":
+        check_actuator_exclusive(session, zone, device)
     assignment = ZoneDevice(
         zone_id=zone.id, device_id=device.id, device_role_id=role.id
     )
-    session.add(assignment)
-    session.flush()
+    try:
+        # Savepoint: a failed insert must not leave the caller's transaction unusable.
+        with session.begin_nested():
+            session.add(assignment)
+            session.flush()
+    except IntegrityError:
+        # The unique constraint `rolle_je_zuordnung` is exactly "this device already has
+        # this role in this zone" -- two requests got past the check above at once. Any
+        # other integrity error (zone or device vanished) is not that, and stays an error.
+        if _assignment_exists(session, zone, device, role):
+            raise AssignmentAlreadyExists from None
+        raise
     audit.record(
         session,
         source=source,
@@ -286,6 +391,17 @@ def swap_device(
             )
         )
     )
+    # Only where a new actuator row would really be created: if `new_link` already is
+    # an actuator of this zone, nothing is added and nothing is checked (so an old double
+    # assignment of `new_link` elsewhere does not block the swap). Still before the first write.
+    for assignment in old_assignments:
+        role = session.get(DeviceRole, assignment.device_role_id)
+        if (
+            role is not None
+            and role.code == "actuator"
+            and assignment.device_role_id not in existing_roles
+        ):
+            check_actuator_exclusive(session, zone, new_link)
     for assignment in old_assignments:
         if assignment.device_role_id not in existing_roles:
             session.add(

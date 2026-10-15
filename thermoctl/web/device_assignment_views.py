@@ -18,6 +18,7 @@ from thermoctl.domain.controller import (
 )
 from thermoctl.domain.device_assignment import (
     REQUIRED_CAPABILITY,
+    ActuatorInAnotherZone,
     AssignmentAlreadyExists,
     CapabilityMissing,
     assign_device,
@@ -196,7 +197,7 @@ async def assign_device_view(
                 "assignment": "Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet."
             },
         )
-    except CapabilityMissing as exc:
+    except (CapabilityMissing, ActuatorInAnotherZone) as exc:
         return _response(
             session, request, zone, may_edit=True, errors={"assignment": exc.notice}
         )
@@ -312,7 +313,7 @@ async def device_swap_view(
         swap_device(
             session, zone, old, new_link, actor_id=principal.user_id
         )
-    except (HTTPException, ValueError, CapabilityMissing) as exc:
+    except (HTTPException, ValueError, CapabilityMissing, ActuatorInAnotherZone) as exc:
         notice = exc.detail if isinstance(exc, HTTPException) else str(exc)
         return _response(
             session,

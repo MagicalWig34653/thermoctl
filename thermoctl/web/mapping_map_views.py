@@ -20,8 +20,10 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.device_assignment import (
     TEMPERATURE_SOURCE,
+    ActuatorInAnotherZone,
     AssignmentAlreadyExists,
     CapabilityMissing,
+    actuator_elsewhere_notice,
     assign_device,
     detach_device,
     set_temperature_source,
@@ -156,8 +158,20 @@ async def connect(
             if role is None:
                 return _rejected("Diese Rolle gibt es in der Anlage nicht.")
             assign_device(session, zone, device, role, actor_id=principal.user_id)
-    except AssignmentAlreadyExists:  # pragma: no cover - `can_connect` kennt jede Doppelzuordnung
+    except AssignmentAlreadyExists:
+        # `can_connect` kennt jede Doppelzuordnung, die beim Aufbau der Karte schon stand; hier
+        # landet, wer gleichzeitig mit einer anderen Anfrage dieselbe Zeile anlegt (-> 409).
         return _rejected("Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet.", 409)
+    except ActuatorInAnotherZone as exc:
+        # Maßgeblich ist die Domäne; `can_connect` zeigt dieselbe Regel nur vorab. Hier landet, wer
+        # gleichzeitig mit einer anderen Zuordnung dasselbe Gerät belegt. Wie in der Karte: Namen
+        # von Zonen, die der Betrachter nicht sehen darf, bleiben verborgen.
+        visible = set(zones)
+        where = [
+            f"von Zone '{name}'" if zone_id in visible else "einer anderen Zone"
+            for zone_id, name in exc.zones
+        ]
+        return _rejected(actuator_elsewhere_notice(device.display_name, where))
     except CapabilityMissing as exc:  # pragma: no cover - `can_connect` prüft dieselbe Fähigkeit
         return _rejected(exc.notice)
     return JSONResponse({"ok": True})

@@ -45,8 +45,17 @@ Nicht in `main`, nicht freigegeben, ersetzt nichts: die Zuordnungsseite `/zones/
   „ein Gerät, eine Zone" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*
   Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen"): `publishing`/`shadow_run`
   entscheiden und schreiben je Zone, zwei Zonen mit gegensätzlichem Bedarf würden dasselbe Gerät abwechselnd
-  schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Die Sperre
-  gilt in der Karte; `assign_device` und die Zuordnungsseite prüfen das **nicht**. Mehrere Fühler → eine Messquelle
+  schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Entscheidung des
+  Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.
+  Die Regel liegt in der Domäne (`assign_device`/`swap_device`, `ActuatorInAnotherZone`, `check_actuator_exclusive`);
+  Zuordnungsseite (Zuordnen und Tauschen) und Karte zeigen deren Meldung, `can_connect` bezieht nur den Wortlaut und zeigt
+  die Ablehnung vorab. REST und MCP haben keinen Zuordnungsendpunkt (Wächtertest: `ZoneDevice(...)` wird nur in der Domäne
+  angelegt). Sie gilt nur für **neue** Zuordnungen: Doppelzuordnungen im Bestand bleiben (keine Migration), werden
+  angezeigt und lassen sich weiter bearbeiten (Betriebsart, Ausgleich, Sortierung) und lösen. **Restlücke:** zwei
+  gleichzeitige Zuordnungen desselben Geräts zu zwei Zonen sind ohne Datenbank-Constraint nicht vollständig auszuschließen;
+  Prüfung und Einfügen liegen in einer Transaktion, die Prüfung sperrt die Gerätezeile (`SELECT ... FOR UPDATE`; von Hand gegen MariaDB mit zwei Threads
+  geprüft: keine zweite Zeile, die zweite Anfrage endet aber mit DB-Fehler 1020 statt sauberer Meldung; SQLite sperrt keine
+  Zeilen, dort ungeprüft). Ein gleichzeitiges Einfügen derselben Zeile ergibt in der Karte 409 statt 500. Mehrere Fühler → eine Messquelle
   bleibt abgelehnt (keine Mischung im Modell). Luftfeuchte, Anwesenheit, Helligkeit haben keinen Zonen-Eingang
   (nur Anzeige/Entwurf auf Geräte-Eingänge mit Einheit `%`/`°C`).
 - **Linien entfernen:** Linie anklicken/antippen oder mit Tab anwählen markiert sie (dicker, Schatten), knapp über
