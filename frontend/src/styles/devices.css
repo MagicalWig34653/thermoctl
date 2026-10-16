@@ -1,0 +1,372 @@
+/* Gerätekarte. Alle Maße sind feste Pixelwerte und müssen zu lib/devices/geometry.ts passen
+   (NODE_W, HEAD_H, ROW_H, PORT_SIZE): Die Linien werden aus diesen Konstanten gezeichnet und
+   enden auf der Mitte der Anschlüsse. Eigene Klassen (`dm-`): globale Stile für Temperatur,
+   Kontakt & Co. dürfen keine Geometrie verändern. */
+:root {
+  --dm-node-w: 248px;
+  --dm-head-h: 52px;
+  --dm-row-h: 32px;
+  --dm-foot-h: 8px;
+  --dm-port-size: 32px;
+  --dm-dot: 14px;
+  --dm-kind-temperature: #c2410c;
+  --dm-kind-humidity: #0369a1;
+  --dm-kind-contact: #15803d;
+  --dm-kind-presence: #7e22ce;
+  --dm-kind-command: #be123c;
+  --dm-kind-unknown: #52525b;
+}
+.dark {
+  --dm-kind-temperature: #fb923c;
+  --dm-kind-humidity: #38bdf8;
+  --dm-kind-contact: #4ade80;
+  --dm-kind-presence: #c084fc;
+  --dm-kind-command: #fb7185;
+  --dm-kind-unknown: #a1a1aa;
+}
+
+.dm-surface {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: clamp(440px, calc(100dvh - 220px), 800px);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background-color: var(--muted);
+  background-image: radial-gradient(color-mix(in srgb, var(--foreground) 14%, transparent) 1px, transparent 1px);
+  background-size: 20px 20px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.dm-surface[data-panning='true'] {
+  cursor: grabbing;
+}
+.dm-surface:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.dm-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.dm-world[data-ready='false'] {
+  visibility: hidden;
+}
+.dm-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+.dm-wire {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke: var(--dm-kind-unknown);
+  pointer-events: none;
+}
+.dm-wire[data-selected='true'] {
+  stroke-width: 4.5;
+}
+.dm-wire[data-draft='true'] {
+  stroke-dasharray: 6 5;
+  opacity: 0.85;
+}
+.dm-wire-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.dm-wire-hit:focus-visible {
+  outline: none;
+  stroke: color-mix(in srgb, var(--ring) 55%, transparent);
+}
+.dm-kind-temperature { --dm-c: var(--dm-kind-temperature); }
+.dm-kind-humidity { --dm-c: var(--dm-kind-humidity); }
+.dm-kind-contact { --dm-c: var(--dm-kind-contact); }
+.dm-kind-presence { --dm-c: var(--dm-kind-presence); }
+.dm-kind-command { --dm-c: var(--dm-kind-command); }
+.dm-kind-unknown { --dm-c: var(--dm-kind-unknown); }
+.dm-wire { stroke: var(--dm-c, var(--dm-kind-unknown)); }
+
+.dm-node {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--dm-node-w);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--foreground);
+}
+.dm-node-body {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--background);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+.dm-node[data-kind='zone'] .dm-node-body {
+  border-color: color-mix(in srgb, var(--foreground) 40%, var(--border));
+}
+.dm-node[data-dim='true'] {
+  opacity: 0.35;
+}
+.dm-head {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: var(--dm-head-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+}
+.dm-grip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  margin: 0;
+  padding: 0 0 0 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: move;
+  touch-action: none;
+  border-radius: 0.6rem 0 0 0.6rem;
+}
+.dm-grip:focus-visible,
+.dm-collapse:focus-visible,
+.dm-port:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.dm-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.dm-sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+}
+.dm-collapse {
+  flex: 0 0 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 0 0.6rem 0 0;
+}
+.dm-collapse:hover {
+  color: var(--foreground);
+}
+.dm-row {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--dm-row-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+.dm-row[data-dir='in'] {
+  padding-left: 22px;
+  padding-right: 10px;
+}
+.dm-row[data-dir='out'] {
+  padding-left: 10px;
+  padding-right: 22px;
+  justify-content: flex-end;
+  text-align: right;
+}
+.dm-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+.dm-row[data-technical='true'] .dm-label {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.dm-port {
+  position: absolute;
+  top: 0;
+  box-sizing: border-box;
+  width: var(--dm-port-size);
+  height: var(--dm-port-size);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: crosshair;
+  touch-action: none;
+}
+.dm-row[data-dir='in'] .dm-port {
+  left: calc(var(--dm-port-size) / -2);
+}
+.dm-row[data-dir='out'] .dm-port {
+  right: calc(var(--dm-port-size) / -2);
+}
+.dm-port[disabled] {
+  cursor: not-allowed;
+}
+.dm-dot {
+  box-sizing: border-box;
+  display: block;
+  width: var(--dm-dot);
+  height: var(--dm-dot);
+  border: 2px solid var(--background);
+  border-radius: 999px;
+  background: var(--dm-c, var(--dm-kind-unknown));
+  box-shadow: 0 0 0 1.5px var(--dm-c, var(--dm-kind-unknown));
+  pointer-events: none;
+}
+/* Eingang: hohler Punkt, Ausgang: voller Punkt -- Richtung nicht nur über die Farbe. */
+.dm-port[data-dir='in'] .dm-dot {
+  background: var(--background);
+  border-color: var(--background);
+  box-shadow: 0 0 0 2px var(--dm-c, var(--dm-kind-unknown)) inset;
+}
+.dm-port[data-technical='true'] .dm-dot {
+  opacity: 0.55;
+  box-shadow: 0 0 0 1.5px var(--muted-foreground);
+  background: var(--muted);
+}
+.dm-port[data-state='active'] .dm-dot {
+  transform: scale(1.5);
+}
+.dm-port[data-state='fit'] .dm-dot {
+  transform: scale(1.35);
+  outline: 2px solid var(--foreground);
+  outline-offset: 1px;
+}
+.dm-port[data-state='unfit'] {
+  opacity: 0.3;
+}
+.dm-port[data-state='unfit'] .dm-dot {
+  transform: none;
+}
+
+.dm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.dm-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 0.35rem;
+  border-radius: 999px;
+  background: var(--dm-c, var(--dm-kind-unknown));
+}
+.dm-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  text-align: center;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+/* Meldungen und Hinweise liegen über der Fläche und verschieben das Layout nie: Während eines
+   Ziehens darf sich nichts unter dem Zeiger bewegen. */
+.dm-hud {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.dm-hud-status {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  border: 1px solid var(--border);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  cursor: default;
+}
+.dm-hud-notice {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  max-height: 11rem;
+  overflow: auto;
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--foreground) 22%, transparent);
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: default;
+}
+.dm-hud-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.dm-hud-close:hover { color: var(--foreground); }
+.dm-hud-close:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }

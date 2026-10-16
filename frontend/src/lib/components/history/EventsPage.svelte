@@ -4,12 +4,13 @@
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { formatInstant } from '$lib/rooms/logic';
+  import DeviceCommandsPanel from '$lib/components/devices/DeviceCommandsPanel.svelte';
   import { createQuery } from '$lib/history/query.svelte';
   import { buildQuery, classifyRevertError, type RevertOutcome } from '$lib/history/reports';
   import type { Audit, Change, Changes, RevertResult } from '$lib/history/types';
 
   const { api } = useApp();
-  type Tab = 'audit' | 'changes';
+  type Tab = 'audit' | 'changes' | 'commands';
   let tab = $state<Tab>('changes');
 
   // -- Filter ------------------------------------------------------------------------------
@@ -39,7 +40,7 @@
     if (tab === 'audit') {
       void [fromDate, toDate, user, actionCode, objectText, source, auditPage];
       audit.load();
-    } else {
+    } else if (tab === 'changes') {
       void [fromDate, toDate, changeType, source, hideReverted, changesPage];
       changes.load();
     }
@@ -106,8 +107,12 @@
 <div class="mb-4 flex flex-wrap gap-1" role="group" aria-label="Ansicht">
   <Button variant={tab === 'changes' ? 'secondary' : 'outline'} aria-pressed={tab === 'changes'} onclick={() => (tab = 'changes')}>Änderungen</Button>
   <Button variant={tab === 'audit' ? 'secondary' : 'outline'} aria-pressed={tab === 'audit'} onclick={() => (tab = 'audit')}>Audit-Protokoll</Button>
+  <Button variant={tab === 'commands' ? 'secondary' : 'outline'} aria-pressed={tab === 'commands'} onclick={() => (tab = 'commands')}>Schaltprotokoll</Button>
 </div>
 
+{#if tab === 'commands'}
+  <DeviceCommandsPanel />
+{:else}
 <form class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onsubmit={(e) => e.preventDefault()} aria-label="Filter">
   <label class="grid gap-1 text-sm"><span class="text-muted-foreground">Von</span>
     <input type="date" class="h-9 rounded-lg border bg-background px-2" bind:value={fromDate} onchange={resetPages} /></label>
@@ -294,4 +299,5 @@
       </div>
     {/if}
   {/if}
+{/if}
 {/if}
