@@ -502,6 +502,10 @@
       "Selbstregelndes Thermostatventil",
       "Ventilschutz"
     ],
+    "thermoctl/db/models/dashboard.py": [
+      "heating",
+      "heating"
+    ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
       "Die Regelung scharf schalten",
@@ -753,12 +757,6 @@
     "thermoctl/web/start_views.py": [
       "warmth"
     ],
-    "thermoctl/web/ui_api_reports.py": [
-      "/heating-time"
-    ],
-    "thermoctl/web/ui_api_rooms.py": [
-      "warmth"
-    ],
     "thermoctl/web/templates/base_core.html": [
       "// umschaltet."
     ],
@@ -946,6 +944,17 @@
     "thermoctl/web/tenant_views.py": [
       "/heating-time",
       "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
+      "warmth"
+    ],
+    "thermoctl/web/ui_api_dashboard.py": [
+      "heating",
+      "heating",
+      "heating"
+    ],
+    "thermoctl/web/ui_api_reports.py": [
+      "/heating-time"
+    ],
+    "thermoctl/web/ui_api_rooms.py": [
       "warmth"
     ]
   }
