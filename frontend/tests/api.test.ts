@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ApiError, createApi, readCookie } from '../src/lib/api.ts';
+import { ApiError, createApi, readCookie, runtimePrefix } from '../src/lib/api.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -73,4 +73,79 @@ test('Netzwerkfehler und 500 werden als ApiError gemeldet', async () => {
   await assert.rejects(failing.get('/x'), (e: ApiError) => e.kind === 'network');
   const { api } = setup(500, {});
   await assert.rejects(api.delete('/x'), (e: ApiError) => e.kind === 'http' && e.status === 500);
+});
+
+test('kaputtes CSRF-Cookie: ApiError statt URIError, kein Request', async () => {
+  const { api, calls } = setup(200, {}, 'thermoctl_csrf=%E0%A4%A');
+  assert.throws(() => readCookie('thermoctl_csrf=%E0%A4%A', 'thermoctl_csrf'), URIError);
+  await assert.rejects(api.post('/ui-api/x', {}), (e: ApiError) => {
+    assert.ok(e instanceof ApiError);
+    assert.equal(e.kind, 'client');
+    return true;
+  });
+  assert.equal(calls.length, 0);
+  // Lesende Aufrufe brauchen das Cookie nicht und laufen weiter.
+  await api.get('/ui-api/bootstrap');
+  assert.equal(calls.length, 1);
+});
+
+test('403 mit stale: Sitzung ungültig, Callback mit Grund, keine Wiederholung', async () => {
+  const reasons: string[] = [];
+  let n = 0;
+  const api = createApi({
+    fetch: (async () => {
+      n += 1;
+      return new Response(JSON.stringify({ detail: 'Ungültiges CSRF-Token', stale: true }), { status: 403 });
+    }) as unknown as typeof fetch,
+    prefix: '',
+    cookies: () => '',
+    onUnauthorized: (r) => reasons.push(r),
+  });
+  await assert.rejects(api.post('/ui-api/logout'), (e: ApiError) => e.kind === 'forbidden' && e.stale);
+  assert.equal(n, 1);
+  assert.deepEqual(reasons, ['stale']);
+});
+
+test('401 ohne JSON-Body und Erfolg mit kaputtem JSON werden zu ApiError', async () => {
+  const noBody = createApi({
+    fetch: (async () => new Response('nope', { status: 401, statusText: 'Unauthorized' })) as unknown as typeof fetch,
+    prefix: '',
+    cookies: () => '',
+  });
+  await assert.rejects(noBody.get('/x'), (e: ApiError) => e.kind === 'unauthorized' && e.message === 'Unauthorized');
+  const broken = createApi({
+    fetch: (async () => new Response('<html>', { status: 200 })) as unknown as typeof fetch,
+    prefix: '',
+    cookies: () => '',
+  });
+  await assert.rejects(broken.get('/x'), (e: ApiError) => e.kind === 'http');
+});
+
+test('204 liefert undefined', async () => {
+  const api = createApi({
+    fetch: (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+    prefix: '',
+    cookies: () => '',
+  });
+  assert.equal(await api.delete('/x'), undefined);
+});
+
+function fakeDoc(meta: string | null, dataset?: string): Document {
+  return {
+    querySelector: () => (meta === null ? null : { getAttribute: () => meta }),
+    getElementById: () => (dataset === undefined ? null : { dataset: { urlPrefix: dataset } }),
+  } as unknown as Document;
+}
+
+test('runtimePrefix: Meta, Fallback auf data-Attribut, Schlussstriche, leer', () => {
+  assert.equal(runtimePrefix(fakeDoc('/api/hassio_ingress/abc_DEF-1/')), '/api/hassio_ingress/abc_DEF-1');
+  assert.equal(runtimePrefix(fakeDoc('')), '');
+  assert.equal(runtimePrefix(fakeDoc(null, '/ing')), '/ing');
+  assert.equal(runtimePrefix(fakeDoc(null)), '');
+});
+
+test('runtimePrefix: ungültige Präfixe (Schema, //, Anführungszeichen) werden verworfen', () => {
+  for (const bad of ['https://evil.example', '//evil.example', '/a"b', '/a b', 'ohne-slash', '/a//b']) {
+    assert.equal(runtimePrefix(fakeDoc(bad)), '', bad);
+  }
 });

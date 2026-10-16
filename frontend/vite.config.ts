@@ -13,6 +13,16 @@ export default defineConfig({
   resolve: {
     alias: { $lib: fileURLToPath(new URL('./src/lib', import.meta.url)) },
   },
+  server: {
+    // Entwicklungsserver: API, Assets und die alten HTML-Seiten kommen vom lokal laufenden
+    // Backend. Adresse über THERMOCTL_DEV_BACKEND änderbar (nicht fest verdrahtet).
+    proxy: Object.fromEntries(
+      ['/ui-api', '/static', '/login'].map((path) => [
+        path,
+        { target: process.env.THERMOCTL_DEV_BACKEND ?? 'http://127.0.0.1:8000', changeOrigin: false },
+      ]),
+    ),
+  },
   build: {
     outDir: fileURLToPath(new URL('../thermoctl/web/static/app', import.meta.url)),
     // Das Ziel liegt außerhalb des Vite-Wurzelverzeichnisses, Löschen muss ausdrücklich erlaubt werden.

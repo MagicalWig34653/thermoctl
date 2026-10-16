@@ -191,6 +191,17 @@ Hinweise:
 - `svelte-toolbelt` 0.10.6 trägt im Lockfile keine Lizenzangabe; die `LICENSE`-Datei im Paketverzeichnis (node_modules der Durchstich-Fassung) nennt „MIT License“. Lizenz laut Lockfile bleibt unbekannt; die MIT-Angabe stammt aus der Datei, nicht aus dem Lockfile.
 - 24 Pakete stehen unter MPL-2.0 (Dateiebenen-Copyleft); vor einer Veröffentlichung prüfen, ob das für die Auslieferung relevant ist.
 
+## Übernommener Quellcode (nicht aus npm)
+
+- `src/lib/components/ui/**` (Komponenten accordion, alert, badge, button, card, checkbox, dialog, input, label,
+  separator, switch, table, tabs, textarea): shadcn-svelte-Vorlagen, Lizenz MIT (Copyright shadcn / Hunter Johnston),
+  per Kopie aus der UI-Konzeptdemo (`svelte-demo/src/lib/components/ui`) übernommen. Sie bauen auf `bits-ui`,
+  `tailwind-variants`, `tailwind-merge`, `clsx` auf (siehe Tabelle oben). Die Lizenz wurde hier nicht aus dem
+  Quellrepository geprüft, sondern aus der bekannten Lizenz des Projekts shadcn-svelte übernommen.
+- `src/lib/utils.ts` (`cn`-Helfer, ebenfalls shadcn-svelte) und `src/lib/accent.ts` (Kontrastberechnung der
+  Akzentfarbe): aus derselben Demo übernommen. Die Demo ist ein Entwurf des Projektinhabers und gehört zum Projekt.
+- Design-Tokens in `src/app.css` (Farbvariablen, Radien): Vorgaben von shadcn-svelte, aus der Demo übernommen.
+
 ## Pflege
 
 Bei jeder Änderung an `package-lock.json` diese Datei nachziehen (Version und Lizenz aus dem Lockfile).

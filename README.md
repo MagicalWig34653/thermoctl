@@ -154,8 +154,9 @@ npm run build         # Ausgabe nach thermoctl/web/static/app/ (nicht eingecheck
 ```
 
 Für `npm run dev` muss das Backend parallel laufen (siehe oben). Der Entwicklungsserver
-braucht eine Proxy-Einstellung auf dessen Adresse (Vite-Option `server.proxy`); Stand der
-Gerüst-Fassung: in `frontend/vite.config.ts` noch nicht eingetragen. Ohne `npm run build` gibt es
+leitet `/ui-api`, `/static` und `/login` an `http://127.0.0.1:8000` weiter (Vite-Option
+`server.proxy` in `frontend/vite.config.ts`; andere Adresse über `THERMOCTL_DEV_BACKEND`).
+Die Oberfläche öffnet man unter `/app/`. Ohne `npm run build` gibt es
 unter `static/app/` nichts auszuliefern. Die Herkunft der npm-Pakete steht in
 [`frontend/HERKUNFT.md`](frontend/HERKUNFT.md). Die CI führt `npm ci`, `check`, `test` und
 `build` vor dem Python-Lauf aus.

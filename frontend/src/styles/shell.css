@@ -1,0 +1,32 @@
+/* Hülle: Seitenleiste, Kopfleiste, mobile Schublade. Dezent transparente Flächen; Text bleibt deckend. */
+.app-sidebar {
+  background: color-mix(in srgb, var(--sidebar) 88%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  backdrop-filter: blur(22px) saturate(1.15);
+}
+.app-topbar {
+  background: color-mix(in srgb, var(--background) 85%, transparent);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+[data-slot='dialog-content'] {
+  background: color-mix(in srgb, var(--popover) 92%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  backdrop-filter: blur(22px) saturate(1.15);
+}
+
+/* Schublade auf schmalen Anzeigen: die Leiste liegt außerhalb und gleitet ein. */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
+  }
+  .app-sidebar[data-open='true'] {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease;
+  }
+}
