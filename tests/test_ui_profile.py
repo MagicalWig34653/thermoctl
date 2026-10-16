@@ -463,6 +463,27 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("GET", "/ui-api/zones/{zone_id}/data-flow"):
         "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
     ("GET", "/ui-api/device-commands"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
+    # Raumtechnik, Betrieb, Einstellungen, Schnittstellen (`ui_api_operations`): die
+    # Profilprüfung (Anlagensicht) steht in jedem Endpunkt (`_need`, `_need_zone_manage`).
+    ("GET", "/ui-api/rooms/{zone_id}/parameters"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("PUT", "/ui-api/rooms/{zone_id}/parameters"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("GET", "/ui-api/operation"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("PUT", "/ui-api/operation/armed"): "Profilprüfung im Endpunkt (Anlagensicht), control.arm",
+    ("GET", "/ui-api/settings"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    **{
+        ("PUT", f"/ui-api/settings/{name}"): "Profilprüfung im Endpunkt (Anlagensicht)"
+        for name in (
+            "defaults",
+            "solar-location",
+            "window-alarm",
+            "window-temp-drop",
+            "sensor-failure",
+            "outdoor-source",
+            "notifications",
+        )
+    },
+    ("POST", "/ui-api/settings/notifications/test"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("GET", "/ui-api/interfaces"): "Profilprüfung im Endpunkt (Anlagensicht)",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
