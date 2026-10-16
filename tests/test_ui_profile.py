@@ -614,6 +614,10 @@ def test_every_admin_page_carries_the_profile_guard() -> None:
     for route in alle_api_routen(create_app()):
         if route.include_in_schema:
             continue  # REST -- dort gibt es bewusst kein UI-Profil.
+        if route.endpoint.__module__ == "thermoctl.web.legacy_redirects":
+            # Feste 303-Antworten auf die Svelte-Oberfläche: kein Inhalt, keine Daten, keine
+            # Entscheidung; Profil und Rechte prüft jede Anfrage der Oberfläche an `/ui-api`.
+            continue
         for method in route.methods:
             if method in {"HEAD", "OPTIONS"}:
                 continue

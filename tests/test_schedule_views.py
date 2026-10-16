@@ -722,16 +722,13 @@ def test_confirming_and_carrying_out_a_point_deletion(client_als, session: Sessi
     point_id = point.id
     client = client_als([("schedule.manage", zone.id)])
 
-    form = client.get(
-        f"/zones/{zone.id}/schedule/points/{point_id}/delete"
-    )
+    # Die Bestätigungsseite (GET) ist seit `ui/cutover-redirects` eine Umleitung.
     response = client.post(
         f"/zones/{zone.id}/schedule/points/{point_id}/delete",
         headers=_csrf(client),
         follow_redirects=False,
     )
 
-    assert form.status_code == 200 and "Dienstag" in form.text
     assert response.status_code == 303
     assert session.get(SchedulePoint, point_id) is None
 
@@ -872,9 +869,6 @@ def test_a_foreign_schedule_point_yields_404(client_als, session: Session) -> No
     fremder = _point(session, fremde.id, 1, 360, mode.id)
     client = client_als([("schedule.manage", None), ("zone.read", None)])
 
-    assert client.get(
-        f"/zones/{eigene.id}/schedule/points/{fremder.id}/delete"
-    ).status_code == 404
     assert client.post(
         f"/zones/{eigene.id}/schedule/points/{fremder.id}/delete", headers=_csrf(client)
     ).status_code == 404

@@ -88,4 +88,5 @@ def test_app_and_static_get_nosniff_but_no_framing_ban(client) -> None:
         assert response.headers["X-Content-Type-Options"] == "nosniff", path
         assert "X-Frame-Options" not in response.headers
         assert "frame-ancestors" not in response.headers.get("Content-Security-Policy", "")
-    assert "X-Content-Type-Options" not in client.get("/login").headers
+    # `/login` ist nur noch eine Umleitung (kein Svelte-Pfad): ohne Folgen der Umleitung geprüft.
+    assert "X-Content-Type-Options" not in client.get("/login", follow_redirects=False).headers

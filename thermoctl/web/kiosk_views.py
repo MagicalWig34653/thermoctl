@@ -132,7 +132,10 @@ async def kiosk_entry(
 
     settings = get_settings()
     max_age = _kiosk_cookie_max_age_s(token.expires_at)
-    response = RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
+    # The redemption stays here (it sets the cookie); the page it lands on is the Svelte one.
+    response = RedirectResponse(
+        prefixed(request, "/app/kiosk"), status_code=status.HTTP_303_SEE_OTHER
+    )
     response.set_cookie(
         KIOSK_COOKIE_NAME, plaintext, max_age=max_age,
         httponly=True, samesite="lax", secure=settings.secure_cookies,

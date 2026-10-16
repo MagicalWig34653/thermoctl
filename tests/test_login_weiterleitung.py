@@ -1,30 +1,52 @@
-"""Nicht angemeldete Browser werden zum Login geleitet und danach zurückgeführt."""
+"""Nicht angemeldete Browser werden zum Login geleitet und danach zurückgeführt.
+
+Seit `ui/cutover-redirects` ist der Login die Seite der Svelte-Oberfläche
+(`/app/login`), und alle GET-Seiten der alten Oberfläche sind Umleitungen (siehe
+`test_legacy_redirects.py`). Der `NotLoggedIn`-Handler greift damit noch bei Schreib-POSTs
+und bei jeder GET-Route, die eine Sitzung verlangt und keine Altseite ist; diese Tests
+prüfen ihn an einer eigens eingehängten geschützten Route.
+"""
 
 import secrets
+from typing import Annotated
 from urllib.parse import quote
 
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.helpers import user_with_permissions
+from thermoctl.auth.dependencies import current_principal
 from thermoctl.auth.passwords import hash_password
+from thermoctl.domain.principal import Principal
 from thermoctl.web.urls import safe_return_to
 
 HTML = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+PAGE = "/geschuetzte-seite"
+
+
+def _guarded(client: TestClient) -> TestClient:
+    """Hängt eine GET-Seite ein, die eine Sitzung verlangt (die Altseiten sind Umleitungen)."""
+
+    async def page(_: Annotated[Principal, Depends(current_principal)]) -> dict[str, str]:
+        return {}  # pragma: no cover - ohne Sitzung nie erreicht
+
+    client.app.add_api_route(PAGE, page, methods=["GET"])  # type: ignore[attr-defined]
+    return client
 
 
 def test_page_redirects_browser_to_login_with_way_back(client: TestClient) -> None:
-    response = client.get("/zones?filter=a%20b", headers=HTML, follow_redirects=False)
+    response = _guarded(client).get(f"{PAGE}?filter=a%20b", headers=HTML, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["cache-control"] == "no-store"
-    wanted = quote("/zones?filter=a%20b", safe="")
-    assert response.headers["location"] == f"/login?return_to={wanted}"
+    wanted = quote(f"{PAGE}?filter=a%20b", safe="")
+    assert response.headers["location"] == f"/app/login?return_to={wanted}"
 
 
 def test_other_clients_keep_plain_401(client: TestClient) -> None:
     # No `Accept: text/html`: a script or a test client reads the status, not a page.
-    response = client.get("/zones", follow_redirects=False)
+    response = _guarded(client).get(PAGE, follow_redirects=False)
     assert response.status_code == 401
     assert response.json() == {"detail": "Nicht angemeldet"}
 
@@ -38,12 +60,12 @@ def test_api_and_mcp_paths_never_redirect(client: TestClient) -> None:
 def test_post_without_session_goes_to_login_without_way_back(client: TestClient) -> None:
     response = client.post("/zones/1/devices/detach", headers=HTML, follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/app/login"
 
 
 def test_htmx_gets_header_and_the_page_it_is_on(client: TestClient) -> None:
-    response = client.get(
-        "/zones/history",
+    response = _guarded(client).get(
+        PAGE,
         headers={
             "HX-Request": "true",
             "HX-Current-URL": "http://testserver/zones?x=1",
@@ -51,12 +73,12 @@ def test_htmx_gets_header_and_the_page_it_is_on(client: TestClient) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 401
-    assert response.headers["HX-Redirect"] == f"/login?return_to={quote('/zones?x=1', safe='')}"
+    assert response.headers["HX-Redirect"] == f"/app/login?return_to={quote('/zones?x=1', safe='')}"
 
 
 def test_htmx_boosted_uses_requested_page(client: TestClient) -> None:
-    response = client.get(
-        "/zones",
+    response = _guarded(client).get(
+        PAGE,
         headers={
             "HX-Request": "true",
             "HX-Boosted": "true",
@@ -64,19 +86,21 @@ def test_htmx_boosted_uses_requested_page(client: TestClient) -> None:
         },
         follow_redirects=False,
     )
-    assert response.headers["HX-Redirect"] == f"/login?return_to={quote('/zones', safe='')}"
+    assert response.headers["HX-Redirect"] == f"/app/login?return_to={quote(PAGE, safe='')}"
 
 
 def test_prefix_is_added_once_and_stripped_from_current_url(client_with_prefix: TestClient) -> None:
     prefix = "/api/hassio_ingress/A1b2C3d4e5"
-    plain = client_with_prefix.get("/zones", headers=HTML, follow_redirects=False)
-    assert plain.headers["location"] == f"{prefix}/login?return_to={quote('/zones', safe='')}"
+    plain = _guarded(client_with_prefix).get(PAGE, headers=HTML, follow_redirects=False)
+    assert plain.headers["location"] == f"{prefix}/app/login?return_to={quote(PAGE, safe='')}"
     htmx = client_with_prefix.get(
-        "/zones/history",
+        PAGE,
         headers={"HX-Request": "true", "HX-Current-URL": f"http://h{prefix}/zones"},
         follow_redirects=False,
     )
-    assert htmx.headers["HX-Redirect"] == (f"{prefix}/login?return_to={quote('/zones', safe='')}")
+    assert htmx.headers["HX-Redirect"] == (
+        f"{prefix}/app/login?return_to={quote('/zones', safe='')}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -131,9 +155,6 @@ def test_after_login_the_person_lands_on_the_wanted_page(
         return None
 
     monkeypatch.setattr("thermoctl.web.auth_views.sleep", no_delay)
-    first = client.get("/zones", headers=HTML, follow_redirects=False)
-    page = client.get(first.headers["location"])
-    assert 'name="return_to" value="/zones"' in page.text
     result = client.post(
         "/login",
         data={"username": user.username, "password": password, "return_to": "/zones"},
@@ -165,18 +186,18 @@ def test_login_ignores_loop_and_foreign_targets(
 
 
 def test_foreign_origin_in_current_url_keeps_only_the_path(client: TestClient) -> None:
-    response = client.get(
-        "/zones/history",
+    response = _guarded(client).get(
+        PAGE,
         headers={"HX-Request": "true", "HX-Current-URL": "https://evil.example/zones?x=1"},
         follow_redirects=False,
     )
-    assert response.headers["HX-Redirect"] == f"/login?return_to={quote('/zones?x=1', safe='')}"
+    assert response.headers["HX-Redirect"] == f"/app/login?return_to={quote('/zones?x=1', safe='')}"
 
 
 def test_current_url_pointing_at_login_is_not_a_target(client: TestClient) -> None:
-    response = client.get(
-        "/zones/history",
+    response = _guarded(client).get(
+        PAGE,
         headers={"HX-Request": "true", "HX-Current-URL": "http://testserver/login"},
         follow_redirects=False,
     )
-    assert response.headers["HX-Redirect"] == "/login"
+    assert response.headers["HX-Redirect"] == "/app/login"

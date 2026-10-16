@@ -58,14 +58,14 @@ def test_session_scope_rolls_back_on_error(engine: Engine) -> None:
 
 
 def test_a_protected_page_without_a_cookie_is_401(client: TestClient) -> None:
-    assert client.get("/users").status_code == 401
+    assert client.get("/ui-api/bootstrap").status_code == 401
 
 
 def test_a_protected_page_with_an_unknown_cookie_is_401(client: TestClient) -> None:
     """The same response as without a cookie -- a different status would give away
     that the session once existed."""
     client.cookies.set(COOKIE_NAME, "ein-geheimnis-das-es-nie-gab")
-    assert client.get("/users").status_code == 401
+    assert client.get("/ui-api/bootstrap").status_code == 401
 
 
 def test_a_protected_page_for_an_inactive_user_is_401(
@@ -76,11 +76,11 @@ def test_a_protected_page_for_an_inactive_user_is_401(
     _http_session, secret = create_session(session, user, 3600)
     session.flush()
     client.cookies.set(COOKIE_NAME, secret)
-    assert client.get("/users").status_code != 401, "precondition: logged in"
+    assert client.get("/ui-api/bootstrap").status_code != 401, "precondition: logged in"
 
     user.is_active = False
     session.flush()
-    assert client.get("/users").status_code == 401
+    assert client.get("/ui-api/bootstrap").status_code == 401
 
 
 def test_cli_passes_the_settings_through_to_uvicorn(

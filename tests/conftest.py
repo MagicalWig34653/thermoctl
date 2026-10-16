@@ -8,6 +8,8 @@ from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
 from tests.helpers import source, user_with_permissions
+from tests.legacy_ui_skips import LEGACY_UI_TESTS
+from tests.legacy_ui_skips import REASON as LEGACY_UI_REASON
 from thermoctl.app import create_app
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.passwords import hash_password
@@ -499,3 +501,10 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     FastAPI's nested routers, this went unnoticed.
     """
     items.sort(key=lambda item: item.fspath.basename == "test_endpoint_coverage.py")
+    # Tests der Altseiten, die seit `ui/cutover-redirects` nur noch eine Umleitung sehen
+    # (Liste und Begründung: `tests/legacy_ui_skips.py`; fällt im Löschschritt weg).
+    skip = pytest.mark.skip(reason=LEGACY_UI_REASON)
+    for item in items:
+        name = getattr(item, "originalname", None) or item.name
+        if name in LEGACY_UI_TESTS.get(Path(str(item.fspath)).stem, frozenset()):
+            item.add_marker(skip)

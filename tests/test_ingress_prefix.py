@@ -94,12 +94,14 @@ def test_login_cookies_without_prefix_are_scoped_to_the_root(client: TestClient,
 # --- an unauthenticated GET redirecting elsewhere (no user set up yet) ----------
 
 
-def test_login_page_redirects_to_setup_under_prefix_when_no_user_exists(
+def test_login_page_redirects_to_the_spa_login_under_prefix(
     client_with_prefix: TestClient,
 ) -> None:
+    # Ob ohne Benutzer weiter zur Ersteinrichtung geleitet wird, entscheidet die Oberfläche
+    # (`/ui-api/setup`); der Server leitet seit `ui/cutover-redirects` nur dorthin.
     response = client_with_prefix.get("/login", follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"] == f"{PREFIX}/setup"
+    assert response.headers["location"] == f"{PREFIX}/app/login"
 
 
 # --- logout: redirect and cookie deletion ---------------------------------------

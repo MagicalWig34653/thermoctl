@@ -89,7 +89,10 @@ def test_not_logged_in_the_home_page_leads_to_login(
     """Anyone typing the address into a browser should see a form, not an error message."""
     response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
-    assert "/login" in str(response.url)
+    # Seit `ui/cutover-redirects` führt `/` in die Svelte-Oberfläche, die selbst zur
+    # Anmeldung führt (`/ui-api/bootstrap` ohne Sitzung: 401).
+    assert str(response.url).endswith("/app/")
+    assert client.get("/ui-api/bootstrap").status_code == 401
 
 
 def test_without_a_user_the_home_page_leads_to_setup(client: TestClient) -> None:
@@ -98,7 +101,9 @@ def test_without_a_user_the_home_page_leads_to_setup(client: TestClient) -> None
     smoke test is meant to prevent."""
     response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
-    assert "/setup" in str(response.url)
+    # Die Oberfläche entscheidet über `/ui-api/setup`, ob sie zur Einrichtung weiterleitet.
+    assert str(response.url).endswith("/app/")
+    assert client.get("/ui-api/setup").status_code == 200
 
 
 # Every internal link has been written as ``{{ url_prefix }}/path`` rather than a
@@ -615,10 +620,12 @@ def test_kiosk_link_leads_to_an_actual_dashboard(
 
     entry = client.get(f"/kiosk/{plaintext}", follow_redirects=False)
     assert entry.status_code == 303
-    assert entry.headers["location"] == "/kiosk"
+    assert entry.headers["location"] == "/app/kiosk"
     assert "thermoctl_kiosk" in entry.cookies
 
-    dashboard = client.get("/kiosk")
+    shell = client.get("/app/kiosk")
+    assert shell.status_code == 200
+    dashboard = client.get("/kiosk-api/state")
     assert dashboard.status_code == 200
     assert zone.display_name in dashboard.text
 

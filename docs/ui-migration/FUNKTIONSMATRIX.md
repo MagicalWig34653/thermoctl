@@ -264,44 +264,44 @@ Der Navigationsvertrag (`NAVIGATION_ITEMS`, Test `test_navigation_permissions_ma
 | N25 | `/account` | Mehr / Konto | Konto > account | nur Anmeldung | **umgesetzt** — `/app/konto` (`paths.ts`, Link in `Shell.svelte`, `views/AccountView.svelte`). |
 | N25 | `/glossar`, `/passkeys` (nur Kontomenü/Fußzeile) | Hilfe, Passkeys | Hilfe > glossary; Konto > account | nur Anmeldung | **umgesetzt** — Hilfe → `/app/hilfe` (`paths.ts`, Link in `Shell.svelte`); Passkeys als Karte auf `/app/konto` (`PasskeysCard.svelte`). |
 
-## D. Alte Direktlinks -> geplante Ziele (Plan; tatsächliches Verhalten siehe „Alte Direktlinks“ am Ende)
+## D. Alte Direktlinks -> Ziele (Umleitung seit ui/cutover-redirects; Messwerte siehe „Alte Direktlinks“ am Ende)
 
-Ziele sind Ansichts-IDs der Demo; die konkrete URL-Form (Router, Präfix) ist offen. Alle Links müssen direkt **und** hinter wechselndem Ingress-Präfix funktionieren (§8). GET-Pfade mit Formular-POST-Gegenstück (Löschbestätigungen) leiten auf die Ansicht, die den Dialog öffnet. Bookmarks mit `?zone=`, `?period=`, `?return_to=` behalten ihre Parameter.
+Ziele sind Ansichts-IDs der Demo; die konkrete URL-Form (Router, Präfix) ist offen. Alle Links müssen direkt **und** hinter wechselndem Ingress-Präfix funktionieren (§8). GET-Pfade mit Formular-POST-Gegenstück (Löschbestätigungen) leiten auf die Ansicht, die den Dialog öffnet. Von den Query-Parametern gilt nur `?return_to=` (auf `/login`, nur nach `safe_return_to`); `?zone=`, `?period=` u. a. liest die Oberfläche nicht und die Umleitung verwirft sie.
 
 | Alter Pfad | Neues Ziel | Anmerkung | Status (tatsächlich) |
 |---|---|---|---|
-| `/` | `home` | Profilweiche (admin/tenant) entfällt | **teilweise** — Ziel `/app/` vorhanden; `/` liefert weiter die Alt-Startseite (angemeldet 200, anonym 303 auf `/login`), keine Weiterleitung. |
-| `/zones`, `/zones/new` | `home` (Raumliste), Dialog „Raum anlegen“ | Menüpunkt „Räume“ entfällt (§2) | **teilweise** — Ziel `/app/uebersicht/raeume` (Dialog „Raum anlegen“) vorhanden; Alt-Pfade antworten weiter mit den Alt-Seiten (200). |
-| `/zones/{id}`, `/zones/{id}/delete` | `room/<id>`, Löschen-Dialog | | **teilweise** — Ziel `/app/raeume/{id}` (Löschen-Dialog) vorhanden; Alt-Pfade 200, keine Weiterleitung. |
-| `/zones/{id}/parameters` | `room/<id>` Reiter Technik | | **teilweise** — Ziel `/app/raeume/{id}` (Raumtechnik im Detail) vorhanden; Alt-Pfad 200. |
-| `/zones/{id}/setpoints` | `room/<id>` Sollwerte | | **teilweise** — Ziel `/app/raeume/{id}` vorhanden; Alt-Pfad 200. |
-| `/zones/{id}/schedule` und Unterpfade `/points/{pid}/delete`, `/adopt` | `schedule/<id>` | Löschen/Übernehmen als Dialog | **teilweise** — Ziel `/app/zeit/wochenplaene`; die Raumvorwahl aus der Adresse wird nicht ausgewertet (Raum wird in der Seite gewählt); Alt-Pfade 200. |
-| `/schedule?zone=<id>` (Mieter) | `schedule/<id>` | `?zone` bleibt gültig | **teilweise** — Ziel `/app/zeit/wochenplaene`; `?zone` wird von der Oberfläche nicht gelesen (nur `return_to` wird ausgewertet); Alt-Pfad bleibt (Mieter 200, Admin 403). |
-| `/zones/{id}/devices` | `devices` (Zuordnung, Raum vorgewählt) | | **teilweise** — Ziel `/app/geraete/liste`; Raum nicht per Adresse vorgewählt; Alt-Pfad 200. |
-| `/zones/history`, `/zones/{id}/history`, `/temperature-history`, `/temperature-history/{id}/tile` | `history` (Raum/Zeitraum) | `?period=` übernehmen | **teilweise** — Ziel `/app/auswertung/verlauf`; `?period=` wird nicht übernommen; Alt-Pfade bleiben (Admin 200, Mieter 403 bzw. umgekehrt für `/temperature-history`). |
-| `/statistics`, `/heating-time` | `history` Heizzeit | | **teilweise** — Ziel `/app/auswertung/verlauf` (Abschnitt Heizzeit); Alt-Pfade bleiben. |
-| `/relay-wear` | `wear` | | **teilweise** — Ziel `/app/auswertung/verschleiss`; Alt-Pfad 200. |
-| `/audit`, `/device-commands`, `/changes`, `/changes/{id}/revert` | `events` (Filter Art), Rücknahme-Dialog | Rücknahme-Link muss `force_token`-Ablauf behalten | **teilweise** — Ziel `/app/auswertung/ereignisse` (Reiter, nicht per Adresse wählbar); Rücknahme läuft als Schaltfläche mit `force_token`; Alt-Pfade 200. |
-| `/devices`, `/plant` | `devices`, `mapping` | | **Lücke** — `/devices` → `/app/geraete/liste` vorhanden (Alt-Pfad bleibt 200); für `/plant` gibt es kein Ziel in der Oberfläche (R077). |
-| `/devices/map`, `/zones/data-flow`, `/zones/{id}/data-flow` | `mapping` | | **teilweise** — Ziel `/app/geraete/karte`; Alt-Pfade 200. |
-| `/controllers` | `controllers` | | **teilweise** — Ziel `/app/geraete/bediengeraete`; Alt-Pfad 200. |
-| `/control` | `operation` | | **teilweise** — Ziel `/app/system/betrieb`; Alt-Pfad 200. |
-| `/settings` | `regulation` | Unterpfade `/settings/*` sind nur POST | **teilweise** — Ziel `/app/heizung/regelvorgaben` (+ `fenster`, `notbetrieb`, `sonne`, `aussenfuehler`); Alt-Pfad 200. |
-| `/vacation`, `/absence` | `vacation`, `absence` | | **teilweise** — `/vacation` → `/app/zeit/anlagenurlaub`; Abwesenheit als Panel in `/app/zeit/wochenplaene` (Mieter); Alt-Pfad `/vacation` 200, `GET /absence` ist 405 (nur POST). |
-| `/modes`, `/modes/new`, `/modes/{id}`, `/modes/{id}/delete` | `modes` (Dialog) | | **teilweise** — Ziel `/app/heizung/modi` (kein Dialog, Inline-Bearbeitung); Alt-Pfade 200. |
-| `/interfaces` | `interfaces` | | **teilweise** — Ziel `/app/system/verbindungen`; Alt-Pfad 200. |
-| `/users`, `/groups` | `access` | | **teilweise** — Ziel `/app/personen/rechte`; Alt-Pfade 200. |
-| `/tokens`, `/kiosk-tokens` | `tokens`, `kiosktokens` | | **teilweise** — Ziele `/app/personen/tokens` und `/app/personen/kiosk`; Alt-Pfade 200. |
-| `/account`, `/account/help`, `/passkeys`, `/glossar` | `account`, `help`, `account` (Passkeys), `glossary` | | **teilweise** — Ziele `/app/konto`, `/app/hilfe` (nur Glossar, R010); Passkeys auf `/app/konto`; Alt-Pfade 200. |
-| `/login?return_to=...`, `/setup`, `/oauth/consent?request=...` | unverändert erreichbar | `/oauth/consent` wird von `/authorize` mit absolutem `public_url` aufgerufen; Pfad darf sich nicht ändern | **serverseitig bleibt (begründet)** — Bleiben erreichbar: `/login` 200, `/oauth/consent` ohne Anmeldung 303 auf `/login?return_to=...`, `/setup` nach Einrichtung 404; zusätzlich `/app/login` und `/app/setup` (Svelte). |
-| `/kiosk`, `/kiosk/{token}` | unverändert | Cookie-Einlösung bleibt serverseitig | **serverseitig bleibt (begründet)** — Unverändert: `/kiosk` ohne Cookie 401, `/kiosk/{ungültig}` 401; die Svelte-Kioskansicht liegt zusätzlich unter `/app/kiosk`. |
+| `/` | `home` | Profilweiche (admin/tenant) entfällt | **umgeleitet** — `GET /` antwortet 303 auf `/app/` (angemeldet und anonym). |
+| `/zones`, `/zones/new` | `home` (Raumliste), Dialog „Raum anlegen“ | Menüpunkt „Räume“ entfällt (§2) | **umgeleitet** — 303 auf `/app/uebersicht/raeume` (Dialog „Raum anlegen“ dort). |
+| `/zones/{id}`, `/zones/{id}/delete` | `room/<id>`, Löschen-Dialog | **umgeleitet** — 303 auf `/app/raeume/{id}` (Id nur als kurze Ziffernfolge, sonst Raumliste). |
+| `/zones/{id}/parameters` | `room/<id>` Reiter Technik | **umgeleitet** — 303 auf `/app/raeume/{id}`. |
+| `/zones/{id}/setpoints` | `room/<id>` Sollwerte | **umgeleitet** — 303 auf `/app/raeume/{id}`. |
+| `/zones/{id}/schedule` und Unterpfade `/points/{pid}/delete`, `/adopt` | `schedule/<id>` | Löschen/Übernehmen als Dialog | **umgeleitet** — 303 auf `/app/zeit/wochenplaene` (Raumvorwahl aus der Adresse entfällt). |
+| `/schedule?zone=<id>` (Mieter) | `schedule/<id>` | `?zone` bleibt gültig | **umgeleitet** — 303 auf `/app/zeit/wochenplaene`; `?zone` wird verworfen (die Oberfläche liest es nicht). |
+| `/zones/{id}/devices` | `devices` (Zuordnung, Raum vorgewählt) | **umgeleitet** — 303 auf `/app/geraete/liste`. |
+| `/zones/history`, `/zones/{id}/history`, `/temperature-history`, `/temperature-history/{id}/tile` | `history` (Raum/Zeitraum) | `?period=` übernehmen | **umgeleitet** — 303 auf `/app/auswertung/verlauf`; `?period` wird verworfen. |
+| `/statistics`, `/heating-time` | `history` Heizzeit | **umgeleitet** — 303 auf `/app/auswertung/verlauf`. |
+| `/relay-wear` | `wear` | **umgeleitet** — 303 auf `/app/auswertung/verschleiss`. |
+| `/audit`, `/device-commands`, `/changes`, `/changes/{id}/revert` | `events` (Filter Art), Rücknahme-Dialog | Rücknahme-Link muss `force_token`-Ablauf behalten | **umgeleitet** — 303 auf `/app/auswertung/ereignisse`. |
+| `/devices`, `/plant` | `devices`, `mapping` | **umgeleitet** — `/devices` auf `/app/geraete/liste`, `/plant` auf `/app/geraete/anlagenbild`. |
+| `/devices/map`, `/zones/data-flow`, `/zones/{id}/data-flow` | `mapping` | **umgeleitet** — 303 auf `/app/geraete/karte`. |
+| `/controllers` | `controllers` | **umgeleitet** — 303 auf `/app/geraete/bediengeraete`. |
+| `/control` | `operation` | **umgeleitet** — 303 auf `/app/system/betrieb`. |
+| `/settings` | `regulation` | Unterpfade `/settings/*` sind nur POST | **umgeleitet** — 303 auf `/app/heizung/regelvorgaben`; `/settings/*` bleibt POST-only. |
+| `/vacation`, `/absence` | `vacation`, `absence` | **umgeleitet** — `/vacation` 303 auf `/app/zeit/anlagenurlaub`; `GET /absence` bleibt 405 (nur POST). |
+| `/modes`, `/modes/new`, `/modes/{id}`, `/modes/{id}/delete` | `modes` (Dialog) | **umgeleitet** — 303 auf `/app/heizung/modi`. |
+| `/interfaces` | `interfaces` | **umgeleitet** — 303 auf `/app/system/verbindungen`. |
+| `/users`, `/groups` | `access` | **umgeleitet** — 303 auf `/app/personen/rechte`. |
+| `/tokens`, `/kiosk-tokens` | `tokens`, `kiosktokens` | **umgeleitet** — 303 auf `/app/personen/tokens` bzw. `/app/personen/kiosk`. |
+| `/account`, `/account/help`, `/passkeys`, `/glossar` | `account`, `help`, `account` (Passkeys), `glossary` | **umgeleitet** — `/account` und `/passkeys` auf `/app/konto`, `/account/help` und `/glossar` auf `/app/hilfe`. |
+| `/login?return_to=...`, `/setup`, `/oauth/consent?request=...` | unverändert erreichbar | `/oauth/consent` wird von `/authorize` mit absolutem `public_url` aufgerufen; Pfad darf sich nicht ändern | **umgeleitet bzw. serverseitig** — `/login` 303 auf `/app/login` (`return_to` nur wenn `safe_return_to` es bestätigt, als `?return_to=`), `/setup` 303 auf `/app/setup`; `/oauth/consent` bleibt unverändert serverseitig, anonym 303 auf `/login?return_to=...` und weiter auf `/app/login?return_to=...`. |
+| `/kiosk`, `/kiosk/{token}` | unverändert | Cookie-Einlösung bleibt serverseitig | **umgeleitet bzw. serverseitig** — `/kiosk` 303 auf `/app/kiosk`; `/kiosk/{token}` löst serverseitig ein (setzt Cookie, Pfad = Präfix) und antwortet 303 auf `/app/kiosk`; ungültiger Token 401. |
 | `/api/v1/*`, `/mcp`, `/healthz`, `/docs`, `/static/*` | unverändert | | **serverseitig bleibt (begründet)** — Unverändert: `/api/v1/zones` ohne Token 401, `/healthz` 200, `/docs` 200, `/static/*` 200; `/mcp` auf der frischen Instanz 404 (MCP standardmäßig aus). |
 
 ## Entscheidung Auth-Flows (ui/auth-flows)
 
-- **Setup** wandert nach Svelte (`/app/setup`, ohne Shell, in `main.ts` vor Bootstrap gewählt) über `/ui-api/setup`. Dieselbe Domänenfunktion `run_setup` und dieselbe Sperre wie das HTML-Formular; der Status gibt nur „offen“ oder 404 her, das Token wird nie geloggt oder zurückgegeben, ungültig/verbraucht/abgelaufen sind nicht unterscheidbar. Die Svelte-Anmeldeseite leitet bei offenem Setup dorthin (wie `/` im Altsystem). Das HTML-`/setup` bleibt bestehen, solange `/` darauf zeigt.
+- **Setup** wandert nach Svelte (`/app/setup`, ohne Shell, in `main.ts` vor Bootstrap gewählt) über `/ui-api/setup`. Dieselbe Domänenfunktion `run_setup` und dieselbe Sperre wie das HTML-Formular; der Status gibt nur „offen“ oder 404 her, das Token wird nie geloggt oder zurückgegeben, ungültig/verbraucht/abgelaufen sind nicht unterscheidbar. Die Svelte-Anmeldeseite leitet bei offenem Setup dorthin (wie `/` im Altsystem). `GET /setup` leitet seit `ui/cutover-redirects` mit 303 auf `/app/setup`; nur das Formular-`POST /setup` der Alt-Seite besteht bis zum Löschschritt.
 - **Passkey-Anmeldung** wandert nach Svelte (Knopf in `LoginView`, WebAuthn im Browser). Genutzt werden die bestehenden Routen `/passkey/authentication/*`. Das Rückkehrziel wird nie ungeprüft übernommen: der Client schickt den Wunsch (`return_to`), der Server antwortet nur mit dem durch `safe_return_to` bestätigten Ziel, der Client prüft die Form nochmals und navigiert per `window.location.assign` mit dem Laufzeitpräfix. Bedingte Anmeldung (Autofill im Benutzernamenfeld) der Alt-Seite ist nicht übernommen.
-- **OAuth-Zustimmung bleibt serverseitig (begründete Ausnahme).** Schutzmaßnahmen der Seite (`_unframed`: CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `Cache-Control: no-store` auf allen Antworten der Route; `_leave` mit `HX-Redirect`; serverseitige Teilmengenprüfung der Rechte) ließen sich für eine SPA-Hülle nur nachbauen, indem `spa_views` für diese eine Route dieselben Header setzt und die Hülle den „Zulassen“-Knopf selbst zeichnet. Nachweisbar wäre das, ein Gewinn gegen das Risiko (Clickjacking auf eine Freigabe, die einem Fremdclient Zugriff auf die Heizung gibt) ist aber nicht erkennbar. `/oauth/consent` bleibt daher unverändert; der Rücksprung nach der Anmeldung läuft über die HTML-Seite `/login?return_to=...` (getestet in `test_login_weiterleitung`, `browser_tests/test_oauth_consent`).
+- **OAuth-Zustimmung bleibt serverseitig (begründete Ausnahme).** Schutzmaßnahmen der Seite (`_unframed`: CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `Cache-Control: no-store` auf allen Antworten der Route; `_leave` mit `HX-Redirect`; serverseitige Teilmengenprüfung der Rechte) ließen sich für eine SPA-Hülle nur nachbauen, indem `spa_views` für diese eine Route dieselben Header setzt und die Hülle den „Zulassen“-Knopf selbst zeichnet. Nachweisbar wäre das, ein Gewinn gegen das Risiko (Clickjacking auf eine Freigabe, die einem Fremdclient Zugriff auf die Heizung gibt) ist aber nicht erkennbar. `/oauth/consent` bleibt daher unverändert; der Rücksprung nach der Anmeldung läuft über `/login?return_to=...` (303 auf `/app/login?return_to=...`, die Oberfläche navigiert nach dem Login auf das bestätigte Ziel; getestet in `test_legacy_redirects`).
 
 ## E. Offene Fragen
 
@@ -366,91 +366,76 @@ Stand der Prüfung: Branch `ui/parity` (Basis `main` 94960f3), 2026-10-16. Ausge
 
 ## G. Alte Direktlinks (tatsächliches Verhalten)
 
-Gemessen mit dem Test-Client (`follow_redirects=False`) gegen eine frische Instanz (eigene SQLite, `alembic upgrade head`, ein Raum, ein Admin mit allen Rechten, ein Mieter mit `zone.read`/`schedule.manage`/`setpoint.write`/`token.self`), Skript `parity-links.py` im Scratchpad, Frontend gebaut (`npm run build`). Browser-seitiges Routing (`/app/...`) ist damit nicht erfasst: der Server liefert für jeden Pfad unter `/app` dieselbe Hülle, welche Ansicht erscheint, entscheidet der Router im Browser (`frontend/src/lib/paths.ts::resolveRoute`).
+Umschalten, Schritt 1 (Branch `ui/cutover-redirects`, Projektinhaber-Entscheidung 2026-10-16: die alte Jinja/HTMX-Oberfläche wird vollständig durch die Svelte-Oberfläche ersetzt). Alt-Seiten, Vorlagen und Schreib-POSTs bestehen noch und werden im Löschschritt entfernt. Umsetzung: `thermoctl/web/legacy_redirects.py`, als erster Router eingebunden (`thermoctl/app.py`). Belegt durch `tests/test_legacy_redirects.py` (jeder Altpfad: Ziel, Statuscode, Ingress-Präfix, angemeldet als Admin/Mieter und anonym) und einen Browserlauf gegen echtes Backend (ohne und mit Präfix `/api/hassio_ingress/A1b2C3d4e5` über `browser_tests/_ingress_proxy.py`).
 
-**Ergebnis:**
+**Verhalten heute:**
 
-- **Kein Alt-Pfad leitet auf die neue Oberfläche um.** Weder `/` noch eine der Verwaltungsseiten antwortet mit einer Weiterleitung nach `/app/...`; die einzigen Weiterleitungen sind die Anmelde-Weiterleitungen (anonym `GET /` → 303 `/login`, `/oauth/consent` → 303 `/login?return_to=...`). Ohne Sitzung antworten geschützte Alt-Seiten mit 401 (JSON), nicht mit 303, wenn der Test-Client kein `Accept: text/html` sendet.
-- **Alle Altseiten bleiben bestehen** und antworten wie vorher: alle Seiten der Tabelle D mit 200 für das zuständige Profil (Ausnahmen: `GET /absence` 405, da nur POST; Löschbestätigung und Rücknahme für nicht vorhandene Ids 404), 403 für das jeweils andere Profil (`admin_ui_only`/`tenant_ui_only`: `/schedule`, `/heating-time`, `/temperature-history` nur Mieter; Raum-/Anlagenseiten nur Admin).
-- **Die neue Oberfläche liegt daneben** unter `/app` (Hülle, 200 ohne Anmeldung, die Anlagendaten kommen erst über `/ui-api`, 401 ohne Sitzung): `/app/` (Übersicht), `/app/raeume/{id}`, `/app/{bereich}/{seite}`, `/app/konto`, `/app/hilfe`, `/app/login`, `/app/setup`, `/app/kiosk`. Ohne gebautes Bundle antwortet `/app` mit 503 (so im Worktree vor `npm run build`).
-- **Query-Parameter** `?zone=`, `?period=` werden von der Oberfläche nicht gelesen (nur `return_to` auf der Anmeldeseite); Altlesezeichen mit diesen Parametern funktionieren daher nur über die Alt-Seiten.
-- **Nicht erreichbar in der neuen Oberfläche:** das Anlagenbild `/plant` (R077). `/ui-api/plant` antwortet (200), es gibt keine Svelte-Seite dazu.
-- **Bleiben begründet serverseitig:** `/login` (200, auch als Rücksprungziel), `/setup` (404 nach der Einrichtung), `/oauth/consent` (404 ohne `request`-Parameter, anonym 303 auf `/login`), `/kiosk` und `/kiosk/{token}` (401 ohne gültiges Cookie/Token), `/healthz`, `/docs`, `/openapi.json`, `/static/*` (200), `/api/v1/*` (401 ohne Token). `/mcp`, `/authorize`, `/token`, `/register` sind auf der frischen Instanz 404, weil MCP standardmäßig aus ist (`mcp_mode=off`); mit eingeschaltetem MCP nicht geprüft.
-- Die Einlösung `GET /kiosk/{token}` setzt das Cookie und leitet auf den Alt-Kiosk `/kiosk`, nicht auf `/app/kiosk`.
+- **Jeder GET-Altpfad der Tabelle D antwortet mit 303 auf `{prefix}/app/...`** -- angemeldet (Admin, Mieter) wie anonym, mit oder ohne `Accept: text/html`, unabhängig vom Profil. Rechte entscheidet nicht die Umleitung, sondern jede Anfrage der Oberfläche an `/ui-api` (anonym: Anmeldeseite der Oberfläche). Die Alt-Seiten antworten bei GET nicht mehr mit 200/401/403; Ausnahme `GET /absence` (405, nur POST).
+- **Query-Parameter** (`?zone`, `?period`, `?ansicht`, `?stale` ...) werden verworfen; die Oberfläche liest sie nicht. Einzige Ausnahme `/login?return_to=`: übernommen als `/app/login?return_to=<kodiert>` nur, wenn `safe_return_to` das Ziel bestätigt (`//evil`, `https://evil`, `/%2e%2e/..`, Backslash, Steuerzeichen, `/login`, `/setup`, `/api/` fallen weg).
+- **Unbekannte Unterpfade** bekannter Altbereiche (`/zones/abc/x`, `/modes/1/x`, `/changes/1/x`, `/temperature-history/1/x`) gehen auf den Bereich. **Ein völlig unbekannter Pfad (`/gibt-es-nicht`) bleibt 404**, nicht `/app/`: ein Fänger für alles würde `/authorize`, `/token`, `/register`, `/.well-known/*`, `/mcp` überdecken.
+- **`/kiosk/{token}`** löst serverseitig ein (setzt das Kiosk-Cookie mit `Path=<Präfix>` bzw. `/`) und antwortet 303 auf `/app/kiosk`; der Token steht nie in der Zieladresse. `/kiosk` antwortet 303 auf `/app/kiosk`. Ungültiger Token bleibt 401 (Alt-Fehlerseite).
+- **Anmelde-Weiterleitung** (`NotLoggedIn`-Handler in `thermoctl/app.py`): zeigt auf `{prefix}/app/login?return_to=...` (Formular und htmx-`HX-Redirect`). `/oauth/consent` bleibt unverändert serverseitig (Clickjacking-Schutz); anonym 303 auf `/login?return_to=%2Foauth%2Fconsent...`, dieses auf `/app/login?return_to=...`; nach der Anmeldung navigiert die Oberfläche per `window.location` auf das vom Server bestätigte Ziel `{prefix}/oauth/consent?request=...` (`frontend/src/lib/auth/target.ts` erlaubt das, getestet in `auth-login.test.ts`).
+- **Bleiben unverändert:** `POST` aller Altseiten (inkl. `POST /login`, `/logout`, `/setup`), die JSON-Routen `/passkey/*`, `/ui-api`, `/kiosk-api`, `/api/v1`, `/mcp`, `/healthz`, `/docs`, `/openapi.json`, `/static/*`, `/app/*`.
+- **Für den Löschschritt:** Alt-Vorlagen, Alt-Ansichten und die Tests, die Alt-Seiten-Inhalt per GET prüfen, werden entfernt. Verweise der Oberfläche auf Altpfade (`legacyHref` in `Placeholder.svelte`, `ConnectionsPage.svelte`, `AreaView.svelte`) führen jetzt über die Umleitung zurück in die Oberfläche und gehören dort auf `appHref` umgestellt.
 
-**Messwerte** (Spalten: Admin / Mieter / anonym, Statuscode und gegebenenfalls Weiterleitungsziel):
+**Umleitungstabelle** (Test `tests/test_legacy_redirects.py`, Liste `CASES`; Statuscode immer 303, Ziel ohne Präfix; `7`, `4`, `5` stehen für beliebige Ids):
 
-| Pfad | Admin angemeldet | Mieter angemeldet | anonym |
-|---|---|---|---|
-| `/` | 200 | 200 | 303 → `/login` |
-| `/app` | 200 | 200 | 200 |
-| `/app/` | 200 | 200 | 200 |
-| `/app/uebersicht/raeume` | 200 | 200 | 200 |
-| `/app/setup` | 200 | 200 | 200 |
-| `/login` | 200 | 200 | 200 |
-| `/setup` | 404 | 404 | 404 |
-| `/zones` | 200 | 403 | 401 |
-| `/zones/new` | 200 | 403 | 401 |
-| `/zones/1` | 200 | 403 | 401 |
-| `/zones/1/delete` | 200 | 403 | 401 |
-| `/zones/1/parameters` | 200 | 403 | 401 |
-| `/zones/1/setpoints` | 200 | 403 | 401 |
-| `/zones/1/schedule` | 200 | 403 | 401 |
-| `/zones/1/schedule/adopt` | 200 | 403 | 401 |
-| `/schedule?zone=1` | 403 | 200 | 401 |
-| `/schedule` | 403 | 200 | 401 |
-| `/zones/1/devices` | 200 | 403 | 401 |
-| `/zones/history` | 200 | 403 | 401 |
-| `/zones/1/history` | 200 | 403 | 401 |
-| `/temperature-history` | 403 | 200 | 401 |
-| `/statistics` | 200 | 403 | 401 |
-| `/heating-time` | 403 | 200 | 401 |
-| `/relay-wear` | 200 | 403 | 401 |
-| `/audit` | 200 | 403 | 401 |
-| `/device-commands` | 200 | 403 | 401 |
-| `/changes` | 200 | 403 | 401 |
-| `/devices` | 200 | 403 | 401 |
-| `/plant` | 200 | 403 | 401 |
-| `/devices/map` | 200 | 403 | 401 |
-| `/zones/data-flow` | 200 | 403 | 401 |
-| `/zones/1/data-flow` | 200 | 403 | 401 |
-| `/controllers` | 200 | 403 | 401 |
-| `/control` | 200 | 403 | 401 |
-| `/settings` | 200 | 403 | 401 |
-| `/vacation` | 200 | 403 | 401 |
-| `/absence` | 405 | 405 | 405 |
-| `/modes` | 200 | 403 | 401 |
-| `/modes/new` | 200 | 403 | 401 |
-| `/interfaces` | 200 | 403 | 401 |
-| `/users` | 200 | 403 | 401 |
-| `/groups` | 200 | 403 | 401 |
-| `/tokens` | 200 | 403 | 401 |
-| `/kiosk-tokens` | 200 | 403 | 401 |
-| `/account` | 200 | 200 | 401 |
-| `/account/help` | 200 | 200 | 401 |
-| `/passkeys` | 200 | 200 | 401 |
-| `/glossar` | 200 | 200 | 401 |
-| `/kiosk` | 401 | 401 | 401 |
-| `/oauth/consent` | 404 | 404 | 303 → `/login?return_to=%2Foauth%2Fconsent%3Fre` |
-| `/healthz` | 200 | 200 | 200 |
-| `/docs` | 200 | 200 | 200 |
-| `/openapi.json` | 200 | 200 | 200 |
-| `/api/v1/zones` | 401 | 401 | 401 |
-| `/static/app/index.html` | 200 | 200 | 200 |
-| `/app/raeume/1` | 200 | 200 | 200 |
-| `/app/kiosk` | 200 | 200 | 200 |
-| `/app/zeit/wochenplaene` | 200 | 200 | 200 |
-| `/mcp` | 404 | 404 | 404 |
-| `/authorize` | 404 | 404 | 404 |
-| `/token` | 404 | 404 | 404 |
-| `/register` | 404 | 404 | 404 |
-| `/kiosk/ungueltig` | 401 | 401 | 401 |
-| `/zones/1/schedule/points/1/delete` | 404 | 403 | 401 |
-| `/modes/1` | 200 | 403 | 401 |
-| `/modes/1/delete` | 200 | 403 | 401 |
-| `/changes/1/revert` | 404 | 403 | 401 |
-| `/temperature-history/1/tile` | 403 | 200 | 401 |
-| `/zones/1/history?period=7d` | 200 | 403 | 401 |
-| `/ui-api/bootstrap` | 200 | 200 | 401 |
-| `/ui-api/plant` | 200 | 403 | 401 |
-| `/ui-api/dashboard` | 200 | 200 | 401 |
+| Pfad | Ziel |
+|---|---|
+| `/` | `/app/` |
+| `/zones` | `/app/uebersicht/raeume` |
+| `/zones/new` | `/app/uebersicht/raeume` |
+| `/zones/7` | `/app/raeume/7` |
+| `/zones/7/delete` | `/app/raeume/7` |
+| `/zones/7/parameters` | `/app/raeume/7` |
+| `/zones/7/setpoints` | `/app/raeume/7` |
+| `/zones/7/schedule` | `/app/zeit/wochenplaene` |
+| `/zones/7/schedule/adopt` | `/app/zeit/wochenplaene` |
+| `/zones/7/schedule/points/3/delete` | `/app/zeit/wochenplaene` |
+| `/schedule` | `/app/zeit/wochenplaene` |
+| `/zones/7/devices` | `/app/geraete/liste` |
+| `/zones/history` | `/app/auswertung/verlauf` |
+| `/zones/7/history` | `/app/auswertung/verlauf` |
+| `/temperature-history` | `/app/auswertung/verlauf` |
+| `/temperature-history/7/tile` | `/app/auswertung/verlauf` |
+| `/statistics` | `/app/auswertung/verlauf` |
+| `/heating-time` | `/app/auswertung/verlauf` |
+| `/relay-wear` | `/app/auswertung/verschleiss` |
+| `/audit` | `/app/auswertung/ereignisse` |
+| `/device-commands` | `/app/auswertung/ereignisse` |
+| `/changes` | `/app/auswertung/ereignisse` |
+| `/changes/5/revert` | `/app/auswertung/ereignisse` |
+| `/devices` | `/app/geraete/liste` |
+| `/plant` | `/app/geraete/anlagenbild` |
+| `/devices/map` | `/app/geraete/karte` |
+| `/zones/data-flow` | `/app/geraete/karte` |
+| `/zones/7/data-flow` | `/app/geraete/karte` |
+| `/controllers` | `/app/geraete/bediengeraete` |
+| `/control` | `/app/system/betrieb` |
+| `/settings` | `/app/heizung/regelvorgaben` |
+| `/vacation` | `/app/zeit/anlagenurlaub` |
+| `/modes` | `/app/heizung/modi` |
+| `/modes/new` | `/app/heizung/modi` |
+| `/modes/4` | `/app/heizung/modi` |
+| `/modes/4/delete` | `/app/heizung/modi` |
+| `/interfaces` | `/app/system/verbindungen` |
+| `/users` | `/app/personen/rechte` |
+| `/groups` | `/app/personen/rechte` |
+| `/tokens` | `/app/personen/tokens` |
+| `/kiosk-tokens` | `/app/personen/kiosk` |
+| `/account` | `/app/konto` |
+| `/account/help` | `/app/hilfe` |
+| `/passkeys` | `/app/konto` |
+| `/glossar` | `/app/hilfe` |
+| `/setup` | `/app/setup` |
+| `/kiosk` | `/app/kiosk` |
+| `/login` | `/app/login` |
+| `/zones/abc` | `/app/uebersicht/raeume` |
+| `/zones/7/unbekannt/tief` | `/app/uebersicht/raeume` |
+| `/modes/4/unbekannt/tief` | `/app/heizung/modi` |
+| `/changes/5/unbekannt` | `/app/auswertung/ereignisse` |
+| `/temperature-history/7/unbekannt` | `/app/auswertung/verlauf` |
+| `/zones/%C2%B2` | `/app/uebersicht/raeume` |
+| `/zones/1234567890` | `/app/uebersicht/raeume` |
+
+Nicht umgeleitet, unverändert: `/app/*` 200, `/healthz` 200, `/docs` 200, `/openapi.json` 200, `/static/*` 200, `/api/v1/zones` 401 ohne Token, `/ui-api/*` 401 ohne Sitzung, `/oauth/consent` (anonym 303 wie oben), `/mcp`, `/authorize`, `/token`, `/register` 404 bei `mcp_mode=off`.

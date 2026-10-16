@@ -127,6 +127,7 @@ from thermoctl.web.glossary_views import router as glossary_router
 from thermoctl.web.kiosk_admin_views import router as kiosk_admin_router
 from thermoctl.web.kiosk_api import router as kiosk_api_router
 from thermoctl.web.kiosk_views import router as kiosk_router
+from thermoctl.web.legacy_redirects import router as legacy_redirects_router
 from thermoctl.web.mapping_map_views import router as mapping_map_router
 from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.oauth_views import router as oauth_consent_router
@@ -1313,6 +1314,9 @@ def create_app() -> FastAPI:
 
             app.router.routes.append(Route(settings.mcp_path, ExactMcpPath()))
             app.router.routes.append(Mount(settings.mcp_path, app=mcp_app))
+    # Zuerst: Die GET-Seiten der alten Oberfläche leiten auf `/app/` um und müssen vor den
+    # alten Routern greifen (siehe `thermoctl/web/legacy_redirects.py`).
+    app.include_router(legacy_redirects_router)
     app.include_router(start_router)
     app.include_router(control_router)
     app.include_router(controller_router)
@@ -1469,7 +1473,8 @@ def create_app() -> FastAPI:
         elif request.method in ("GET", "HEAD"):
             target = path + (f"?{request.url.query}" if request.url.query else "")
         return_to = safe_return_to(target)
-        login = prefixed(request, "/login")
+        # The login is the Svelte app's page; `/login` itself only forwards there.
+        login = prefixed(request, "/app/login")
         if return_to is not None:
             login = f"{login}?{urlencode({'return_to': return_to})}"
         if from_htmx:

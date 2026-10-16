@@ -118,7 +118,12 @@ def test_setup_token_can_only_be_used_once(client: TestClient, session: Session)
 
 def test_setup_is_closed_after_completion(client: TestClient, session: Session,
                                               user) -> None:
-    assert client.get("/setup").status_code == 404
+    # `GET /setup` ist seit `ui/cutover-redirects` eine Umleitung auf `/app/setup`; ob die
+    # Einrichtung offen ist, sagt die Schnittstelle der Oberfläche (und das Formular-POST).
+    assert client.get("/ui-api/setup").status_code == 404
+    form = {"username": "x", "display_name": "X", "password": "passwort-lang-genug",
+            "timezone": "Europe/Berlin", "setup_token": "egal"}
+    assert client.post("/setup", data=form).status_code == 404
 
 
 def test_the_first_user_is_an_administrator(client: TestClient, session: Session) -> None:
@@ -196,40 +201,32 @@ def test_setup_is_also_possible_only_once_in_the_domain(session: Session) -> Non
     assert session.query(User).count() == 1
 
 
-def test_the_start_page_redirects_to_setup_without_a_user(client: TestClient) -> None:
-    """Without a single user, the login form leads nowhere. Anyone entering the
-    service's address belongs at setup."""
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/setup"
+def test_the_start_page_and_login_lead_into_the_spa_without_a_user(client: TestClient) -> None:
+    """`/` und `/login` leiten (seit `ui/cutover-redirects`) auf die Oberfläche; dass ohne
+    Benutzer von dort zur Ersteinrichtung weitergeleitet wird, entscheidet die Oberfläche
+    anhand von `/ui-api/setup` (`LoginView`), nicht mehr der Server."""
+    start = client.get("/", follow_redirects=False)
+    assert (start.status_code, start.headers["location"]) == (303, "/app/")
+    login = client.get("/login", follow_redirects=False)
+    assert (login.status_code, login.headers["location"]) == (303, "/app/login")
+    assert client.get("/setup", follow_redirects=False).headers["location"] == "/app/setup"
+    assert client.get("/ui-api/setup").status_code == 200
 
 
-def test_the_login_form_redirects_to_setup_without_a_user(client: TestClient) -> None:
-    response = client.get("/login", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/setup"
-
-
-def test_the_redirect_really_ends_at_setup(client: TestClient) -> None:
-    """A cycle between / , /login and /setup would be the obvious bug: the
-    status line of a single response would not show it, but a followed
-    request would."""
-    response = client.get("/", follow_redirects=True)
-    assert response.status_code == 200
-    assert response.url.path == "/setup"
+def test_the_redirects_end_in_the_spa_shell_without_a_cycle(client: TestClient) -> None:
+    """A cycle between / , /login and /setup would be the obvious bug: the status line of a
+    single response would not show it, but a followed request would."""
+    for path in ("/", "/login", "/setup"):
+        response = client.get(path, follow_redirects=True)
+        assert response.url.path.startswith("/app")
+        assert len(response.history) == 1
 
 
 def test_with_a_user_the_usual_path_remains(client: TestClient, user) -> None:
-    """Counter-check for the three cases above. Without it, they would also be
-    satisfied by a version that always redirects to setup -- and that would
-    have made the service unusable once setup was complete."""
-    start = client.get("/", follow_redirects=False)
-    assert start.status_code == 303
-    assert start.headers["location"] == "/login"
-
-    form = client.get("/login")
-    assert form.status_code == 200
-    assert "/setup" not in form.headers.get("location", "")
+    """Counter-check: with a user the setup is closed for the interface as well (a version
+    that always pointed at setup would make the service unusable once setup is complete)."""
+    assert client.get("/", follow_redirects=False).headers["location"] == "/app/"
+    assert client.get("/ui-api/setup").status_code == 404
 
 
 def test_post_login_without_a_user_is_not_redirected(
