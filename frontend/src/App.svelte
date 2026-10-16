@@ -14,6 +14,8 @@
   import LoginView from '$lib/views/LoginView.svelte';
   import MessageView from '$lib/views/MessageView.svelte';
   import PageView from '$lib/views/PageView.svelte';
+  import HomeView from '$lib/components/rooms/HomeView.svelte';
+  import RoomView from '$lib/components/rooms/RoomView.svelte';
   import { Button } from '$lib/components/ui/button';
 
   // Basispfad zur Laufzeit aus der Seite, nicht zur Build-Zeit.
@@ -27,7 +29,7 @@
     onUnauthorized: (reason) => session.expire(reason),
   });
   const session = createSession(api);
-  provideApp({ prefix, router, session, appearance });
+  provideApp({ prefix, api, router, session, appearance });
 
   onMount(() => {
     void session.load();
@@ -44,7 +46,9 @@
   const title = $derived(
     page?.label ??
       area?.label ??
-      (route.kind === 'account'
+      (route.kind === 'room'
+        ? 'Raum'
+        : route.kind === 'account'
         ? 'Konto & Sicherheit'
         : route.kind === 'help'
           ? 'Glossar & Hilfe'
@@ -71,8 +75,9 @@
 {:else}
   <Shell {areas} {route} {title}>
     {#if route.kind === 'home'}
-      {@const home = areas.find((a) => a.id === 'uebersicht')}
-      {#if home}<AreaView area={home} />{/if}
+      <HomeView />
+    {:else if route.kind === 'room'}
+      {#key route.roomId}<RoomView id={route.roomId} />{/key}
     {:else if route.kind === 'area' && area}
       <AreaView {area} />
     {:else if route.kind === 'page' && area && page}

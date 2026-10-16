@@ -149,3 +149,26 @@ test('runtimePrefix: ungültige Präfixe (Schema, //, Anführungszeichen) werden
     assert.equal(runtimePrefix(fakeDoc(bad)), '', bad);
   }
 });
+
+test('Fehlerkörper {detail, code, field} landet im ApiError (409/422)', async () => {
+  const { api } = setup(422, { detail: 'Bitte eine gültige Temperatur angeben.', code: 'validation', field: 'temperature_c' });
+  await assert.rejects(
+    () => api.post('/ui-api/rooms/1/override', {}),
+    (error: unknown) =>
+      error instanceof ApiError && error.status === 422 && error.code === 'validation' && error.field === 'temperature_c',
+  );
+  const conflict = setup(409, { detail: 'läuft', code: 'override_running' });
+  await assert.rejects(
+    () => conflict.api.post('/x', {}),
+    (error: unknown) => error instanceof ApiError && error.code === 'override_running' && error.field === null,
+  );
+});
+
+test('403 ohne stale behält code', async () => {
+  const { api, unauthorized } = setup(403, { detail: 'Dafür fehlt die Berechtigung.', code: 'forbidden' });
+  await assert.rejects(
+    () => api.post('/x', {}),
+    (error: unknown) => error instanceof ApiError && error.kind === 'forbidden' && error.code === 'forbidden' && !error.stale,
+  );
+  assert.equal(unauthorized(), 0);
+});

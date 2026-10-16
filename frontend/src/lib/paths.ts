@@ -51,6 +51,7 @@ export function internalTarget(href: string, prefix: string, origin: string): st
 
 export type Route =
   | { kind: 'home' }
+  | { kind: 'room'; roomId: number }
   | { kind: 'area'; areaId: string }
   | { kind: 'page'; areaId: string; pageId: string }
   | { kind: 'account' }
@@ -67,6 +68,8 @@ export function resolveRoute(
 ): Route {
   const { path: clean } = splitTarget(path);
   if (clean === '/') return { kind: 'home' };
+  const room = /^\/raeume\/(\d{1,9})$/.exec(clean);
+  if (room) return { kind: 'room', roomId: Number(room[1]) };
   if (clean === '/konto') return { kind: 'account' };
   if (clean === '/hilfe') return { kind: 'help' };
   if (clean === '/login') return { kind: 'login' };

@@ -26,7 +26,7 @@
   let logoutError = $state<string | null>(null);
 
   const activeAreaId = $derived(
-    route.kind === 'home'
+    route.kind === 'home' || route.kind === 'room'
       ? 'uebersicht'
       : route.kind === 'area' || route.kind === 'page' || route.kind === 'unavailable'
         ? route.areaId

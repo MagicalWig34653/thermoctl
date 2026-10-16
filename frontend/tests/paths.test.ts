@@ -65,3 +65,10 @@ test('resolveRoute: Übersicht, Bereich, Seite, unbekannt, nicht sichtbar', () =
   assert.equal(resolveRoute('/geraete/xyz', areas).kind, 'notfound');
   assert.equal(resolveRoute('/geraete/liste/zu/tief', areas).kind, 'notfound');
 });
+
+test('resolveRoute: Raumdetail unter /raeume/{id}', () => {
+  assert.deepEqual(resolveRoute('/raeume/12', []), { kind: 'room', roomId: 12 });
+  assert.equal(resolveRoute('/raeume/abc', []).kind, 'notfound');
+  assert.equal(resolveRoute('/raeume/12/x', []).kind, 'notfound');
+  assert.equal(resolveRoute('/raeume', []).kind, 'notfound');
+});

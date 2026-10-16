@@ -19,6 +19,10 @@ export class ApiError extends Error {
     message: string,
     /** 403 mit `stale: true`: Sitzung oder CSRF-Wert ist ungültig, die Anmeldung muss neu erfolgen. */
     readonly stale = false,
+    /** Maschinenlesbarer Fehlercode des Servers (`{detail, code}`), falls geliefert. */
+    readonly code: string | null = null,
+    /** Betroffenes Eingabefeld (`field`), falls der Server es nennt. */
+    readonly field: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -57,16 +61,25 @@ export function runtimePrefix(doc: Document = document): string {
 
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-async function errorBody(response: Response): Promise<{ detail: string; stale: boolean }> {
+interface ErrorBody {
+  detail: string;
+  stale: boolean;
+  code: string | null;
+  field: string | null;
+}
+
+async function errorBody(response: Response): Promise<ErrorBody> {
   try {
     const body = await response.json();
     return {
       detail: typeof body?.detail === 'string' ? body.detail : fallbackDetail(response),
       stale: body?.stale === true,
+      code: typeof body?.code === 'string' ? body.code : null,
+      field: typeof body?.field === 'string' ? body.field : null,
     };
   } catch {
     // Kein JSON im Fehlerfall: Statuszeile genügt.
-    return { detail: fallbackDetail(response), stale: false };
+    return { detail: fallbackDetail(response), stale: false, code: null, field: null };
   }
 }
 
@@ -106,12 +119,13 @@ export function createApi(deps: ApiDeps) {
       throw new ApiError('unauthorized', 401, (await errorBody(response)).detail);
     }
     if (response.status === 403) {
-      const { detail, stale } = await errorBody(response);
+      const { detail, stale, code, field } = await errorBody(response);
       if (stale) deps.onUnauthorized?.('stale');
-      throw new ApiError('forbidden', 403, detail, stale);
+      throw new ApiError('forbidden', 403, detail, stale, code, field);
     }
     if (!response.ok) {
-      throw new ApiError('http', response.status, (await errorBody(response)).detail);
+      const { detail, code, field } = await errorBody(response);
+      throw new ApiError('http', response.status, detail, false, code, field);
     }
     if (response.status === 204) return undefined as T;
     try {
