@@ -31,7 +31,7 @@ from thermoctl.domain.zone_settings import (
     save_control_parameters,
     set_parameter,
 )
-from thermoctl.web.daily_views import FELDER, PI_FELDER
+from thermoctl.web.shared.zone_parameters import FELDER, PI_FELDER
 
 
 def _assign_switch_actuator(session: Session, zone: Zone) -> Device:
@@ -146,7 +146,7 @@ def test_pi_is_now_a_shared_control_parameter_across_every_adapter(session: Sess
         assert name in BY_NAME, name
         assert name in {description.name for description in PARAMETERS}, name
     # The four numeric fields are handled exactly like `valve_protection_interval_days`
-    # in the web form: parsed through `_check_parameters`, empty means "unchanged".
+    # in the web form: parsed through `check_parameters`, empty means "unchanged".
     # `pi_enabled` stays its own checkbox, like `valve_protection_enabled`, not in
     # `FELDER`'s "empty means inherited" pool -- PI is never inherited (section 7).
     assert "pi_enabled" not in FELDER

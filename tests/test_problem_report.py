@@ -74,7 +74,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         captured.append(notice)
 
     monkeypatch.setattr(
-        "thermoctl.web.report_views.notification.deliver", _deliver
+        "thermoctl.integrations.notification.deliver", _deliver
     )
     # Über die Umgebungsvariable, nicht über das Feld: `get_settings()` baut eine
     # zwischengespeicherte `Settings`-Instanz aus der Umgebung, und ein gesetztes

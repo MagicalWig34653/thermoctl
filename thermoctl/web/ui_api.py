@@ -22,8 +22,8 @@ from thermoctl.auth.dependencies import csrf_protection, current_principal, get_
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_session
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.principal import Principal
-from thermoctl.web.auth_views import _ERROR_MESSAGE, attempt_login, set_session_cookies
 from thermoctl.web.navigation import visible_navigation
+from thermoctl.web.shared.login import ERROR_MESSAGE, attempt_login, set_session_cookies
 from thermoctl.web.urls import cookie_path, safe_return_to
 
 router = APIRouter(
@@ -91,7 +91,7 @@ async def login(
     """JSON login for the app; same checks, throttle and audit as the HTML form."""
     outcome = await attempt_login(request, session, body.username, body.password)
     if outcome is None:
-        return JSONResponse({"detail": _ERROR_MESSAGE}, status_code=401)
+        return JSONResponse({"detail": ERROR_MESSAGE}, status_code=401)
     _user, secret, lifetime_s = outcome
     content: dict[str, bool | str] = {"ok": True}
     return_to = safe_return_to(body.return_to)

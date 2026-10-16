@@ -13,20 +13,17 @@ from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.authz import require
 from thermoctl.domain.device_commands import (
     MAX_LIMIT,
-    SETBACK_OUTCOME_PREFIX,
     SETBACK_SOURCE,
     CommandLogEntry,
     list_commands,
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.solar_setback_log import (
-    KIND_BEGIN,
-    KIND_CHANGE,
-    KIND_END,
     setback_zone_names,
 )
 from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.guards import admin_ui_only
+from thermoctl.web.shared.device_commands import ENTRIES_PER_PAGE, SETBACK_OUTCOME_LABELS
 
 # `include_in_schema=False`: see the identical remark in `audit_views.py` -- these
 # routes deliver HTML for humans, not the REST contract.
@@ -38,14 +35,6 @@ router = APIRouter(
     dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
     include_in_schema=False,
 )
-
-ENTRIES_PER_PAGE = 50
-
-SETBACK_OUTCOME_LABELS = {
-    SETBACK_OUTCOME_PREFIX + KIND_BEGIN: "Absenkung beginnt",
-    SETBACK_OUTCOME_PREFIX + KIND_CHANGE: "Absenkung geändert",
-    SETBACK_OUTCOME_PREFIX + KIND_END: "Absenkung beendet",
-}
 
 
 def _datum(value: str, field: str, errors: dict[str, str]) -> date | None:

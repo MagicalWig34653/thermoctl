@@ -73,7 +73,7 @@ from thermoctl.domain.statistics import (
 from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.domain.zone_history_chart import GAP
 from thermoctl.domain.zone_settings import ParameterOutOfRange
-from thermoctl.web.changes_views import _confirmation_token
+from thermoctl.web.shared.changes import confirmation_token
 from thermoctl.web.ui_api_rooms import (
     RoomApiError,
     _actor,
@@ -835,7 +835,7 @@ def revert(
     _require_admin_ui(principal)
     _need(principal, "audit.read")
     if body.force and not hmac.compare_digest(
-        body.force_token or "", _confirmation_token(request, change_id)
+        body.force_token or "", confirmation_token(request, change_id)
     ):
         raise RoomApiError(
             403, "Der Bestätigungswert für das Erzwingen ist ungültig.", "force_token_invalid"
@@ -858,7 +858,7 @@ def revert(
                     {"field": c.field, "current": c.current, "expected": c.expected}
                     for c in exc.conflicts
                 ],
-                "force_token": _confirmation_token(request, change_id),
+                "force_token": confirmation_token(request, change_id),
             },
         ) from None
     except ChangeAlreadyEffective:

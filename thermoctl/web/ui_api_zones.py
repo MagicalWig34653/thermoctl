@@ -52,7 +52,7 @@ from thermoctl.domain.zones import (
     update_zone,
     zone_dependencies,
 )
-from thermoctl.web.report_views import submit_report
+from thermoctl.web.shared.report import submit_report
 from thermoctl.web.ui_api_operations import Number, _forbidden, _need, _need_admin_ui, _text
 from thermoctl.web.ui_api_rooms import NamedOut, RoomApiError, _RoomsRoute, _visible_zone
 

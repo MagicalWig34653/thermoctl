@@ -2,7 +2,6 @@
 
 import hmac
 from datetime import date, datetime, time, timedelta
-from hashlib import sha256
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -12,8 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
-from thermoctl.auth.sessions import COOKIE_NAME
-from thermoctl.config import get_settings
 from thermoctl.db.models.change_log import ChangeLog
 from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import Setting
@@ -40,6 +37,7 @@ from thermoctl.domain.sensor_failure_policy import PolicyError
 from thermoctl.domain.zone_settings import ParameterOutOfRange
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
+from thermoctl.web.shared.changes import confirmation_token
 
 router = APIRouter(
     dependencies=[Depends(csrf_protection), Depends(admin_ui_only)], include_in_schema=False
@@ -55,12 +53,6 @@ def _date(value: str, field: str, errors: dict[str, str]) -> date | None:
     except ValueError:
         errors[field] = "Bitte ein gültiges Datum eingeben."
         return None
-
-
-def _confirmation_token(request: Request, change_id: int) -> str:
-    secret = get_settings().secret_key.get_secret_value().encode()
-    cookie = request.cookies.get(COOKIE_NAME, "")
-    return hmac.new(secret, f"force:{cookie}:{change_id}".encode(), sha256).hexdigest()
 
 
 def _detail(
@@ -79,7 +71,7 @@ def _detail(
             "entry": entry,
             "message": message,
             "conflict": conflict,
-            "force_token": _confirmation_token(request, entry.id) if conflict else None,
+            "force_token": confirmation_token(request, entry.id) if conflict else None,
             "timezone": settings.timezone if settings is not None else None,
         },
     )
@@ -198,7 +190,7 @@ async def submit_revert(
     form = await request.form()
     force = form.get("force") == "1"
     if force and not hmac.compare_digest(
-        str(form.get("force_token", "")), _confirmation_token(request, change_id)
+        str(form.get("force_token", "")), confirmation_token(request, change_id)
     ):
         return templates.TemplateResponse(request, "change_force_invalid.html", {}, status_code=403)
     try:

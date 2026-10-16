@@ -95,7 +95,7 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web import warmth_fraction
-from thermoctl.web.schedule_views import _undo_payload, _undo_token
+from thermoctl.web.shared.schedule import undo_payload, undo_token
 from thermoctl.web.ui_api_rooms import (
     RoomApiError,
     _actor,
@@ -578,7 +578,7 @@ def _change(
     return ScheduleChangeOut(
         **_schedule(session, principal, zone).model_dump(),
         changed=changed,
-        undo_token=_undo_token(zone.id, gesture, history) if gesture else None,
+        undo_token=undo_token(zone.id, gesture, history) if gesture else None,
     )
 
 
@@ -594,7 +594,7 @@ def _history(
     if previous is None or gesture is None:
         return []
     try:
-        payload = _undo_payload(previous)
+        payload = undo_payload(previous)
         if payload["zone_id"] != zone.id or str(payload["revision"]) != version:
             return []
         if _snapshot(payload["after"]) != gesture[0]:
@@ -1016,7 +1016,7 @@ def undo(zone_id: int, body: UndoIn, principal: Who, session: Sess) -> ScheduleC
     niemand danach etwas geändert hat."""
     zone = _editable_zone(session, principal, zone_id)
     try:
-        payload = _undo_payload(body.undo_token)
+        payload = undo_payload(body.undo_token)
         if payload["zone_id"] != zone.id:
             raise ValueError("wrong zone")
         before = _snapshot(payload["before"])

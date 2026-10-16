@@ -586,11 +586,11 @@ def test_tampered_history_is_rejected(client_als: Als, session: Session) -> None
 def test_undo_with_malformed_history_in_a_signed_token_is_422(
     client_als: Als, session: Session
 ) -> None:
-    from thermoctl.web.schedule_views import _undo_token
+    from thermoctl.web.shared.schedule import undo_token
 
     zone = _duo(session)
     client = client_als(PLAN)
-    token = _undo_token(zone.id, ((), (), 0), history=[(("x",),)])  # type: ignore[arg-type]
+    token = undo_token(zone.id, ((), (), 0), history=[(("x",),)])  # type: ignore[arg-type]
     _fehler(_undo(client, zone, token), 422, "validation")
 
 
@@ -624,12 +624,12 @@ def test_move_and_duplicate_reject_an_invalid_target_without_change(
 def test_previous_token_that_does_not_end_in_the_current_plan_is_ignored(
     client_als: Als, session: Session
 ) -> None:
-    from thermoctl.web.schedule_views import _undo_token
+    from thermoctl.web.shared.schedule import undo_token
 
     zone = _duo(session)
     client = client_als(PLAN)
     version = int(_version(client, zone))
-    liar = _undo_token(zone.id, (((1, 0, 1),), ((1, 0, 2),), version))
+    liar = undo_token(zone.id, (((1, 0, 1),), ((1, 0, 2),), version))
     # Eigentlich ein Stand, den es nie gab; die Kette beginnt neu, die Absicht gelingt.
     response = _block(
         client,

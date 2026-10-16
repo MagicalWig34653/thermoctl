@@ -50,7 +50,7 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.services import cluster
-from thermoctl.web.start_views import MINUTES_PER_DAY, zone_status_context
+from thermoctl.web.shared.zone_status import MINUTES_PER_DAY, zone_status_context
 
 
 class RoomApiError(Exception):

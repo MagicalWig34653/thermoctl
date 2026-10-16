@@ -26,7 +26,7 @@ from thermoctl.domain.schedule import (
     schedule_snapshot,
     undo_schedule_gesture,
 )
-from thermoctl.web import schedule_views
+from thermoctl.web.shared import schedule as schedule_shared
 
 
 def _snapshot(session: Session, zone_id: int) -> tuple[tuple[int, int, int], ...]:
@@ -586,15 +586,15 @@ def test_gesture_routes_reject_invalid_copy_and_domain_values(client_als, sessio
 
 
 def test_undo_token_parser_rejects_a_bad_signature_and_non_mapping(monkeypatch) -> None:
-    valid_shape = schedule_views._undo_token(1, ((), (), 1))
+    valid_shape = schedule_shared.undo_token(1, ((), (), 1))
     encoded, _signature = valid_shape.split(".", 1)
     with pytest.raises(ValueError):
-        schedule_views._undo_payload(encoded + ".bad")
+        schedule_shared.undo_payload(encoded + ".bad")
 
     encoded_list = base64.urlsafe_b64encode(b"[]").decode().rstrip("=")
-    monkeypatch.setattr(schedule_views.hmac, "compare_digest", lambda _a, _b: True)
+    monkeypatch.setattr(schedule_shared.hmac, "compare_digest", lambda _a, _b: True)
     with pytest.raises(ValueError):
-        schedule_views._undo_payload(encoded_list + ".accepted-for-shape-test")
+        schedule_shared.undo_payload(encoded_list + ".accepted-for-shape-test")
 
 
 def test_undo_route_rejects_another_zone_and_reports_a_later_edit(

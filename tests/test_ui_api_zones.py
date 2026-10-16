@@ -514,7 +514,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> Any:
     async def _deliver(_factory: Any, _settings: Any, notice: Any) -> None:
         captured.append(notice)
 
-    monkeypatch.setattr("thermoctl.web.report_views.notification.deliver", _deliver)
+    monkeypatch.setattr("thermoctl.integrations.notification.deliver", _deliver)
     monkeypatch.setenv("THERMOCTL_NOTIFY_WEBHOOK", "https://example.invalid/hook")
     get_settings.cache_clear()
     yield captured

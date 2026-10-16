@@ -154,7 +154,7 @@ def test_after_login_the_person_lands_on_the_wanted_page(
     async def no_delay(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", no_delay)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
     result = client.post(
         "/login",
         data={"username": user.username, "password": password, "return_to": "/zones"},
@@ -174,7 +174,7 @@ def test_login_ignores_loop_and_foreign_targets(
     async def no_delay(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", no_delay)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
     for target in ("/login", "https://evil.example", "//evil.example"):
         client.cookies.clear()
         result = client.post(

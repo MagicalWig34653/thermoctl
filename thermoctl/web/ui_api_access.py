@@ -64,8 +64,8 @@ from thermoctl.domain.passkey import PasskeyError, remove_passkey
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
-from thermoctl.web.admin_views import _token_grants, replace_token_grants
-from thermoctl.web.auth_views import record_failure, reset_failures, throttle
+from thermoctl.web.shared.login import record_failure, reset_failures, throttle
+from thermoctl.web.shared.tokens import replace_token_grants, token_grants
 from thermoctl.web.ui_api_rooms import RoomApiError, _iso, _require_admin_ui, _RoomsRoute
 
 router = APIRouter(
@@ -790,12 +790,12 @@ def issue_own_token(
         )
     else:
         raise _validation("permissions", "Rechte oder Vorlage angeben.", "missing_selection")
-    grants = _token_grants(session, principal, selected)
+    grants = token_grants(session, principal, selected)
     if grants is None:
         raise _not_held()
     try:
         token, plaintext = issue_token(session, owner, body.name, grants, _expiry(body.valid_days))
-    except Forbidden:  # pragma: no cover - `_token_grants` hat dieselbe Prüfung schon bestanden
+    except Forbidden:  # pragma: no cover - `token_grants` hat dieselbe Prüfung schon bestanden
         raise _not_held() from None
     # Der Klartext steht genau einmal hier: gespeichert wird nur sein Hash.
     result = IssuedTokenOut(
@@ -820,7 +820,7 @@ def change_token_permissions(
         raise RoomApiError(
             409, "Widerrufene oder abgelaufene Token sind nicht bearbeitbar.", "token_not_active"
         )
-    grants = _token_grants(
+    grants = token_grants(
         session, principal, list(dict.fromkeys(_grant_strings(body.permissions)))
     )
     if grants is None:

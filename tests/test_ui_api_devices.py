@@ -554,13 +554,13 @@ def test_second_zone_for_an_actuator_is_refused(client_als: Als, world: World, s
 
 
 def test_concurrent_mode_change_is_a_409_conflict(client_als: Als, world: World, session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    from thermoctl.web import mapping_map_views
+    from thermoctl.web.shared import mapping_map as mapping_map_shared
 
     valve = _valve(session, "ventil")
     row = _assign(session, world.a, valve, "actuator", MODE_READING_ONLY)
     session.commit()
     client = _manage(client_als, world.a)
-    original = mapping_map_views._editable_graph
+    original = mapping_map_shared.editable_graph
 
     def graph_then_change(*args: Any, **kwargs: Any) -> Any:
         result = original(*args, **kwargs)
@@ -570,7 +570,7 @@ def test_concurrent_mode_change_is_a_409_conflict(client_als: Als, world: World,
         session.commit()
         return result
 
-    monkeypatch.setattr(mapping_map_views, "_editable_graph", graph_then_change)
+    monkeypatch.setattr(mapping_map_shared, "editable_graph", graph_then_change)
     refused = _fehler(
         _call(client, "POST", "/ui-api/devices/map/connect", {"from_id": zone_port_id(world.a.id, "setpoint"), "to_id": property_port_id(valve.id, SETPOINT_PROPERTY)}),
         409, "stale",

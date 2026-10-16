@@ -558,7 +558,7 @@ def test_a_mode_changed_between_graph_and_save_is_not_silently_overwritten(
     client_als: ClientAls, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Zwei gleichzeitige Anfragen: Die Betriebsart ändert sich, nachdem der Graph gebaut wurde."""
-    from thermoctl.web import mapping_map_views
+    from thermoctl.web.shared import mapping_map as mapping_map_shared
 
     source(session)
     zone = _zone(session, "rennen")
@@ -567,7 +567,7 @@ def test_a_mode_changed_between_graph_and_save_is_not_silently_overwritten(
     session.commit()
     client = _manager(client_als, zone)
 
-    original = mapping_map_views._editable_graph
+    original = mapping_map_shared.editable_graph
 
     def graph_then_concurrent_change(*args: Any, **kwargs: Any) -> Any:
         result = original(*args, **kwargs)
@@ -578,7 +578,7 @@ def test_a_mode_changed_between_graph_and_save_is_not_silently_overwritten(
         session.commit()
         return result
 
-    monkeypatch.setattr(mapping_map_views, "_editable_graph", graph_then_concurrent_change)
+    monkeypatch.setattr(mapping_map_shared, "editable_graph", graph_then_concurrent_change)
     refused = _connect(client, zone_port_id(zone.id, "setpoint"), property_port_id(valve.id, SETPOINT_PROPERTY))
 
     assert refused.status_code == 409

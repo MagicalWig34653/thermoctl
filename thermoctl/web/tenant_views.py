@@ -72,13 +72,9 @@ from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.domain.zone_history_chart import TENANT
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.guards import tenant_ui_only
-from thermoctl.web.schedule_views import (
-    WEEKDAYS,
-    _forecast_bars,
-    _undo_payload,
-    _undo_token,
-)
-from thermoctl.web.start_views import zone_status_context
+from thermoctl.web.schedule_views import WEEKDAYS, _forecast_bars
+from thermoctl.web.shared.schedule import undo_payload, undo_token
+from thermoctl.web.shared.zone_status import zone_status_context
 from thermoctl.web.urls import prefixed
 from thermoctl.web.zone_views import checked_period, history_context
 
@@ -577,7 +573,7 @@ async def copy_tenant_schedule_day(
         )
     return _tenant_schedule_page(
         request, session, principal, zone, zones,
-        undo_token=_undo_token(zone.id, snapshot) if snapshot else "",
+        undo_token=undo_token(zone.id, snapshot) if snapshot else "",
         gesture_notice=(
             "Es hat sich nichts geändert -- die Zieltage sahen bereits genauso aus."
             if snapshot is None
@@ -632,7 +628,7 @@ async def undo_tenant_schedule(
         raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
     try:
-        payload = _undo_payload(str(form.get("undo_token", "")))
+        payload = undo_payload(str(form.get("undo_token", "")))
         if payload["zone_id"] != zone.id:
             raise ValueError("wrong zone")
         raw_before = cast(list[list[int]], payload["before"])

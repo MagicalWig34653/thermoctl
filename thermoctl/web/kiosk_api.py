@@ -49,7 +49,7 @@ from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import cancel_override, resolved_setpoint, running_override
 from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.services.emergency_state import zone_emergency_view
-from thermoctl.web.kiosk_views import THERMOSTAT_STEP
+from thermoctl.web.shared.kiosk import THERMOSTAT_STEP
 
 
 class KioskApiError(Exception):

@@ -71,22 +71,16 @@ from thermoctl.domain.plant_diagram import DevicePicture, ZonePicture, plant_dia
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.solar_setback_log import setback_zone_names
 from thermoctl.domain.thermostat_mode import MODE_DESCRIPTIONS, MODE_LABELS, MODES
-from thermoctl.web.controller_views import (
-    _context as controllers_context,
+from thermoctl.web.shared.controllers import (
+    controllers_context,
+    managed_device,
+    require_manageable_zone,
+    require_readable_device,
 )
-from thermoctl.web.controller_views import (
-    _managed_device,
-    _require_manageable_zone,
-    _require_readable_device,
-)
-from thermoctl.web.device_assignment_views import _context as assignment_context
-from thermoctl.web.device_commands_views import ENTRIES_PER_PAGE, SETBACK_OUTCOME_LABELS
-from thermoctl.web.device_views import build_device_survey
-from thermoctl.web.mapping_map_views import (
-    MapOutcome,
-    connect_ports,
-    disconnect_connection,
-)
+from thermoctl.web.shared.device_assignment import assignment_context
+from thermoctl.web.shared.device_commands import ENTRIES_PER_PAGE, SETBACK_OUTCOME_LABELS
+from thermoctl.web.shared.device_survey import build_device_survey
+from thermoctl.web.shared.mapping_map import MapOutcome, connect_ports, disconnect_connection
 from thermoctl.web.ui_api_reports import _day, _invalid, _page, _timezone
 from thermoctl.web.ui_api_rooms import (
     RoomApiError,
@@ -898,7 +892,7 @@ class ChannelIn(BaseModel):
 
 def _controller_device(session: Session, principal: Principal, device_id: int) -> Device:
     try:
-        return _managed_device(session, principal, device_id)
+        return managed_device(session, principal, device_id)
     except HTTPException:
         raise _not_found("Bediengerät") from None
 
@@ -915,9 +909,9 @@ def set_channel(
     device = _controller_device(session, principal, body.device_id)
     try:
         if body.zone_id is not None:
-            _require_manageable_zone(session, principal, body.zone_id)
+            require_manageable_zone(session, principal, body.zone_id)
         if body.source_device_id is not None:
-            _require_readable_device(session, principal, body.source_device_id)
+            require_readable_device(session, principal, body.source_device_id)
     except Forbidden:
         raise _forbidden() from None
     except HTTPException:

@@ -431,7 +431,7 @@ def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
     async def ohne_wartezeit(seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", ohne_wartezeit)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", ohne_wartezeit)
 
 @pytest.fixture
 def angemeldeter_client(

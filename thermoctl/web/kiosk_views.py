@@ -14,7 +14,6 @@ just a `Principal` with a narrower `grants` set, not a parallel access path.
 """
 
 from datetime import datetime
-from decimal import Decimal
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -47,6 +46,7 @@ from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import cancel_override, resolved_setpoint
 from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.web import templates
+from thermoctl.web.shared.kiosk import THERMOSTAT_STEP
 from thermoctl.web.urls import cookie_path, prefixed
 
 router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_schema=False)
@@ -270,12 +270,6 @@ async def kiosk_dashboard(
             path=cookie_path(request),
         )
     return response
-
-
-# The same step used by the start page's thermostat (`daily_views.py`) -- one click
-# should be one perceptible change, not a fraction of a degree nobody notices and not
-# a jump so coarse that reaching a target takes forever.
-THERMOSTAT_STEP = Decimal("0.5")
 
 
 @router.post("/kiosk/zones/{zone_id}/setpoint")

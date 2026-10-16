@@ -734,18 +734,17 @@
       "actuator",
       "switch"
     ],
-    "thermoctl/web/control_views.py": [
-      "Die Anlage wurde gerade scharf geschaltet.",
-      "Ein Ventilschutzlauf ist aktiv."
-    ],
     "thermoctl/web/daily_views.py": [
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ],
-    "thermoctl/web/mapping_map_views.py": [
-      "Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand.",
-      "Der Sollwert wird immer zusammen mit der Raumtemperatur geschrieben: thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur).",
-      "Diese Linien ergeben keine Betriebsart des Ventils.",
-      "actuator"
+    "thermoctl/web/legacy_redirects.py": [
+      "/heating-time",
+      "/heizung/modi",
+      "/heizung/modi",
+      "/heizung/modi",
+      "/heizung/modi",
+      "/heizung/modi",
+      "/heizung/regelvorgaben"
     ],
     "thermoctl/web/navigation.py": [
       "/heating-time"
@@ -754,7 +753,17 @@
       "warmth",
       "warmth"
     ],
-    "thermoctl/web/start_views.py": [
+    "thermoctl/web/shared/control.py": [
+      "Die Anlage wurde gerade scharf geschaltet.",
+      "Ein Ventilschutzlauf ist aktiv."
+    ],
+    "thermoctl/web/shared/mapping_map.py": [
+      "Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand.",
+      "Der Sollwert wird immer zusammen mit der Raumtemperatur geschrieben: thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur).",
+      "Diese Linien ergeben keine Betriebsart des Ventils.",
+      "actuator"
+    ],
+    "thermoctl/web/shared/zone_status.py": [
       "warmth"
     ],
     "thermoctl/web/templates/base_core.html": [

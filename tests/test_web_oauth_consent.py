@@ -164,7 +164,7 @@ def test_login_returns_to_consent(client, session: Session, monkeypatch) -> None
     async def no_delay(_seconds):
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", no_delay)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
     result = client.post(
         "/login",
         data={
@@ -186,7 +186,7 @@ def test_login_rejects_external_return_target(client, session: Session, monkeypa
     async def no_delay(_seconds):
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", no_delay)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
     response = client.post(
         "/login",
         data={

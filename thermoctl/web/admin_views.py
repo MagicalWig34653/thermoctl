@@ -33,7 +33,6 @@ from thermoctl.domain.administration import (
 from thermoctl.domain.authz import (
     PERMISSION_AREAS,
     Forbidden,
-    has_permission,
     principal_for_token,
     require,
 )
@@ -44,6 +43,7 @@ from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again, password_form_error
 from thermoctl.web.guards import admin_ui_only
+from thermoctl.web.shared.tokens import replace_token_grants, token_grants
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -563,7 +563,7 @@ async def token_issue_view(
             )
         )
     )
-    grants = _token_grants(session, principal, selected)
+    grants = token_grants(session, principal, selected)
     if grants is None:
         return _token_list(
             request, session, principal,
@@ -578,67 +578,6 @@ async def token_issue_view(
     # The plaintext appears exactly once: only its hash is stored, and a token you
     # could look up later would not be one.
     return _token_list(request, session, principal, plaintext=plaintext)
-
-
-def _token_grants(
-    session: Session, principal: Principal, selected: list[str],
-) -> list[tuple[str, int | None]] | None:
-    known = {row.code: row for row in session.scalars(select(Permission))}
-    zone_ids = set(session.scalars(select(Zone.id)))
-    grants: list[tuple[str, int | None]] = []
-    for raw in dict.fromkeys(selected):
-        code, separator, zone_text = raw.partition(":")
-        if separator:
-            if not zone_text.isdecimal():
-                return None
-            zone_id: int | None = int(zone_text)
-        else:
-            zone_id = None
-        row = known.get(code)
-        if (row is None or (zone_id is not None and (
-            not row.is_zone_scoped or zone_id not in zone_ids
-        )) or not has_permission(principal, code, zone_id)):
-            return None
-        grants.append((code, zone_id))
-    return grants
-
-
-def _grant_label(code: str, zone_id: int | None) -> str:
-    """Recht für das Protokoll: ``code`` bzw. ``code@zone-id``."""
-    return code if zone_id is None else f"{code}@{zone_id}"
-
-
-def replace_token_grants(
-    session: Session, token: ApiToken, grants: list[tuple[str, int | None]], *,
-    actor_id: int | None,
-) -> None:
-    """Ersetzt die Rechte eines Tokens und protokolliert alt/neu.
-
-    Aus dem View herausgelöst, damit HTML-Weg und `/ui-api` dieselbe Schreibstelle
-    benutzen. Die Prüfung, dass `grants` eine Teilmenge der Rechte des Handelnden ist,
-    liegt vorher in `_token_grants`.
-    """
-    ids = {row.code: row.id for row in session.scalars(select(Permission))}
-    bisherige = list(session.scalars(select(ApiTokenPermission).where(
-        ApiTokenPermission.api_token_id == token.id
-    )))
-    codes = {value: key for key, value in ids.items()}
-    alt = sorted(_grant_label(codes[entry.permission_id], entry.zone_id) for entry in bisherige)
-    for entry in bisherige:
-        session.delete(entry)
-    session.flush()
-    for code, zone_id in grants:
-        session.add(ApiTokenPermission(
-            api_token_id=token.id, permission_id=ids[code], zone_id=zone_id
-        ))
-    neu = sorted(_grant_label(code, zone_id) for code, zone_id in grants)
-    audit.record(
-        session, source="web", action="token.permissions_changed",
-        object_type="api_token", object_id=str(token.id),
-        summary=f"Rechte von Token '{token.name}' geändert",
-        user_id=actor_id,
-        detail=f"alt: {', '.join(alt) or '-'}; neu: {', '.join(neu) or '-'}",
-    )
 
 
 @router.post("/tokens/{token_id}/permissions")
@@ -662,7 +601,7 @@ async def token_permissions_view(
             status.HTTP_409_CONFLICT, "Widerrufene oder abgelaufene Token sind nicht bearbeitbar"
         )
     selected = list(dict.fromkeys(permission or []))
-    grants = _token_grants(session, principal, selected)
+    grants = token_grants(session, principal, selected)
     if grants is None:
         return Response("Ein gewähltes Recht fehlt Ihnen.", status_code=403)
     replace_token_grants(session, token, grants, actor_id=principal.user_id)

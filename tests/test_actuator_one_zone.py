@@ -38,7 +38,7 @@ from thermoctl.domain.device_assignment import (
     swap_device,
 )
 from thermoctl.domain.mapping_map import Port, build_mapping_map, can_connect, zone_port_id
-from thermoctl.web import mapping_map_views
+from thermoctl.web.shared import mapping_map as mapping_map_shared
 
 ClientAls = Callable[[list[tuple[str, int | None]]], TestClient]
 
@@ -382,7 +382,7 @@ def test_a_concurrent_assignment_to_another_zone_is_refused_by_the_domain_on_the
     mine, other = create_zone(session, "rs-mine"), create_zone(session, "rs-other")
     valve = _valve(session, "rs-ventil")
     _put(session, other, valve, "actuator")
-    monkeypatch.setattr(mapping_map_views, "can_connect", _blind_can_connect(can_connect))
+    monkeypatch.setattr(mapping_map_shared, "can_connect", _blind_can_connect(can_connect))
     client = client_als([("device.manage", mine.id), ("device.manage", other.id)])
 
     refused = _connect(client, zone_port_id(mine.id, "actuator"), f"dev-{valve.id}-thermostat")
@@ -399,7 +399,7 @@ def test_that_refusal_keeps_an_unseen_zone_unnamed(
     mine, hidden = create_zone(session, "rh-mine"), create_zone(session, "rh-hidden")
     valve = _valve(session, "rh-ventil")
     _put(session, hidden, valve, "actuator")
-    monkeypatch.setattr(mapping_map_views, "can_connect", _blind_can_connect(can_connect))
+    monkeypatch.setattr(mapping_map_shared, "can_connect", _blind_can_connect(can_connect))
     client = client_als([("device.manage", mine.id)])
 
     refused = _connect(client, zone_port_id(mine.id, "actuator"), f"dev-{valve.id}-thermostat")
@@ -426,7 +426,7 @@ def test_a_concurrent_identical_assignment_gives_409_not_500(
         return False if len(calls) == 1 else real_exists(*args, **kwargs)
 
     monkeypatch.setattr(device_assignment, "_assignment_exists", blind_first)
-    monkeypatch.setattr(mapping_map_views, "can_connect", _blind_can_connect(can_connect))
+    monkeypatch.setattr(mapping_map_shared, "can_connect", _blind_can_connect(can_connect))
     client = client_als([("device.manage", zone.id)])
 
     refused = _connect(client, zone_port_id(zone.id, "actuator"), f"dev-{valve.id}-thermostat")

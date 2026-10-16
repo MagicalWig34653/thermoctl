@@ -238,7 +238,7 @@ def test_post_login_without_a_user_is_not_redirected(
     async def ohne_wartezeit(_: float) -> None:
         return None
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", ohne_wartezeit)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", ohne_wartezeit)
     response = client.post(
         "/login",
         data={"username": "gibtsnicht", "password": "falsch-aber-lang"},

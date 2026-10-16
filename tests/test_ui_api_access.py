@@ -963,14 +963,14 @@ def test_sessions_left_untouched_by_listing(client_als: Als, session: Session) -
 def test_password_change_throttles_wrong_attempts_and_success_resets(
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from thermoctl.web.auth_views import FEHLVERSUCHE
+    from thermoctl.web.shared.login import FEHLVERSUCHE
 
     delays: list[float] = []
 
     async def merken(seconds: float) -> None:
         delays.append(seconds)
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", merken)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", merken)
     client = client_als([])
     me = session.get(User, _me(client))
     assert me is not None

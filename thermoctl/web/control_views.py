@@ -54,16 +54,6 @@ from thermoctl.domain.control import (
 from thermoctl.domain.device_assignment import CapabilityMissing
 from thermoctl.domain.interfaces import homebridge_zone_configs, overview
 from thermoctl.domain.outdoor import outdoor_reading, set_outdoor_temperature_source
-from thermoctl.domain.pi_control import (
-    RESET_REASON_ARMING,
-    RESET_REASON_CONTEXT_CHANGE,
-    RESET_REASON_FROST,
-    RESET_REASON_INVALID_STATE,
-    RESET_REASON_SENSOR_FAILURE,
-    RESET_REASON_TIME_GAP,
-    RESET_REASON_VALVE_PROTECTION,
-    RESET_REASON_WINDOW_OPEN,
-)
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.sensor_failure_policy import (
@@ -84,26 +74,10 @@ from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.integrations import notification
 from thermoctl.services.emergency_state import zone_emergency_view
-from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
+from thermoctl.web.shared.control import PI_FALLBACK_LABELS, TEST_COOLDOWN
 from thermoctl.web.urls import prefixed
-
-# Readable text for `shadow_decision.controller_fallback_reason` (specification
-# section 6: "einschließlich Rückfallgrund" has to be legible on the operating
-# page, not just as a code). Kept here, not in the domain: this is a display-only
-# translation, the same reasoning as `domain.control.LABELS`.
-PI_FALLBACK_LABELS: dict[str, str] = {
-    PI_FALLBACK_INELIGIBLE: "Die Zone erfüllt die PI-Voraussetzungen nicht (mehr).",
-    RESET_REASON_WINDOW_OPEN: "Ein Fenster ist offen.",
-    RESET_REASON_FROST: "Frostschutz ist wirksam.",
-    RESET_REASON_SENSOR_FAILURE: "Der Sensor gilt als ausgefallen.",
-    RESET_REASON_VALVE_PROTECTION: "Ein Ventilschutzlauf ist aktiv.",
-    RESET_REASON_CONTEXT_CHANGE: "Der Sollwertkontext hat gerade gewechselt.",
-    RESET_REASON_TIME_GAP: "Eine Zeitlücke seit der letzten Auswertung.",
-    RESET_REASON_ARMING: "Die Anlage wurde gerade scharf geschaltet.",
-    RESET_REASON_INVALID_STATE: "Der PI-Zustand war ungültig oder fehlte.",
-}
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -634,15 +608,6 @@ async def save_outdoor_source(
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 
 
-# Below this, a repeated test button does nothing for a while rather than firing a
-# second outbound call: whoever is troubleshooting a webhook can fix an address and
-# try again in a moment, but nothing here should let an unattended tab hammer an
-# external target. Enforced on the same row the result is shown from, not a separate
-# store -- there is exactly one webhook target for the whole plant, so a plant-wide
-# cooldown on the same field the operator is already looking at is enough.
-_TEST_COOLDOWN = timedelta(seconds=10)
-
-
 @router.post("/settings/notifications/test")
 async def send_test_notification(
     request: Request,
@@ -670,7 +635,7 @@ async def send_test_notification(
     else:
         last_attempt = row.notify_last_attempt_at
         now = utcnow()
-        if last_attempt is not None and now - last_attempt < _TEST_COOLDOWN:
+        if last_attempt is not None and now - last_attempt < TEST_COOLDOWN:
             notice = "Bitte kurz warten -- der letzte Versuch war gerade eben."
         else:
             result = await notification.send_test(env_settings)

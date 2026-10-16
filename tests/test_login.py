@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-import thermoctl.web.auth_views
+import thermoctl.web.shared.login
 from tests.helpers import create_settings
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
@@ -20,7 +20,7 @@ from thermoctl.db.models.operations import AuditEvent
 # Beim Import festgehalten, bevor die autouse-Fixture aus conftest.py die Wartezeit
 # für jeden Test durch eine Attrappe ersetzt. Ein Test, der die echte Wartezeit
 # prüfen will, braucht genau diese Fassung -- sonst misst er die Attrappe.
-_ECHTE_WARTEZEIT = thermoctl.web.auth_views.sleep
+_ECHTE_WARTEZEIT = thermoctl.web.shared.login.sleep
 
 
 def _csrf(client: TestClient, settings: Settings) -> dict[str, str]:
@@ -194,7 +194,7 @@ def test_failed_attempts_are_increasingly_delayed(client, user, monkeypatch) -> 
     async def merken(seconds: float) -> None:
         delays.append(seconds)
 
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", merken)
+    monkeypatch.setattr("thermoctl.web.shared.login.sleep", merken)
     for _ in range(3):
         client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
     assert delays == sorted(delays)
@@ -204,7 +204,7 @@ def test_failed_attempts_are_increasingly_delayed(client, user, monkeypatch) -> 
 def test_a_successful_login_resets_the_counter(client, user) -> None:
     client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
     client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
-    from thermoctl.web.auth_views import FEHLVERSUCHE
+    from thermoctl.web.shared.login import FEHLVERSUCHE
 
     assert FEHLVERSUCHE.get("lino", 0) == 0
 
@@ -240,13 +240,13 @@ def test_password_verification_runs_even_for_an_unknown_user(
     in tests are unreliable, but the underlying cause can be checked directly.
     """
     calls: list[str] = []
-    real_verify = thermoctl.web.auth_views.verify_password
+    real_verify = thermoctl.web.shared.login.verify_password
 
     def counting(plaintext: str, hash_value: str) -> bool:
         calls.append(hash_value)
         return real_verify(plaintext, hash_value)
 
-    monkeypatch.setattr("thermoctl.web.auth_views.verify_password", counting)
+    monkeypatch.setattr("thermoctl.web.shared.login.verify_password", counting)
 
     client.post("/login", data={"username": "gibtsnicht", "password": "falsch-aber-lang"})
     assert len(calls) == 1, "no check happened for an unknown user"
@@ -298,7 +298,7 @@ def test_the_password_check_does_not_run_on_the_event_loop(
         threads.append(threading.current_thread())
         return False
 
-    monkeypatch.setattr("thermoctl.web.auth_views.verify_password", merken)
+    monkeypatch.setattr("thermoctl.web.shared.login.verify_password", merken)
     client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
 
     assert threads
@@ -313,17 +313,17 @@ def test_the_failure_counter_cannot_grow_without_bound(
     Without a bound, a stream of invented usernames grows the dict for as long as the
     process runs. Nobody would notice until the machine did.
     """
-    monkeypatch.setattr(thermoctl.web.auth_views, "_MAX_FEHLVERSUCHE_EINTRAEGE", 3)
-    thermoctl.web.auth_views.FEHLVERSUCHE.clear()
+    monkeypatch.setattr(thermoctl.web.shared.login, "MAX_FEHLVERSUCHE_EINTRAEGE", 3)
+    thermoctl.web.shared.login.FEHLVERSUCHE.clear()
 
     for nummer in range(10):
         client.post(
             "/login", data={"username": f"erfunden-{nummer}", "password": "falsch-aber-lang"}
         )
 
-    assert len(thermoctl.web.auth_views.FEHLVERSUCHE) == 3
+    assert len(thermoctl.web.shared.login.FEHLVERSUCHE) == 3
     # Behalten wird das Jüngste: der Zähler soll das gerade laufende Raten bremsen.
-    assert "erfunden-9" in thermoctl.web.auth_views.FEHLVERSUCHE
+    assert "erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
 
 
 def test_changing_the_own_password_ends_the_other_sessions_only(

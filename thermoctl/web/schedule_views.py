@@ -1,8 +1,3 @@
-import base64
-import hashlib
-import hmac
-import json
-from collections.abc import Sequence
 from decimal import Decimal
 from typing import Annotated, cast
 
@@ -23,7 +18,6 @@ from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     ScheduleError,
-    ScheduleGesture,
     ScheduleSnapshot,
     adopt_schedule,
     change_schedule_point_mode,
@@ -40,6 +34,7 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.time import local_time
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.guards import admin_ui_only
+from thermoctl.web.shared.schedule import undo_payload, undo_token
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -213,49 +208,6 @@ def _schedule_page(
     )
 
 
-def _undo_token(
-    zone_id: int,
-    gesture: ScheduleGesture,
-    history: Sequence[ScheduleSnapshot] = (),
-) -> str:
-    """`history` lists the plans before `before`, most recent first (multi-step undo of
-    the JSON interface); the HTML views never pass it."""
-    before, after, revision = gesture
-    content: dict[str, object] = {
-        "zone_id": zone_id,
-        "before": before,
-        "after": after,
-        "revision": revision,
-    }
-    if history:
-        content["history"] = list(history)
-    payload = json.dumps(content, separators=(",", ":")).encode()
-    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
-    signature = hmac.new(
-        get_settings().secret_key.get_secret_value().encode(),
-        ("schedule-gesture-undo:" + encoded).encode(), hashlib.sha256,
-    ).hexdigest()
-    return f"{encoded}.{signature}"
-
-
-def _undo_payload(token: str) -> dict[str, object]:
-    try:
-        encoded, signature = token.split(".", 1)
-        expected = hmac.new(
-            get_settings().secret_key.get_secret_value().encode(),
-            ("schedule-gesture-undo:" + encoded).encode(), hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(signature, expected):
-            raise ValueError("invalid signature")
-        padding = "=" * (-len(encoded) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
-        if not isinstance(payload, dict):
-            raise ValueError("invalid payload")
-        return payload
-    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("invalid undo token") from exc
-
-
 @router.get("/zones/{zone_id}/schedule")
 async def show_schedule(
     zone_id: int,
@@ -400,7 +352,7 @@ async def paint_schedule(
         )
     return _schedule_page(
         request, session, zone, principal,
-        undo_token=_undo_token(zone.id, snapshots) if snapshots else "",
+        undo_token=undo_token(zone.id, snapshots) if snapshots else "",
         gesture_notice=(
             "Der Zeitraum sieht bereits genauso aus; es wurde nichts geändert."
             if snapshots is None else ""
@@ -434,7 +386,7 @@ async def copy_schedule_day_view(
         return _schedule_page(request, session, zone, principal, gesture_error=exc.notice)
     return _schedule_page(
         request, session, zone, principal,
-        undo_token=_undo_token(zone.id, snapshots) if snapshots else "",
+        undo_token=undo_token(zone.id, snapshots) if snapshots else "",
         gesture_notice=(
             "Die gewählten Zieltage sehen bereits genauso aus; es wurde nichts geändert."
             if snapshots is None
@@ -455,7 +407,7 @@ async def undo_schedule(
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
     form = await request.form()
     try:
-        payload = _undo_payload(str(form.get("undo_token", "")))
+        payload = undo_payload(str(form.get("undo_token", "")))
         if payload["zone_id"] != zone.id:
             raise ValueError("wrong zone")
         raw_before = cast(list[list[int]], payload["before"])
