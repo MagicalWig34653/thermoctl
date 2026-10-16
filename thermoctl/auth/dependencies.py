@@ -88,7 +88,7 @@ _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 # end: every form is refused, logging out is refused, and logging in again is refused
 # too as long as the old session cookie is still around. Reported from use, and the
 # only escape was deleting exactly the right cookie by hand.
-_RECOVERY_PATHS = frozenset({"/login", "/logout"})
+_RECOVERY_PATHS = frozenset({"/login", "/logout", "/ui-api/login", "/ui-api/logout"})
 
 
 class StalePage(Exception):

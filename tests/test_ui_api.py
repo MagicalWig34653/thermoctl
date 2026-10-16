@@ -51,7 +51,7 @@ def test_csrf_failure_under_ui_api_is_json(client_als: Als) -> None:
     client = client_als([("zone.read", None)])
     response = client.post("/ui-api/csrf-probe", headers={"X-CSRF-Token": "falsch"})
     assert response.status_code == 403
-    assert response.json() == {"detail": "Ungültiges CSRF-Token"}
+    assert response.json() == {"detail": "Ungültiges CSRF-Token", "stale": True}
 
 
 def test_valid_csrf_passes_under_ui_api(client_als: Als) -> None:

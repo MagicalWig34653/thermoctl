@@ -12,14 +12,19 @@ Principal mit `zone.read` sehen darf (`visible_zones`).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from thermoctl.auth.csrf import CSRF_COOKIE_NAME
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
+from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_session
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.principal import Principal
+from thermoctl.web.auth_views import _ERROR_MESSAGE, attempt_login, set_session_cookies
 from thermoctl.web.navigation import visible_navigation
+from thermoctl.web.urls import cookie_path
 
 router = APIRouter(
     prefix="/ui-api", dependencies=[Depends(csrf_protection)], include_in_schema=False
@@ -69,3 +74,37 @@ def bootstrap(
             for z in visible_zones(session, principal, "zone.read")
         ],
     )
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/login")
+async def login(
+    request: Request, body: LoginIn, session: Annotated[Session, Depends(get_session)]
+) -> JSONResponse:
+    """JSON login for the app; same checks, throttle and audit as the HTML form."""
+    outcome = await attempt_login(request, session, body.username, body.password)
+    if outcome is None:
+        return JSONResponse({"detail": _ERROR_MESSAGE}, status_code=401)
+    _user, secret, lifetime_s = outcome
+    response = JSONResponse({"ok": True})
+    set_session_cookies(response, request, secret, lifetime_s)
+    return response
+
+
+@router.post("/logout")
+def logout(
+    request: Request, session: Annotated[Session, Depends(get_session)]
+) -> JSONResponse:
+    cookie_value = request.cookies.get(COOKIE_NAME)
+    if cookie_value is not None:
+        http_session = resolve_session(session, cookie_value)
+        if http_session is not None:
+            revoke_session(session, http_session)
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(COOKIE_NAME, path=cookie_path(request))
+    response.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))
+    return response

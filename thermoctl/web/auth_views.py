@@ -87,16 +87,15 @@ async def login_form(
     )
 
 
-@router.post("/login")
-async def login(
-    request: Request,
-    username: Annotated[str, Form()],
-    password: Annotated[str, Form()],
-    session: Annotated[Session, Depends(get_session)],
-    return_to: Annotated[str | None, Form()] = None,
-) -> Response:
-    settings = get_settings()
+async def attempt_login(
+    request: Request, session: Session, username: str, password: str
+) -> tuple[User, str, int] | None:
+    """Checks credentials, throttles, audits and opens the session.
 
+    Shared by the HTML form and the JSON login of the Svelte app, so neither has its
+    own copy of the throttle, the constant-time comparison or the audit entries.
+    Returns the user, the session secret and its lifetime, or `None` on failure.
+    """
     previous_failures = FEHLVERSUCHE.get(username, 0)
     # `await`, not `time.sleep`: this handler runs on the same event loop as the
     # control cycle. A blocking sleep here stops the loop for everyone, so an
@@ -130,16 +129,7 @@ async def login(
             session, source="web", action="login_failed", object_type="user",
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
         )
-        return templates.TemplateResponse(
-            request,
-            "login.html",
-            {
-                "errors": _ERROR_MESSAGE,
-                "passkeys_available": settings.passkeys_available(),
-                "return_to": safe_return_to(return_to),
-            },
-            status_code=status.HTTP_401_UNAUTHORIZED,
-        )
+        return None
 
     assert user is not None
     FEHLVERSUCHE[username] = 0
@@ -156,11 +146,14 @@ async def login(
         object_id=str(user.id), summary=f"Anmeldung als '{user.username}'",
         user_id=user.id,
     )
+    return user, secret, lifetime_s
 
-    response = RedirectResponse(
-        prefixed(request, safe_return_to(return_to) or "/"),
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+
+def set_session_cookies(
+    response: Response, request: Request, secret: str, lifetime_s: int
+) -> None:
+    """The session cookie and its CSRF companion, shared with the JSON login."""
+    settings = get_settings()
     response.set_cookie(
         COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
@@ -173,6 +166,36 @@ async def login(
         max_age=lifetime_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
         path=cookie_path(request),
     )
+
+
+@router.post("/login")
+async def login(
+    request: Request,
+    username: Annotated[str, Form()],
+    password: Annotated[str, Form()],
+    session: Annotated[Session, Depends(get_session)],
+    return_to: Annotated[str | None, Form()] = None,
+) -> Response:
+    settings = get_settings()
+    outcome = await attempt_login(request, session, username, password)
+    if outcome is None:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "errors": _ERROR_MESSAGE,
+                "passkeys_available": settings.passkeys_available(),
+                "return_to": safe_return_to(return_to),
+            },
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    _user, secret, lifetime_s = outcome
+
+    response = RedirectResponse(
+        prefixed(request, safe_return_to(return_to) or "/"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    set_session_cookies(response, request, secret, lifetime_s)
     return response
 
 

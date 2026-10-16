@@ -45,7 +45,7 @@ nachgezogen, die sie beschreibt — nicht hinterher, sonst verfällt sie.
 | Persistenz | SQLAlchemy + Alembic |
 | Datenbank | Nutzerwahl beim Setup: SQLite (Standard) oder MariaDB |
 | Frontend | Svelte 5 + TypeScript, shadcn-svelte/Bits UI, Tailwind; gebaut mit Vite (Node/npm nur zur Build-Zeit), Quelle `frontend/`, Ausgabe als statische Dateien nach `thermoctl/web/static/app/`, ausgeliefert vom Python-Container (siehe Änderung 2026-10-15 unten) |
-| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: Weboberfläche (Svelte-Frontend gegen REST-API; bis zur Ablösung noch HTMX-Views), REST-API, MCP-Server |
+| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: Weboberfläche (Svelte-Frontend gegen den Session-JSON-Vertrag `/ui-api`; bis zur Ablösung noch HTMX-Views), REST-API, MCP-Server |
 | Betrieb | Eigener Docker-Container |
 | Home Assistant | Optionale Integration per MQTT, **keine** Voraussetzung |
 

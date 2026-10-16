@@ -1362,7 +1362,15 @@ def create_app() -> FastAPI:
         # through its own header instead.
         # The Svelte app reads JSON errors; a page, redirect or htmx header would be lost.
         if request.url.path.startswith("/ui-api/"):
-            return JSONResponse({"detail": "Ungültiges CSRF-Token"}, status_code=403)
+            stale = JSONResponse(
+                {"detail": "Ungültiges CSRF-Token", "stale": True}, status_code=403
+            )
+            if exc.recovery:
+                # Same way out as for the HTML forms: clear the dead session so the
+                # next login or logout attempt of the app is not blocked again.
+                stale.delete_cookie(COOKIE_NAME, path=cookie_path(request))
+                stale.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))
+            return stale
         from_htmx = request.headers.get("hx-request") is not None
         login_target = prefixed(request, "/login?stale=1")
         if exc.recovery:
