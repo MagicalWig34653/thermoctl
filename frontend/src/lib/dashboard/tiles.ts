@@ -2,7 +2,8 @@
 // Server als Tatsache liefert (Entscheidung, Sensorzustand, Übersteuerung); keine Regel.
 
 import { formatInstant, roomStatus } from '../rooms/logic';
-import type { Rooms } from '../rooms/types';
+import { formatTemperature } from '../rooms/decimal';
+import type { Outdoor, Rooms } from '../rooms/types';
 import { METRIC_LABELS, entryOf } from './catalog';
 import type { Metric, Tile } from './types';
 
@@ -11,6 +12,17 @@ export interface MetricValue {
   value: string;
   note: string;
   available: boolean;
+}
+
+/** Außentemperatur der Kennzahl. Ein veralteter Wert oder fehlende Quelle sind eigene Texte statt einer
+ *  Zahl, die man mit „draußen ist es warm“ verwechseln könnte; die Wohnungssicht bekommt keinen Wert. */
+export function outdoorValue(title: string, outdoor: Outdoor | null): MetricValue {
+  if (outdoor === null) return { title, value: '–', note: 'Hier gibt es keine Außenmessung.', available: false };
+  if (outdoor.status === 'keine_quelle') return { title, value: '–', note: 'Keine Quelle gewählt', available: false };
+  if (outdoor.status === 'veraltet' || outdoor.temperature_c === null) {
+    return { title, value: '–', note: 'Wert veraltet', available: false };
+  }
+  return { title, value: `${formatTemperature(outdoor.temperature_c)} °C`, note: 'Außentemperatur der Anlage', available: true };
 }
 
 export function metricValue(metric: Metric, data: Rooms): MetricValue {
@@ -33,8 +45,7 @@ export function metricValue(metric: Metric, data: Rooms): MetricValue {
       return { title, value: String(n), note: n === 0 ? 'Keine Auffälligkeiten' : n === 1 ? 'Raum mit Störung oder Fenster' : 'Räume mit Störung oder Fenster', available: true };
     }
     default:
-      // Die Oberfläche bekommt von keinem Endpunkt eine Außentemperatur.
-      return { title, value: '–', note: 'Hier gibt es keine Außenmessung.', available: false };
+      return outdoorValue(title, data.outdoor);
   }
 }
 

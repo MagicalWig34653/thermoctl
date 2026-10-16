@@ -5,7 +5,7 @@ import {
   armOutcome, buildParametersPatch, buildSensorFailureBody, decisionEffect, defaultsPayload, displayDetailValue,
   draftFromParameters, errorAt, fromInput, generalError, inheritanceNote, localParameterErrors, opsFailure,
   operationHeadline, outsideLimit, patchedFields, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
-  subtractDecimal, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
+  SENDING_LATCH_NOTE, subtractDecimal, switchingTable, wearRatioSentence, formatCount, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
 } from '../src/lib/operations/logic.ts';
 import { actuation, ARMED_NO_RESTART, LIVE, parameters, settings } from './operations-fixture.ts';
 
@@ -343,4 +343,51 @@ test('Bereichswarnung: exakt über die Ziffern, leer und ungültig warnen nicht'
   assert.equal(outsideLimit('0,1', limit), false);
   assert.equal(outsideLimit('', limit), false);
   assert.equal(outsideLimit('abc', limit), false);
+});
+
+test('Sende-Riegel: benennt beide Wege (MQTT und Meross), nicht nur MQTT', () => {
+  assert.match(SENDING_LATCH_NOTE, /alle Wege, auf denen Befehle hinausgehen \(MQTT und Meross\)/);
+  assert.doesNotMatch(SENDING_LATCH_NOTE, /sitzt im MQTT-Client/);
+  const card = stateCards(ARMED_NO_RESTART).find((c) => c.id === 'sending');
+  assert.match(card?.title ?? '', /MQTT und Meross/);
+  assert.match(decisionEffect(ARMED_NO_RESTART).text, /MQTT und Meross/);
+  assert.match(armOutcome(true, { changed: true, actuation: ARMED_NO_RESTART }).text, /MQTT und Meross/);
+});
+
+test('Sende-Riegel: Glossar und ArmPanel tragen den Meross-Weg', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = (path: string) => readFileSync(new URL(`../src/lib/${path}`, import.meta.url), 'utf8');
+  assert.match(read('components/operations/ArmPanel.svelte'), /SENDING_LATCH_NOTE/);
+  assert.match(read('components/operations/ArmPanel.svelte'), /Meross/);
+  assert.match(read('operations/glossary.ts'), /MQTT und Meross/);
+  assert.match(read('rooms/glossary.ts'), /Meross/);
+});
+
+test('PI-Warnung: Schalttabelle und Verhältnis stammen vom Server, es wird nur formatiert', () => {
+  const model = parameters().pi_switching_model;
+  const rows = switchingTable(model);
+  assert.deepEqual(rows.map((r) => [r.id, r.perHour, r.perDay, r.perYear]), [
+    ['pi_worst_case', '30', '720', '262.800'],
+    ['pi_30_percent_duty', '18', '432', '157.680'],
+    ['hysteresis_max', '6', '144', '52.560'],
+  ]);
+  assert.match(rows[0].label, /ungünstigster Fall/);
+  assert.equal(switchingTable({ ...model, rows: [{ id: 'neu', per_hour: 1, per_day: 2, per_year: 3 }] })[0].label, 'neu');
+  assert.equal(formatCount(500000), '500.000');
+  // Das Verhältnis wird nicht im Browser berechnet: ein anderer Serverwert erscheint unverändert.
+  const sentence = wearRatioSentence({ ...model, assumed_lifetime_operations: 500000, worst_case_ratio: '0.53' });
+  assert.match(sentence, /500\.000 elektrischen Betätigungen/);
+  assert.match(sentence, /rund 0,53 solcher Relaislebensdauern im Jahr/);
+  assert.match(wearRatioSentence(model), /rund 2,63 /);
+  assert.match(wearRatioSentence({ ...model, worst_case_ratio: '9.99' }), /rund 9,99 /);
+});
+
+test('PI-Warnung: RoomTechnik bindet sie ein, mit Verweis auf den Relaisverschleiß und Kessel/Verdichter', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = (path: string) => readFileSync(new URL(`../src/lib/${path}`, import.meta.url), 'utf8');
+  assert.match(read('components/operations/RoomTechnik.svelte'), /<PiWarning model=\{params\.pi_switching_model\}/);
+  const warning = read('components/operations/PiWarning.svelte');
+  assert.match(warning, /\/auswertung\/verschleiss/);
+  assert.match(warning, /Kessel oder Verdichter/);
+  assert.doesNotMatch(warning, /262/);
 });

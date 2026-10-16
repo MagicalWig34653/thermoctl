@@ -20,6 +20,10 @@
   font-size: 11px;
   fill: var(--h-axis);
 }
+.hist-svg text.hist-solar-label {
+  fill: var(--foreground);
+  font-size: 10.5px;
+}
 .hist-tip {
   background: color-mix(in oklch, var(--background) 72%, transparent);
   -webkit-backdrop-filter: blur(8px);

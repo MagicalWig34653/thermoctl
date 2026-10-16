@@ -30,6 +30,18 @@ export function formatSetback(value: string | null): string {
   return `${formatTemperature(value)} K`;
 }
 
+/** Absenkung eines Fachs als Spanne: „2,0 K“, wenn sie gleich blieb, sonst „0,5 bis 3,0 K“.
+ *  Nur den Höchstwert zu nennen würde ihn für das ganze Fach behaupten. `unit` ist „K“ oder „Grad“. */
+export function formatSetbackRange(min: string | null, max: string | null, unit = 'K', unknown = 'unbekannt'): string {
+  if (min === null || max === null) return unknown;
+  const cmax = compareDecimal(max, '0');
+  const cmin = compareDecimal(min, '0');
+  if (cmax === null || cmin === null) return unknown;
+  if (cmax === 0 && cmin === 0) return 'keine';
+  if (compareDecimal(min, max) === 0) return `${formatTemperature(max)} ${unit}`;
+  return `${formatTemperature(min)} bis ${formatTemperature(max)} ${unit}`;
+}
+
 export function formatHeat(percent: number | null): string {
   return percent === null ? '—' : `${percent} %`;
 }
@@ -42,13 +54,23 @@ export function formatResolution(seconds: number): string {
   return `${seconds} Sek.`;
 }
 
-/** Eine Zeile des Verlaufs als Text, für Tooltip-Alternative und Vorlesen. */
-export function describeBucket(b: Bucket, when: string): string {
+/** Eine Zeile des Verlaufs als Text, für Tooltip-Alternative und Vorlesen. `names` wählt die
+ *  Fassung der Beschriftungen (Anlagen- oder Wohnungssicht). */
+export function describeBucket(
+  b: Bucket,
+  when: string,
+  names: { actual: string; effective: string; scheduled: string; heating: string } = {
+    actual: 'Messwert',
+    effective: 'Wirksamer Sollwert',
+    scheduled: 'Geplanter Sollwert',
+    heating: 'Heizanforderung',
+  },
+): string {
   if (b.rows === 0) return `${when}: Messlücke, keine Messwerte.`;
   return (
-    `${when}: Messwert ${formatCelsius(b.temperature_c)}, ` +
-    `Wirksamer Sollwert ${formatRange(b.effective_min_c, b.effective_max_c)}, ` +
-    `Geplanter Sollwert ${formatRange(b.scheduled_min_c, b.scheduled_max_c)}, ` +
-    `Heizanforderung ${formatHeat(b.heat_percent)}.`
+    `${when}: ${names.actual} ${formatCelsius(b.temperature_c)}, ` +
+    `${names.effective} ${formatRange(b.effective_min_c, b.effective_max_c)}, ` +
+    `${names.scheduled} ${formatRange(b.scheduled_min_c, b.scheduled_max_c)}, ` +
+    `${names.heating} ${formatHeat(b.heat_percent)}.`
   );
 }

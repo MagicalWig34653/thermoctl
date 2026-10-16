@@ -68,6 +68,8 @@ export interface Room {
   temperature_c: string | null;
   measured_at: string | null;
   measured_age_seconds: number | null;
+  /** Der Server hält den Messwert nicht mehr für frisch (dieselbe Schwelle wie die Regelung). */
+  measurement_stale: boolean;
   sensor: Sensor;
   setpoint: Setpoint;
   override: Override | null;
@@ -87,11 +89,19 @@ export interface Actuation {
   state: ActuationState;
 }
 
+/** Anlagenweite Außentemperatur; `null` in der Wohnungssicht. `temperature_c` nur bei `ok`. */
+export interface Outdoor {
+  status: 'ok' | 'veraltet' | 'keine_quelle' | string;
+  temperature_c: string | null;
+  measured_at: string | null;
+}
+
 export interface Rooms {
   timezone: string;
   poll_interval_seconds: number;
   now_fraction: number;
   actuation: Actuation;
+  outdoor: Outdoor | null;
   rooms: Room[];
 }
 

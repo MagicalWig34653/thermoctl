@@ -171,6 +171,8 @@ class BucketOut(BaseModel):
     effective_min_c: str | None
     effective_max_c: str | None
     heat_percent: int | None
+    #: Kleinste und größte Absenkung im Fach (`solar_setback_k` ist die größte).
+    solar_setback_min_k: str | None
     solar_setback_k: str | None
 
 
@@ -201,6 +203,9 @@ class HistoryOut(BaseModel):
     end: str
     resolution_seconds: int
     rows: int
+    #: Ist die Anlage scharf? Sonst sind Sollwert und Heizanforderung Entscheidungen der
+    #: Regelung („hätte“), keine Aufzeichnung dessen, was in den Räumen geschah.
+    control_armed: bool
     units: UnitsOut
     limits: LimitsOut
     buckets: list[BucketOut]
@@ -216,7 +221,7 @@ def _history(
     resolution: int | None,
 ) -> tuple[HistoryOut, history_report.HistoryReport]:
     zone = _visible_zone(session, principal, zone_id)
-    timezone_name, _settings = _timezone(session)
+    timezone_name, settings = _timezone(session)
     try:
         report = history_report.history_report(
             session,
@@ -236,6 +241,7 @@ def _history(
         end=report.end.isoformat(),
         resolution_seconds=report.resolution_seconds,
         rows=report.rows,
+        control_armed=bool(settings and settings.control_armed),
         units=UnitsOut(temperature="°C", setback="K", heat="%"),
         limits=LimitsOut(
             max_span_days=history_report.MAX_SPAN.days,
@@ -257,6 +263,7 @@ def _history(
                 effective_min_c=_num(b.effective_min_c),
                 effective_max_c=_num(b.effective_max_c),
                 heat_percent=b.heat_percent,
+                solar_setback_min_k=_num(b.solar_setback_min_k),
                 solar_setback_k=_num(b.solar_setback_k),
             )
             for b in report.buckets
@@ -317,6 +324,7 @@ def export_history(
             "effective_min_c",
             "effective_max_c",
             "heat_percent",
+            "solar_setback_min_k",
             "solar_setback_k",
         ]
     )
@@ -339,6 +347,7 @@ def export_history(
                         b.effective_min_c,
                         b.effective_max_c,
                         b.heat_percent,
+                        b.solar_setback_min_k,
                         b.solar_setback_k,
                     )
                 ),

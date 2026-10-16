@@ -56,8 +56,8 @@ export const TERMS: Record<string, Term> = {
     text: 'Ob die Anlage scharf gestellt ist. Ohne Freigabe läuft die Regelung im Trockenlauf: Sie entscheidet und protokolliert, schaltet aber nichts.',
   },
   sending_allowed: {
-    title: 'MQTT-Sendefreigabe',
-    text: 'Ob dieser Dienst beim Start Schaltbefehle über MQTT senden darf. Sie wird nur beim Start gesetzt – eine gespeicherte Freigabe wirkt deshalb erst nach einem Neustart.',
+    title: 'Sendefreigabe (MQTT und Meross)',
+    text: 'Ob dieser Dienst beim Start Schaltbefehle senden darf – über MQTT und über Meross, denn der Riegel gilt für alle Wege, auf denen Befehle hinausgehen. Sie wird nur beim Start gesetzt – eine gespeicherte Freigabe wirkt deshalb erst nach einem Neustart.',
   },
   cluster_standby: {
     title: 'Führung',

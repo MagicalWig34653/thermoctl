@@ -1,7 +1,7 @@
 """Räume unter `/ui-api/rooms`: Lesemodell, Alltagsaktionen, Rechte, Fehlerform."""
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -11,18 +11,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    capability,
+    create_device,
     create_settings,
     create_shadow_decision,
     create_zone,
     create_zone_state,
+    sensor_status_of,
     source,
     zone_with_schedule,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.change_log import ChangeLog
 from thermoctl.db.models.lookup import OperatingMode
+from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
@@ -170,11 +175,88 @@ def test_list_shows_only_visible_zones(client_als: Als, session: Session) -> Non
     assert "Fremd" not in str(rooms)
 
 
+def _aussenquelle(session: Session, measured_at: datetime | None) -> None:
+    """Richtet eine Außentemperaturquelle ein; mit Messwert, wenn `measured_at` gesetzt ist."""
+    row = session.get(Setting, 1)
+    assert row is not None
+    device = create_device(session, "draussen")
+    temperature = capability(session, "temperature")
+    row.outdoor_temperature_source_device_id = device.id
+    if measured_at is not None:
+        session.add(
+            Measurement(
+                device_id=device.id,
+                capability_id=temperature.id,
+                value_numeric=Decimal("3.20"),
+                measured_at=measured_at,
+                received_at=measured_at,
+            )
+        )
+    session.flush()
+
+
+def test_list_carries_the_outdoor_reading_read_only_for_the_plant_view(
+    client_als: Als, tenant_client: Als, session: Session
+) -> None:
+    """Außentemperatur wie die Alt-Startseite: eigener Text statt Zahl, wenn sie nicht stimmt."""
+    _raum(session)
+    admin = client_als(ALLES)
+    # Ohne gewählte Quelle: keine Zahl, die man mit „draußen ist es warm“ verwechseln könnte.
+    assert admin.get("/ui-api/rooms").json()["outdoor"] == {
+        "status": "keine_quelle", "temperature_c": None, "measured_at": None,
+    }
+    # Frischer Wert.
+    _aussenquelle(session, utcnow())
+    outdoor = admin.get("/ui-api/rooms").json()["outdoor"]
+    assert outdoor["status"] == "ok" and Decimal(outdoor["temperature_c"]) == Decimal("3.2")
+    assert outdoor["measured_at"] is not None
+    # Wohnungssicht: keine Anlagentechnik.
+    assert tenant_client(ALLES).get("/ui-api/rooms").json()["outdoor"] is None
+
+
+def test_list_never_shows_a_stale_outdoor_value_as_a_temperature(
+    client_als: Als, session: Session
+) -> None:
+    _raum(session)
+    _aussenquelle(session, utcnow() - timedelta(days=2))
+    outdoor = client_als(ALLES).get("/ui-api/rooms").json()["outdoor"]
+    assert outdoor["status"] == "veraltet"
+    assert outdoor["temperature_c"] is None
+    assert outdoor["measured_at"] is not None
+
+
+def test_list_reports_a_forgotten_window_and_a_stale_measurement(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    state = create_zone_state(session, zone)
+    client = client_als(ALLES)
+    (room,) = client.get("/ui-api/rooms").json()["rooms"]
+    assert room["sensor"]["window_alarm"] is False
+    assert room["measurement_stale"] is False
+    state.window_alarm = True
+    state.sensor_status_id = sensor_status_of(session, "veraltet").id
+    session.flush()
+    (room,) = client.get("/ui-api/rooms").json()["rooms"]
+    assert room["sensor"]["window_alarm"] is True
+    assert room["measurement_stale"] is True
+    # Auch die Einzelansicht trägt beide Felder.
+    detail = client.get(f"/ui-api/rooms/{zone.id}").json()
+    assert detail["sensor"]["window_alarm"] is True and detail["measurement_stale"] is True
+
+
+def test_a_room_without_state_is_not_called_stale(client_als: Als, session: Session) -> None:
+    _raum(session)
+    (room,) = client_als(ALLES).get("/ui-api/rooms").json()["rooms"]
+    assert room["measurement_stale"] is False
+
+
 def test_list_without_setting_row(client_als: Als, session: Session) -> None:
     client = client_als([("zone.read", None)])
     body = client.get("/ui-api/rooms").json()
     assert body["rooms"] == []
     assert body["actuation"]["state"] == "dry_run"
+    assert body["outdoor"] is None
     create_zone(session, "a")
     _fehler(client.get("/ui-api/rooms"), 503, "setup_incomplete")
 

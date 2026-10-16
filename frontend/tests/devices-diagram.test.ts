@@ -119,3 +119,12 @@ test('nur Bediengeräte mit gesehenen Tasten sind belegbar', () => {
   const zone = { controllers: [{ device: { id: 1, name: 'A' }, bindings: [b] }, { device: { id: 2, name: 'B' }, bindings: [] }] };
   assert.deepEqual(bindableControllers(zone).map((c) => c.device.id), [1]);
 });
+
+test('Datenfluss: Trockenlauf-Hinweis im Alt-Wortlaut, ohne Übergabe zu behaupten', async () => {
+  const { FLOW_NOTE } = await import('../src/lib/devices/diagram.ts');
+  assert.match(FLOW_NOTE, /Im Trockenlauf wird nichts gesendet/);
+  assert.match(FLOW_NOTE, /Notbetrieb-Übergabe ist hier nicht dargestellt/);
+  const { readFileSync } = await import('node:fs');
+  const panel = readFileSync(new URL('../src/lib/components/devices/DataFlowPanel.svelte', import.meta.url), 'utf8');
+  assert.match(panel, /\{FLOW_NOTE\}/);
+});

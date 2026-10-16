@@ -33,6 +33,21 @@ export interface PiParameters {
   limits: Record<string, ParameterLimit>;
 }
 
+/** Modellrechnung zum Verschleißhinweis an der PI-Regelung; alle Werte kommen vom Server. */
+export interface SwitchingModelRow {
+  id: string;
+  per_hour: number;
+  per_day: number;
+  per_year: number;
+}
+export interface PiSwitchingModel {
+  rows: SwitchingModelRow[];
+  worst_case_per_year: number;
+  assumed_lifetime_operations: number;
+  /** Ungünstigster Fall im Jahr geteilt durch die angenommene Lebensdauer, zwei Stellen. */
+  worst_case_ratio: string;
+}
+
 export interface ProfileOption {
   id: number;
   name: string;
@@ -77,6 +92,7 @@ export interface RoomParameters {
   /** `null`: dieser Zugang darf die Ausgleichswerte nicht sehen (`device.manage`). */
   backup_offsets: BackupOffset[] | null;
   assumed_relay_lifetime_operations: number;
+  pi_switching_model: PiSwitchingModel;
 }
 
 /** Teil-Update: nur gesendete Felder ändern etwas; bei vererbbaren Feldern heißt `null` „erben“. */

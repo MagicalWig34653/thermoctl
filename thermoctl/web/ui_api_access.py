@@ -43,6 +43,7 @@ from thermoctl.db.models.credential import ApiToken, ApiTokenPermission, Session
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.oauth import OAuthClient
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import (
@@ -233,6 +234,9 @@ class KioskTokenOut(BaseModel):
 
 class KioskTokensOut(BaseModel):
     tokens: list[KioskTokenOut]
+    # Zeitzone der Anlage: Ablauf und Benutzung der Zugänge werden darin angezeigt,
+    # nicht in der des Browsers (wie am Alt-Kiosk).
+    timezone: str
     zones: list[ZoneRefOut]
 
 
@@ -879,8 +883,10 @@ def list_kiosk_tokens(
     tokens = session.scalars(
         select(ApiToken).where(ApiToken.is_kiosk.is_(True)).order_by(ApiToken.name)
     ).all()
+    settings = session.get(Setting, 1)
     return KioskTokensOut(
         tokens=[_kiosk_out(session, t, names) for t in tokens],
+        timezone=settings.timezone if settings is not None else "UTC",
         zones=[
             ZoneRefOut(id=z.id, name=z.display_name)
             for z in session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name))

@@ -172,6 +172,31 @@ def test_parameters_show_own_and_effective_values_separately(
     assert body["assumed_relay_lifetime_operations"] == row.assumed_relay_lifetime_operations
 
 
+def test_parameters_carry_the_pi_switching_table_and_the_ratio_from_the_server(
+    client_als: Als, session: Session
+) -> None:
+    """Die Warnung an der PI-Regelung zeigt Zahlen des Servers; der Browser rechnet nicht."""
+    row, zone = _anlage(session)
+    body = client_als(ALLES).get(f"/ui-api/rooms/{zone.id}/parameters").json()
+    model = body["pi_switching_model"]
+    assert [(r["id"], r["per_hour"], r["per_day"], r["per_year"]) for r in model["rows"]] == [
+        ("pi_worst_case", 30, 720, 262_800),
+        ("pi_30_percent_duty", 18, 432, 157_680),
+        ("hysteresis_max", 6, 144, 52_560),
+    ]
+    assert model["worst_case_per_year"] == 262_800
+    assert model["assumed_lifetime_operations"] == row.assumed_relay_lifetime_operations == 500_000
+    assert model["worst_case_ratio"] == "0.53"
+    # Die Annahme ist eine Einstellung: ändert sie sich, ändert sich das Verhältnis mit.
+    row.assumed_relay_lifetime_operations = 100_000
+    session.flush()
+    body = client_als(ALLES).get(f"/ui-api/rooms/{zone.id}/parameters").json()
+    changed = body["pi_switching_model"]
+    assert changed["worst_case_ratio"] == "2.63"
+    assert changed["assumed_lifetime_operations"] == 100_000
+    assert changed["worst_case_per_year"] == 262_800
+
+
 def test_parameters_pi_eligibility_follows_the_actuators(
     client_als: Als, session: Session
 ) -> None:

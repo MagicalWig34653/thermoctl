@@ -33,7 +33,6 @@
     moveIndex,
     nearestIndex,
     runs,
-    SERIES,
     temperatureValues,
     viewRange,
     type Point,
@@ -60,13 +59,15 @@
     formatHeat,
     formatRange,
     formatResolution,
-    formatSetback,
+    formatSetbackRange,
     PERIODS,
     periodLabel,
     periodMs,
     type PeriodId,
   } from '$lib/history/format';
   import { buildQuery } from '$lib/history/reports';
+  import { labelFits, markPath, solarDrawing, solarRuns } from '$lib/history/bands';
+  import { historyWording, seriesList } from '$lib/history/wording';
   import { historyLimiter } from '$lib/history/shared';
 
   let {
@@ -91,11 +92,17 @@
     lazy?: boolean;
     heading?: 'h2' | 'h3';
     title?: string;
-    onLoaded?: (ms: number) => void;
+    onLoaded?: (ms: number, controlArmed: boolean) => void;
   } = $props();
 
-  const { api, prefix } = useApp();
+  const { api, prefix, session } = useApp();
   const uid = $props.id();
+  // Zwei Fassungen derselben Beschriftungen (Anlagensicht und Wohnungssicht); die Zahlen sind gleich.
+  const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
+  const w = $derived(historyWording(tenant));
+  const series = $derived(seriesList(w));
+  const setbackText = (b: { solar_setback_min_k: string | null; solar_setback_k: string | null }) =>
+    formatSetbackRange(b.solar_setback_min_k, b.solar_setback_k, w.kUnit, w.setbackUnknown);
 
   // -- Größe und Eingabeart -----------------------------------------------------------------
   let host: HTMLElement;
@@ -173,7 +180,7 @@
       selected = null;
       if (!firstDone) {
         firstDone = true;
-        onLoaded?.(Math.round(performance.now() - t0));
+        onLoaded?.(Math.round(performance.now() - t0), data.control_armed);
       }
     } catch (error) {
       if (mine !== generation) return;
@@ -277,11 +284,14 @@
   const emptyBuckets = $derived(
     points.filter((p) => p.rows === 0 && !gaps.some((g) => g.start <= p.t && g.end >= p.t)),
   );
+  // Breiten sind exakt: keine Mindestbreite, die eine Zeitspanne vortäuschen würde.
   const rect = (a: number, b: number) => {
     const x1 = Math.max(M.l, xOf(a));
     const x2 = Math.min(M.l + plotW, xOf(b));
     return { x: r1(x1), w: Math.max(0, r1(x2 - x1)) };
   };
+  // Sonnenabsenkung: Läufe aneinandergrenzender Fächer; dünnes Band plus Dreieck, wenn sie schmal sind.
+  const solarDraw = $derived(solarDrawing(solarRuns(points), xOf, M.l, M.l + plotW));
 
   // -- Auswahl, Readout, Tooltip ----------------------------------------------------------
   let selected = $state<number | null>(null);
@@ -423,7 +433,7 @@
       ? 'Zum Zoomen mit gedrückter Maustaste einen Bereich aufziehen (auch rückwärts), Doppelklick zeigt den Gesamtzeitraum, Esc bricht ab. Mit Pfeiltasten, Pos1 und Ende einzelne Punkte wählen.'
       : 'Tippen oder über das Diagramm wischen wählt einen Punkt, die Seite lässt sich dabei normal scrollen. Zum Eingrenzen den Zeitraum oben wählen.',
   );
-  const announce = $derived(selected !== null && keyboard && points[selected] ? describeBucket(points[selected].raw, whenOf(points[selected])) : '');
+  const announce = $derived(selected !== null && keyboard && points[selected] ? describeBucket(points[selected].raw, whenOf(points[selected]), w.names) : '');
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
@@ -466,7 +476,7 @@
             <h3 class="mb-1 text-sm">Diagramm anpassen</h3>
             <p class="mb-3 text-muted-foreground">Wähle die sichtbaren Datenreihen.</p>
             <ul class="m-0 flex list-none flex-col gap-3 p-0">
-              {#each SERIES as s (s.key)}
+              {#each series as s (s.key)}
                 <li class="flex items-center justify-between gap-3">
                   <div class="min-w-0">
                     <strong class="block text-sm font-medium">{s.label}</strong>
@@ -577,21 +587,21 @@
       {#if reading}
         <dl class="m-0 flex flex-wrap gap-x-6 gap-y-1 text-sm">
           <div>
-            <dt class="flex items-center gap-1 text-muted-foreground">Wirksamer Sollwert<HelpTip term="setpoint" /></dt>
+            <dt class="flex items-center gap-1 text-muted-foreground">{tenant ? w.names.effective : 'Wirksamer Sollwert'}<HelpTip term="setpoint" /></dt>
             <dd class="m-0 font-medium tabular-nums">{formatRange(reading.raw.effective_min_c, reading.raw.effective_max_c)}</dd>
           </div>
           <div>
-            <dt class="flex items-center gap-1 text-muted-foreground">Geplanter Sollwert<HelpTip term="planned" /></dt>
+            <dt class="flex items-center gap-1 text-muted-foreground">{tenant ? w.names.scheduled : 'Geplanter Sollwert'}<HelpTip term="planned" /></dt>
             <dd class="m-0 font-medium tabular-nums">{formatRange(reading.raw.scheduled_min_c, reading.raw.scheduled_max_c)}</dd>
           </div>
           {#if !compact}
             <div>
-              <dt class="flex items-center gap-1 text-muted-foreground">Heizanforderung<HelpTip term="heat_request" /></dt>
+              <dt class="flex items-center gap-1 text-muted-foreground">{w.names.heating}<HelpTip term="heat_request" /></dt>
               <dd class="m-0 font-medium tabular-nums">{formatHeat(reading.raw.heat_percent)}</dd>
             </div>
             <div>
-              <dt class="flex items-center gap-1 text-muted-foreground">Sonnenabsenkung<HelpTip term="solar_setback" /></dt>
-              <dd class="m-0 font-medium tabular-nums">{formatSetback(reading.raw.solar_setback_k)}</dd>
+              <dt class="flex items-center gap-1 text-muted-foreground">{w.names.solar}<HelpTip term="solar_setback" /></dt>
+              <dd class="m-0 font-medium tabular-nums" data-testid="readout-setback">{setbackText(reading.raw)}</dd>
             </div>
           {/if}
         </dl>
@@ -664,15 +674,15 @@
             {/each}
             {#each emptyBuckets as p (p.start)}
               {@const r = rect(p.start, p.end)}
-              <rect class="hist-gap" x={r.x} y={M.t} width={Math.max(1, r.w)} height={plotH} fill="url(#{uid}-hatch)" data-testid="gap" />
+              <rect class="hist-gap" x={r.x} y={M.t} width={r.w} height={plotH} fill="url(#{uid}-hatch)" data-testid="gap" />
             {/each}
 
             {#if flags.solar}
-              {#each points as p (p.start)}
-                {#if p.solar !== null && p.solar > 0}
-                  {@const r = rect(p.start, p.end)}
-                  <rect x={r.x} y={M.t} width={Math.max(1, r.w)} height={plotH} fill="var(--h-solar)" opacity="0.12" />
-                  <rect x={r.x} y={M.t} width={Math.max(1, r.w)} height="4" fill="var(--h-solar)" />
+              {#each solarDraw.bands as band (band.run.start)}
+                <rect x={r1(band.x)} y={M.t} width={band.width} height={plotH} fill="var(--h-solar)" opacity="0.12" data-testid="solar-band" />
+                <rect x={r1(band.x)} y={M.t} width={band.width} height="4" fill="var(--h-solar)" />
+                {#if labelFits(`${w.names.solar} ${formatSetbackRange(band.run.min, band.run.max, w.kUnit)}`, band.width)}
+                  <text x={r1(band.x) + 6} y={M.t + 17} class="hist-solar-label">{w.names.solar} {formatSetbackRange(band.run.min, band.run.max, w.kUnit)}</text>
                 {/if}
               {/each}
             {/if}
@@ -681,8 +691,8 @@
               {#each points as p (p.start)}
                 {#if p.heat !== null && p.heat > 0}
                   {@const r = rect(p.start, p.end)}
-                  {@const h = Math.max(1.5, (p.heat / 100) * heatH)}
-                  <rect x={r.x} y={M.t + plotH - h} width={Math.max(1, r.w - 0.5)} height={h} fill="var(--h-heat)" opacity="0.55" />
+                  {@const h = (p.heat / 100) * heatH}
+                  <rect x={r.x} y={M.t + plotH - h} width={r.w} height={h} fill="var(--h-heat)" opacity="0.55" />
                 {/if}
               {/each}
             {/if}
@@ -742,6 +752,12 @@
             {/if}
           </g>
 
+          {#if flags.solar}
+            {#each solarDraw.marks as x (x)}
+              <path d={markPath(x, M.t)} fill="var(--h-solar)" data-testid="solar-mark" />
+            {/each}
+          {/if}
+
           <line x1={M.l} x2={M.l + plotW} y1={M.t + plotH} y2={M.t + plotH} stroke="var(--h-axis)" opacity="0.5" />
 
           {#if picked}
@@ -767,12 +783,12 @@
               <div>Messlücke – keine Messwerte.</div>
             {:else}
               <table class="w-full border-collapse"><tbody>
-                {#if flags.actual}<tr><td>Messwert</td><td class="text-right font-medium tabular-nums">{formatCelsius(picked.raw.temperature_c)}</td></tr>{/if}
-                {#if flags.range}<tr><td>Min./Max.</td><td class="text-right tabular-nums">{formatRange(picked.raw.temperature_min_c, picked.raw.temperature_max_c)}</td></tr>{/if}
-                {#if flags.effective}<tr><td>Wirksam</td><td class="text-right tabular-nums">{formatRange(picked.raw.effective_min_c, picked.raw.effective_max_c)}</td></tr>{/if}
-                {#if flags.scheduled}<tr><td>Geplant</td><td class="text-right tabular-nums">{formatRange(picked.raw.scheduled_min_c, picked.raw.scheduled_max_c)}</td></tr>{/if}
-                {#if flags.heating}<tr><td>Heizen</td><td class="text-right tabular-nums">{formatHeat(picked.raw.heat_percent)}</td></tr>{/if}
-                {#if flags.solar}<tr><td>Sonne</td><td class="text-right tabular-nums">{formatSetback(picked.raw.solar_setback_k)}</td></tr>{/if}
+                {#if flags.actual}<tr><td>{w.short.actual}</td><td class="text-right font-medium tabular-nums">{formatCelsius(picked.raw.temperature_c)}</td></tr>{/if}
+                {#if flags.range}<tr><td>{w.short.range}</td><td class="text-right tabular-nums">{formatRange(picked.raw.temperature_min_c, picked.raw.temperature_max_c)}</td></tr>{/if}
+                {#if flags.effective}<tr><td>{w.short.effective}</td><td class="text-right tabular-nums">{formatRange(picked.raw.effective_min_c, picked.raw.effective_max_c)}</td></tr>{/if}
+                {#if flags.scheduled}<tr><td>{w.short.scheduled}</td><td class="text-right tabular-nums">{formatRange(picked.raw.scheduled_min_c, picked.raw.scheduled_max_c)}</td></tr>{/if}
+                {#if flags.heating}<tr><td>{w.short.heating}</td><td class="text-right tabular-nums">{formatHeat(picked.raw.heat_percent)}</td></tr>{/if}
+                {#if flags.solar}<tr><td>{w.short.solar}</td><td class="text-right tabular-nums">{setbackText(picked.raw)}</td></tr>{/if}
               </tbody></table>
             {/if}
           </div>
@@ -783,7 +799,7 @@
     <!-- Kompakte Legende, schaltbar -->
     {#if !compact}
       <ul class="m-0 mt-2 flex list-none flex-wrap gap-x-1 gap-y-1 p-0" aria-label="Legende">
-        {#each SERIES as s (s.key)}
+        {#each series as s (s.key)}
           <li>
             <button
               type="button"
@@ -801,11 +817,18 @@
             </button>
           </li>
         {/each}
+        {#if flags.solar && solarDraw.marks.length > 0}
+          <li class="inline-flex min-h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground" data-testid="legend-short-mark">
+            <svg width="10" height="8" viewBox="0 0 10 8" aria-hidden="true"><path d="M0,0L10,0L5,8Z" fill="var(--h-solar)" /></svg>
+            {w.legendShortMark}
+          </li>
+        {/if}
         <li class="inline-flex min-h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
           <span class="hist-sw-box" style="background:repeating-linear-gradient(45deg,var(--muted),var(--muted) 3px,var(--h-axis) 3px,var(--h-axis) 4px)"></span>
           Messlücke<HelpTip term="gap" />
         </li>
       </ul>
+      {#if tenant}<p class="m-0 mt-1 px-2 text-xs text-muted-foreground" data-testid="legend-solar">{w.legendSolar}</p>{/if}
     {/if}
 
     <p id="{uid}-hint" class="m-0 mt-2 text-xs text-muted-foreground" data-testid="hint" data-input={finePointer ? 'mouse' : 'touch'}>
@@ -831,12 +854,12 @@
           <thead class="sticky top-0 bg-card">
             <tr class="text-left">
               <th scope="col" class="px-2 py-1.5">Zeit</th>
-              <th scope="col" class="px-2 py-1.5">Messwert</th>
-              <th scope="col" class="px-2 py-1.5">Min./Max.</th>
-              <th scope="col" class="px-2 py-1.5">Geplant</th>
-              <th scope="col" class="px-2 py-1.5">Wirksam</th>
-              <th scope="col" class="px-2 py-1.5">Heizen</th>
-              <th scope="col" class="px-2 py-1.5">Sonne</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.actual}</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.range}</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.scheduled}</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.effective}</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.heating}</th>
+              <th scope="col" class="px-2 py-1.5">{w.short.solar}</th>
             </tr>
           </thead>
           <tbody>
@@ -851,7 +874,7 @@
                   <td class="px-2 py-1">{formatRange(p.raw.scheduled_min_c, p.raw.scheduled_max_c)}</td>
                   <td class="px-2 py-1">{formatRange(p.raw.effective_min_c, p.raw.effective_max_c)}</td>
                   <td class="px-2 py-1">{formatHeat(p.raw.heat_percent)}</td>
-                  <td class="px-2 py-1">{formatSetback(p.raw.solar_setback_k)}</td>
+                  <td class="px-2 py-1">{setbackText(p.raw)}</td>
                 {/if}
               </tr>
             {/each}

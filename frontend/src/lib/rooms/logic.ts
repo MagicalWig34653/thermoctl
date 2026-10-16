@@ -77,13 +77,22 @@ export interface RoomStatus {
   attention: boolean;
 }
 
+/** Neutraler Hinweis bei veraltetem Messwert: der Effekt, nicht die Ursache (kein Gerät, kein Sensorcode). */
+export const STALE_MEASUREMENT_NOTICE = 'Messwert möglicherweise nicht aktuell – die Heizung regelt weiter.';
+
 /** Ein Wort für die Karte. Reihenfolge: Sensorstörung vor Fenster vor Aus vor Heizanforderung.
- *  „Heizanforderung“ ist eine Entscheidung (`decision.would_heat`), kein gemeldeter Schaltzustand. */
-export function roomStatus(room: Room): RoomStatus {
-  if (room.temperature_c === null || room.sensor.status_code !== 'ok') {
+ *  „Heizanforderung“ ist eine Entscheidung (`decision.would_heat`), kein gemeldeter Schaltzustand.
+ *  In der Wohnungssicht (`tenant`) ist ein veralteter Messwert keine Störung der Karte: Er steht
+ *  als neutraler Hinweis daneben (`measurementLine`), die Entscheidung bleibt sichtbar. */
+export function roomStatus(room: Room, tenant = false): RoomStatus {
+  const neutralStale = tenant && room.measurement_stale && room.temperature_c !== null;
+  if (!neutralStale && (room.temperature_c === null || room.sensor.status_code !== 'ok')) {
     return { kind: 'sensor', label: room.sensor.status_code === 'ok' ? 'Kein Messwert' : room.sensor.status_label, attention: true };
   }
-  if (room.sensor.window_open || room.sensor.window_alarm) {
+  if (room.sensor.window_alarm) {
+    return { kind: 'window', label: 'Fenster vergessen', attention: true };
+  }
+  if (room.sensor.window_open) {
     return { kind: 'window', label: 'Fenster offen', attention: true };
   }
   if (room.operating_mode.code === 'off') return { kind: 'off', label: room.operating_mode.label, attention: false };
@@ -91,6 +100,17 @@ export function roomStatus(room: Room): RoomStatus {
   return room.decision.would_heat
     ? { kind: 'heating', label: 'Heizanforderung', attention: false }
     : { kind: 'idle', label: 'Im Ziel', attention: false };
+}
+
+/** Zeile unter der Ist-Temperatur. Wohnungssicht und veralteter Wert: neutraler Hinweis statt
+ *  Gerätezustand. Sonst wie bisher: Alter der Messung bzw. der Zustand des Fühlers. */
+export function measurementLine(room: Room, tenant = false): { text: string; problem: boolean } {
+  if (room.temperature_c === null) return { text: room.sensor.status_label, problem: true };
+  if (tenant && room.measurement_stale) {
+    return { text: `${STALE_MEASUREMENT_NOTICE} (${formatAge(room.measured_age_seconds)})`, problem: false };
+  }
+  const ok = room.sensor.status_code === 'ok';
+  return { text: `${ok ? 'Messung' : room.sensor.status_label} ${formatAge(room.measured_age_seconds)}`, problem: !ok };
 }
 
 /** Liegt der wirksame Sollwert neben dem geplanten (Übersteuerung, Urlaub, Betriebsart)? */
@@ -139,7 +159,7 @@ export interface ActuationRow {
   help: string;
 }
 
-/** Gespeicherte Freigabe, MQTT-Sendefreigabe und Führungsrolle sind getrennte Tatsachen;
+/** Gespeicherte Freigabe, Sendefreigabe und Führungsrolle sind getrennte Tatsachen;
  *  keine davon folgt aus einer anderen. */
 export function actuationRows(actuation: Actuation): ActuationRow[] {
   return [
@@ -152,7 +172,7 @@ export function actuationRows(actuation: Actuation): ActuationRow[] {
     },
     {
       id: 'sending',
-      title: 'MQTT-Sendefreigabe',
+      title: 'Sendefreigabe (MQTT und Meross)',
       value: actuation.sending_allowed ? 'Beim Start freigegeben' : 'Beim Start nicht freigegeben',
       tone: actuation.sending_allowed ? 'ok' : actuation.control_armed ? 'warn' : 'neutral',
       help: 'sending_allowed',

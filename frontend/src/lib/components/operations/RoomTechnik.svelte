@@ -12,6 +12,7 @@
   import type { RoomParameters } from '$lib/operations/types';
   import InheritField from './InheritField.svelte';
   import NumField from './NumField.svelte';
+  import PiWarning from './PiWarning.svelte';
   import ToggleRow from './ToggleRow.svelte';
 
   // Raumtechnik im Raumdetail. Der Entwurf liegt im Zustand dieser Komponente, nicht im
@@ -155,6 +156,7 @@
         <details class="rounded-lg border" bind:open={openGroups.pi}>
           <summary class="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold">{@render groupHead('PI-Regler (Beta)', 'pi')}</summary>
           <div class="space-y-4 px-3 pt-1 pb-4">
+            <PiWarning model={params.pi_switching_model} />
             <div data-testid="pi-eligibility">
               <Notice tone={params.pi.eligible ? 'info' : 'warn'}>
                 <strong>{params.pi.eligible ? 'Zulässig.' : 'Nicht zulässig.'}</strong> {params.pi.eligibility_reason}

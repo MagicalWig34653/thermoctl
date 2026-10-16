@@ -214,3 +214,8 @@ export function summary(diagram: Diagram, title: string): string {
   const base = `${title}: ${diagram.nodes.length} Beteiligte, ${diagram.edges.length} Verbindungen`;
   return missing ? `${base}, ${missing} fehlend` : base;
 }
+
+/** Hinweis unter jedem Datenfluss (Wortlaut wie in der Alt-Oberfläche): das Diagramm zeigt
+ *  Absicht, nicht Versand. */
+export const FLOW_NOTE =
+  'Das Diagramm zeigt, was thermoctl schreiben würde. Im Trockenlauf wird nichts gesendet, und Werte außerhalb des Gerätebereichs werden nicht gesendet. Die Notbetrieb-Übergabe ist hier nicht dargestellt.';

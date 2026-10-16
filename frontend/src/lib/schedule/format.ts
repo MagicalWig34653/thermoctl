@@ -2,6 +2,16 @@
 
 import type { ForecastSegment } from './types';
 
+/**
+ * Hinweis über dem Wochenplan, wenn man ihn nur ansehen darf. Nennt die Räume, in denen man
+ * schreiben darf (aus `copy_targets`, also vom Server nach `schedule.manage` bestimmt).
+ */
+export function readOnlyNotice(plan: { copy_targets: { name: string }[] }): string {
+  const base = 'Du kannst diesen Plan ansehen, aber nicht ändern.';
+  if (!plan.copy_targets.length) return base;
+  return `${base} Ändern kannst du den Plan in: ${plan.copy_targets.map((t) => t.name).join(', ')}.`;
+}
+
 /** „Europe/Berlin · MESZ (UTC+2)“ -- die Zeitzone der Anlage mit aktuellem Namen und Versatz. */
 export function zoneLabel(timeZone: string, now: Date = new Date()): string {
   try {

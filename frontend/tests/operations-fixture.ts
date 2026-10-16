@@ -48,6 +48,16 @@ export function parameters(over: Partial<RoomParameters> = {}): RoomParameters {
     },
     backup_offsets: [{ assignment_id: 9, device_name: 'Ersatzfühler', offset_k: '0.3' }],
     assumed_relay_lifetime_operations: 100000,
+    pi_switching_model: {
+      rows: [
+        { id: 'pi_worst_case', per_hour: 30, per_day: 720, per_year: 262800 },
+        { id: 'pi_30_percent_duty', per_hour: 18, per_day: 432, per_year: 157680 },
+        { id: 'hysteresis_max', per_hour: 6, per_day: 144, per_year: 52560 },
+      ],
+      worst_case_per_year: 262800,
+      assumed_lifetime_operations: 100000,
+      worst_case_ratio: '2.63',
+    },
     ...over,
   };
 }

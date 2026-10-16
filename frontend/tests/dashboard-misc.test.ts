@@ -101,6 +101,7 @@ function room(over: Partial<Room> & { id: number; name: string }): Room {
     temperature_c: '21.0',
     measured_at: null,
     measured_age_seconds: 10,
+    measurement_stale: false,
     sensor: { status_code: 'ok', status_label: 'ok', stuck: false, window_open: false, window_open_by_temperature: false, window_alarm: false },
     setpoint: { temperature_c: '21.0', reason: 'plan', mode_id: null, mode_name: null },
     override: null,
@@ -117,6 +118,7 @@ const rooms = (list: Room[], state: Rooms['actuation']['state'] = 'live'): Rooms
   poll_interval_seconds: 30,
   now_fraction: 10,
   actuation: { control_armed: state !== 'dry_run', sending_allowed: state === 'live', cluster_standby: false, state },
+  outdoor: null,
   rooms: list,
 });
 
@@ -138,6 +140,19 @@ test('Außentemperatur: nicht erfunden, sondern als nicht verfügbar gekennzeich
   const m = metricValue('outdoor', rooms([]));
   assert.equal(m.available, false);
   assert.equal(m.value, '–');
+});
+
+test('Außentemperatur: Wert, veraltet und fehlende Quelle sind getrennte Texte', () => {
+  const withOutdoor = (outdoor: Rooms['outdoor']): Rooms => ({ ...rooms([]), outdoor });
+  const ok = metricValue('outdoor', withOutdoor({ status: 'ok', temperature_c: '3.20', measured_at: '2026-10-16T08:00:00+00:00' }));
+  assert.equal(ok.available, true);
+  assert.equal(ok.value, '3,2 °C');
+  const stale = metricValue('outdoor', withOutdoor({ status: 'veraltet', temperature_c: null, measured_at: '2026-10-14T08:00:00+00:00' }));
+  assert.deepEqual([stale.value, stale.note, stale.available], ['–', 'Wert veraltet', false]);
+  const none = metricValue('outdoor', withOutdoor({ status: 'keine_quelle', temperature_c: null, measured_at: null }));
+  assert.deepEqual([none.value, none.note, none.available], ['–', 'Keine Quelle gewählt', false]);
+  // Ein veralteter Wert wird nie als Zahl gezeigt, auch wenn der Server eine mitschickt.
+  assert.equal(metricValue('outdoor', withOutdoor({ status: 'veraltet', temperature_c: '3.2', measured_at: null })).value, '–');
 });
 
 test('Heute relevant: Störungen vor Übersteuerungen, begrenzt', () => {

@@ -21,6 +21,7 @@ from thermoctl.domain.statistics import (
     ZoneStatistics,
     as_duration,
     heating_periods,
+    pi_switching_model,
     relay_operations,
 )
 
@@ -660,3 +661,18 @@ def test_the_same_switching_pattern_warns_at_100000_and_not_at_500000() -> None:
     assert strict.wear_level == "warning"
     assert lenient.wear_level == "normal"
     assert strict.assumed_lifetime_percent_per_year > lenient.assumed_lifetime_percent_per_year
+
+
+def test_pi_switching_model_derives_the_table_and_rounds_the_ratio_half_up() -> None:
+    model = pi_switching_model(500_000)
+    assert [(r.id, r.per_hour, r.per_day, r.per_year) for r in model.rows] == [
+        ("pi_worst_case", 30, 720, 262_800),
+        ("pi_30_percent_duty", 18, 432, 157_680),
+        ("hysteresis_max", 6, 144, 52_560),
+    ]
+    assert model.worst_case_per_year == 262_800
+    assert str(model.worst_case_ratio) == "0.53"
+    assert str(pi_switching_model(100_000).worst_case_ratio) == "2.63"
+    # 262.800 / 210.240 = 1,25 exakt; 262.800 / 105.120 = 2,5 -- keine Gleitkommaabweichung.
+    assert str(pi_switching_model(210_240).worst_case_ratio) == "1.25"
+    assert str(pi_switching_model(1_000_000).worst_case_ratio) == "0.26"

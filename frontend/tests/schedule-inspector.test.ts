@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { clockValue, exactTimes, nudge, parseClock, toDay } from '../src/lib/schedule/inspector.ts';
 import { describeIntent, ghostOf, isNoop, range, selectionAfter, type Intent } from '../src/lib/schedule/intents.ts';
-import { localClock, stripParts, zoneLabel } from '../src/lib/schedule/format.ts';
+import { localClock, readOnlyNotice, stripParts, zoneLabel } from '../src/lib/schedule/format.ts';
 
 import { ring } from './schedule-fixture.ts';
 
@@ -119,4 +119,12 @@ test('Zeitzone mit Namen der Jahreszeit', () => {
   assert.match(zoneLabel('Europe/Berlin', new Date('2026-07-01T12:00:00Z')), /Europe\/Berlin · (MESZ|GMT\+2)/);
   assert.match(zoneLabel('Europe/Berlin', new Date('2026-01-01T12:00:00Z')), /Europe\/Berlin · (MEZ|GMT\+1)/);
   assert.equal(zoneLabel('Kein/Ort'), 'Kein/Ort');
+});
+
+test('Nur lesbarer Plan: Hinweis „ansehen, aber nicht ändern“ nennt bearbeitbare Räume', () => {
+  assert.equal(readOnlyNotice({ copy_targets: [] }), 'Du kannst diesen Plan ansehen, aber nicht ändern.');
+  assert.equal(
+    readOnlyNotice({ copy_targets: [{ name: 'Bad' }, { name: 'Küche' }] }),
+    'Du kannst diesen Plan ansehen, aber nicht ändern. Ändern kannst du den Plan in: Bad, Küche.',
+  );
 });

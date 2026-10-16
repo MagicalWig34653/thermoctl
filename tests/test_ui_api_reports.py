@@ -186,6 +186,7 @@ def test_history_gaps_stay_gaps_and_values_are_exact(client_als: Als, session: S
     assert first["rows"] == 1 and first["measurements"] == 1
     assert first["temperature_c"] == "19.0"
     assert first["heat_percent"] == 100 and first["solar_setback_k"] == "1.5"
+    assert first["solar_setback_min_k"] == "1.5"
     assert first["effective_min_c"] == "21.0" and first["scheduled_max_c"] == "21.0"
     # Lücke: jedes Fach dazwischen ist ausdrücklich leer -- nichts interpoliert.
     for index in range(5, 35):
@@ -194,12 +195,14 @@ def test_history_gaps_stay_gaps_and_values_are_exact(client_als: Als, session: S
         assert empty["temperature_c"] is None and empty["temperature_min_c"] is None
         assert empty["scheduled_min_c"] is None and empty["effective_max_c"] is None
         assert empty["heat_percent"] is None and empty["solar_setback_k"] is None
+        assert empty["solar_setback_min_k"] is None
     # Zeile ohne Messwert: belegt, aber ohne Temperatur; unbekannte Absenkung bleibt null.
     sensor_out = buckets[35]
     assert sensor_out["rows"] == 1 and sensor_out["measurements"] == 0
     assert sensor_out["temperature_c"] is None
     assert sensor_out["effective_min_c"] == "22.0" and sensor_out["scheduled_min_c"] is None
     assert sensor_out["solar_setback_k"] is None and sensor_out["heat_percent"] == 0
+    assert sensor_out["solar_setback_min_k"] is None
     # Sollwert fehlt in dieser Zeile: null, nicht der Vorgänger.
     assert buckets[36]["effective_min_c"] is None and buckets[36]["scheduled_min_c"] == "20.0"
     assert buckets[36]["temperature_c"] == "18.25"
@@ -244,6 +247,54 @@ def test_history_bucket_mean_min_max_and_setpoint_changes(
     # Kein Mittel über den Sprung: beide Werte stehen da.
     assert (bucket["effective_min_c"], bucket["effective_max_c"]) == ("17.0", "21.0")
     assert bucket["heat_percent"] == 25
+
+
+def test_history_says_whether_the_plant_is_armed(client_als: Als, session: Session) -> None:
+    """Im Trockenlauf zeigt der Verlauf Entscheidungen („hätte“), keine Aufzeichnung der Räume."""
+    zone = create_zone(session, "trocken")
+    end = _now() - timedelta(hours=1)
+    start = end - timedelta(minutes=5)
+    session.add(_row(zone, start))
+    session.flush()
+    client = client_als([("zone.read", zone.id)])
+    params = _params(zone, start, end)
+    # Ohne Einrichtungszeile: nicht scharf.
+    assert session.get(Setting, 1) is None
+    assert client.get("/ui-api/history", params=params).json()["control_armed"] is False
+    row = create_settings(session)
+    assert client.get("/ui-api/history", params=params).json()["control_armed"] is False
+    row.control_armed = True
+    session.flush()
+    assert client.get("/ui-api/history", params=params).json()["control_armed"] is True
+
+
+def test_history_bucket_labels_a_changing_setback_with_its_range(
+    client_als: Als, session: Session
+) -> None:
+    """Wechselt die Absenkung im Fach, liefert es Kleinst- und Höchstwert, nie nur Letzteren."""
+    zone = create_zone(session, "spanne")
+    end = _now() - timedelta(hours=2)
+    start = end - timedelta(hours=2)
+    # Auflösung 10 min: Absenkung 0,5 / 2,0 / „keine Absenkung“ (Zeile mit Plansoll, ohne
+    # Absenkung = 0 K) / 3,0 in einem Fach.
+    for minute, solar in enumerate(["0.5", "2.0", None, "3.0"]):
+        session.add(_row(zone, start + timedelta(minutes=minute), solar=solar))
+    # Zweites Fach: gleichbleibende Absenkung -- Minimum und Maximum fallen zusammen.
+    for minute in (10, 11):
+        session.add(_row(zone, start + timedelta(minutes=minute), solar="1.0"))
+    # Drittes Fach: Zeile aus der Zeit vor der Spalte (kein Plansoll, keine Absenkung) --
+    # unbekannt, nicht null Kelvin.
+    session.add(_row(zone, start + timedelta(minutes=20), scheduled=None, solar=None))
+    session.flush()
+    body = (
+        client_als([("zone.read", zone.id)])
+        .get("/ui-api/history", params=_params(zone, start, end, resolution=600))
+        .json()
+    )
+    first, second, third = body["buckets"][:3]
+    assert (first["solar_setback_min_k"], first["solar_setback_k"]) == ("0.0", "3.0")
+    assert (second["solar_setback_min_k"], second["solar_setback_k"]) == ("1.0", "1.0")
+    assert third["solar_setback_min_k"] is None and third["solar_setback_k"] is None
 
 
 def test_history_row_exactly_at_end_belongs_to_last_bucket(
@@ -429,6 +480,7 @@ def test_history_csv_has_the_same_data_and_guards_formulas(
     assert response.headers["cache-control"] == "no-store"
     rows = list(csv.reader(io.StringIO(response.text)))
     assert rows[0][:3] == ["zone", "bucket_start_utc", "rows"]
+    assert rows[0][-2:] == ["solar_setback_min_k", "solar_setback_k"]
     assert len(rows) == 1 + 5
     data = dict(zip(rows[0], rows[1], strict=True))
     assert zone.display_name.startswith("=")

@@ -1446,3 +1446,32 @@ def test_tenant_with_permission_passes_the_profile_gate(
         client, method, _url(session, zone, template), _mit_modus(body, tag)
     )
     assert response.json().get("code") != "wrong_profile", response.text
+
+
+def test_read_only_source_offers_only_the_rooms_the_principal_may_write(
+    client_als: Als, session: Session
+) -> None:
+    """Quelle nur lesbar (`zone.read`), Ziel `schedule.manage`: Die Übernahme wird angeboten.
+
+    Rechte entscheidet der Server je Raum; ein dritter, nur lesbarer Raum erscheint nicht.
+    """
+    zone = _raum(session)
+    writable = _ziel(session, "bearbeitbar")
+    _ziel(session, "nurlesen")
+    client = client_als(
+        [("zone.read", None), ("schedule.manage", writable.id)]
+    )
+    body = client.get(f"/ui-api/schedule/{zone.id}").json()
+    assert body["can_edit"] is False
+    assert [t["id"] for t in body["copy_targets"]] == [writable.id]
+    response = _call(
+        client,
+        "POST",
+        f"/ui-api/schedule/{zone.id}/copy-week",
+        {
+            "version": "0",
+            "targets": [{"zone_id": writable.id, "version": body["copy_targets"][0]["version"]}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert _points(session, writable) == _points(session, zone)
