@@ -13,6 +13,7 @@ export type Intent =
   | { type: 'resize'; block: BlockRef; newStart: number; newEnd: number; adjacent: boolean }
   | { type: 'delete'; block: BlockRef }
   | { type: 'setMode'; block: BlockRef; pointId: number; modeId: number }
+  | { type: 'point'; weekday: number; minute: number; modeId: number }
   | { type: 'dayTimes'; weekday: number; first: number; second: number }
   | { type: 'copyDay'; weekday: number; scope: 'workdays' | 'all' }
   | { type: 'copyWeek'; targets: { zone_id: number; version: string }[] };
@@ -111,6 +112,8 @@ export function describeIntent(intent: Intent): string {
       return `Zeit entfernt: ${range(intent.block)}`;
     case 'setMode':
       return `Temperatur geändert: ${range(intent.block)}`;
+    case 'point':
+      return `Schaltpunkt angelegt: ${DAY_NAMES[intent.weekday]} ${formatMinute(intent.minute)}`;
     case 'dayTimes':
       return `Tageszeiten gesetzt: ${DAY_NAMES[intent.weekday]} ${formatMinute(intent.first)} und ${formatMinute(intent.second)}`;
     case 'copyDay':

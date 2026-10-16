@@ -11,6 +11,7 @@
   import type { Intent } from '$lib/schedule/intents';
   import { formatCelsius } from '$lib/rooms/decimal';
   import CopyPanel from './CopyPanel.svelte';
+  import NewTimePanel from './NewTimePanel.svelte';
   import DayTimesPanel from './DayTimesPanel.svelte';
   import SetupDialog from './SetupDialog.svelte';
   import { planIsEmpty } from '$lib/schedule/daytimes';
@@ -45,6 +46,13 @@
   }
 
   const act = (intent: Intent) => void editor.submit(intent);
+  // Für das Formular „Neue Zeit anlegen“: Fehlermeldung oder Status (steht auch im Editor).
+  async function createTime(intent: Intent): Promise<{ error: string | null; status: string }> {
+    const ok = await editor.submit(intent);
+    return ok
+      ? { error: null, status: editor.status }
+      : { error: editor.notice?.text ?? 'Die Änderung wurde nicht gespeichert.', status: '' };
+  }
   const say = (text: string) => (editor.notice = { tone: 'warn', text });
   function remove() {
     const block = editor.selectedBlock;
@@ -216,6 +224,15 @@
   <div class="mt-6 grid gap-6">
     <PreviewStrip preview={editor.preview} error={editor.previewError} />
     {#if plan.can_edit}
+      <NewTimePanel
+        {plan}
+        {activeDay}
+        busy={editor.busy}
+        locked={editor.conflict}
+        brushModeId={brushMode?.id ?? null}
+        onsubmit={createTime}
+        onreload={() => editor.reload()}
+      />
       <DayTimesPanel {plan} {activeDay} busy={editor.busy || editor.conflict} onintent={act} onmessage={say} />
     {/if}
     {#if plan.can_edit || plan.copy_targets.length}

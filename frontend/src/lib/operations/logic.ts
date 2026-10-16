@@ -4,9 +4,9 @@
 // Eingaben zu einer Anfrage zusammengesetzt werden. Zahlen bleiben Zeichenketten.
 
 import { compareDecimal } from '../rooms/decimal';
-import { toFailure, type Failure } from '../rooms/logic';
+import { formatInstant, toFailure, type Failure } from '../rooms/logic';
 import type {
-  ArmedResult, ControlFieldName, InterfaceDetail, NotificationTest, NumberField,
+  ArmedResult, ControlFieldName, EmergencyActuator, InterfaceDetail, NotificationTest, NumberField,
   OperationActuation, ParametersPatch, PiSwitchingModel, RoomParameters, Settings,
 } from './types';
 
@@ -610,4 +610,32 @@ export function switchingTable(model: PiSwitchingModel): SwitchingTableRow[] {
 /** „rund 0,53 solcher Relaislebensdauern im Jahr“, mit dem vom Server gelieferten Verhältnis. */
 export function wearRatioSentence(model: PiSwitchingModel): string {
   return `Mit der in den Regelvorgaben hinterlegten, austauschbaren Annahme von derzeit ${formatCount(model.assumed_lifetime_operations)} elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine Meross-Herstellerangabe – öffentliche Daten dazu fehlen) entspricht der ungünstigste Fall rund ${toInput(model.worst_case_ratio)} solcher Relaislebensdauern im Jahr.`;
+}
+
+// -- Notbetrieb: Aktortabelle ----------------------------------------------------------------------
+
+export interface ActuatorCycle {
+  /** „Ein“ / „Aus“, `null` ohne laufenden Takt. */
+  phase: string | null;
+  /** „Kennlinie“ (Takt aus der Außentemperatur) oder „Festtakt“, `null` ohne Quelle. */
+  source: string | null;
+  /** Ende der Takt-Phase in der Anlagenzeit, `null` ohne Frist. */
+  deadline: string | null;
+  /** „120 s an / 480 s aus“, `null`, wenn der Takt nicht vollständig bekannt ist. */
+  cycle: string | null;
+}
+
+/** Wortlaut wie die Alt-Ansicht (`control.html`): Phase Ein/Aus, Takt aus Kennlinie oder Festtakt, Frist. */
+export function actuatorCycle(a: EmergencyActuator, timezone: string): ActuatorCycle {
+  return {
+    phase: a.phase === null ? null : a.phase === 'ein' ? 'Ein' : 'Aus',
+    source: a.cycle_source === null ? null : a.cycle_source === 'kennlinie' ? 'Kennlinie' : 'Festtakt',
+    deadline: a.phase_deadline_at === null ? null : formatInstant(a.phase_deadline_at, timezone),
+    cycle: a.on_seconds !== null && a.off_seconds !== null ? `${a.on_seconds} s an / ${a.off_seconds} s aus` : null,
+  };
+}
+
+/** Sensor-Timeout eines Raums („90 s“); wie die Alt-Ansicht nur, wenn der Server einen Wert liefert (nicht 0). */
+export function sensorTimeoutText(seconds: number | null): string | null {
+  return seconds ? `${seconds} s` : null;
 }

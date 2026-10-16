@@ -7,6 +7,7 @@
 //   POST /ui-api/schedule/{z}/block/resize        {..., new_start_minute, new_end_minute, adjacent?}
 //   POST /ui-api/schedule/{z}/block/delete        {version, weekday, start_minute, end_minute}
 //   PUT  /ui-api/schedule/{z}/points/{id}/mode    {version, mode_id}   (Modus eines ganzen Blocks)
+//   POST /ui-api/schedule/{z}/points               {version, weekday, minute_of_day, mode_id}   (einzelner Schaltpunkt)
 //   POST /ui-api/schedule/{z}/day-times           {version, weekday, first_minute, second_minute}   (zwei Zeiten eines Tages)
 //   POST /ui-api/schedule/{z}/copy-day, copy-week, undo
 //   Jede Schreibanfrage (außer copy-week) nimmt `previous_undo_token`: die zuletzt erhaltene Marke
@@ -92,6 +93,8 @@ export function requestOf(intent: Intent, version: string, previousUndoToken: st
       });
     case 'setMode':
       return make(`points/${intent.pointId}/mode`, { mode_id: intent.modeId }, 'PUT');
+    case 'point':
+      return make('points', { weekday: intent.weekday, minute_of_day: intent.minute, mode_id: intent.modeId });
     case 'dayTimes':
       return make('day-times', { weekday: intent.weekday, first_minute: intent.first, second_minute: intent.second });
     case 'copyDay':

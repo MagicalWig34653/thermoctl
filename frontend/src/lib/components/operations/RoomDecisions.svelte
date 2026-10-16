@@ -3,7 +3,7 @@
   import { useApp } from '$lib/context';
   import { formatCelsius } from '$lib/rooms/decimal';
   import { formatInstant } from '$lib/rooms/logic';
-  import { decisionEffect } from '$lib/operations/logic';
+  import { actuatorCycle, decisionEffect, sensorTimeoutText } from '$lib/operations/logic';
   import type { Operation } from '$lib/operations/types';
   import Notice from '$lib/components/rooms/Notice.svelte';
 
@@ -59,14 +59,31 @@
                 {#if e.outdoor_status_text}Außentemperatur: {e.outdoor_status_text}{e.outdoor_temperature_c !== null ? ` (${formatCelsius(e.outdoor_temperature_c)})` : ''}. {/if}
                 {#if e.recovery_samples !== null}Rückkehr: {e.recovery_sample_count} von {e.recovery_samples} guten Messwerten.{/if}
               </Notice>
+              {@const timeout = sensorTimeoutText(e.sensor_timeout_seconds)}
+              {#if timeout}
+                <p class="mt-2 mb-0 text-sm" data-testid={`emergency-timeout-${room.id}`}>
+                  <span class="text-muted-foreground">Sensor-Timeout</span> {timeout}
+                </p>
+              {/if}
               {#if e.actuators.length}
-                <ul class="mt-3 mb-0 list-none space-y-2 p-0 text-sm">
+                <ul class="mt-3 mb-0 list-none space-y-2 p-0 text-sm" aria-label="Aktoren im Notbetrieb">
                   {#each e.actuators as actuator (actuator.device_id)}
-                    <li class="rounded-lg bg-muted/60 px-3 py-2">
+                    {@const c = actuatorCycle(actuator, timezone)}
+                    <li class="rounded-lg bg-muted/60 px-3 py-2" data-testid={`emergency-actuator-${actuator.device_id}`}>
                       <strong>{actuator.device_name}</strong>
-                      {#if actuator.phase}· Phase {actuator.phase}{/if}
-                      {#if actuator.on_seconds !== null && actuator.off_seconds !== null}· Takt {actuator.on_seconds} s an / {actuator.off_seconds} s aus{/if}
-                      <div class="text-muted-foreground">{actuator.handover_status_text} {actuator.restore_status_text}</div>
+                      <dl class="m-0 mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+                        <dt class="text-muted-foreground">Takt-Phase</dt>
+                        <dd class="m-0">{c.phase ?? '–'}</dd>
+                        <dt class="text-muted-foreground">Taktquelle</dt>
+                        <dd class="m-0">{c.source ?? '–'}</dd>
+                        <dt class="text-muted-foreground">Frist</dt>
+                        <dd class="m-0">{c.deadline ?? '–'}</dd>
+                        {#if c.cycle}
+                          <dt class="text-muted-foreground">Takt</dt>
+                          <dd class="m-0">{c.cycle}</dd>
+                        {/if}
+                      </dl>
+                      <div class="mt-1 text-muted-foreground">{actuator.handover_status_text} {actuator.restore_status_text}</div>
                     </li>
                   {/each}
                 </ul>
