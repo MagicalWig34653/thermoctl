@@ -8,7 +8,7 @@
   import type { Room } from '$lib/rooms/types';
   import DayTrack from './DayTrack.svelte';
 
-  let { room, timezone, nowFraction }: { room: Room; timezone: string; nowFraction: number } = $props();
+  let { room, timezone, nowFraction, heading }: { room: Room; timezone: string; nowFraction: number; heading?: string } = $props();
   const { prefix } = useApp();
   const status = $derived(roomStatus(room));
   const differs = $derived(plannedDiffers(room));
@@ -19,10 +19,10 @@
   href={appHref(prefix, `/raeume/${room.id}`)}
   class="group flex h-full flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:bg-muted/60"
   data-testid="room-card"
-  aria-label={`${room.name}, Details öffnen`}
+  aria-label={`${heading ?? room.name}, Details öffnen`}
 >
   <div class="flex items-start justify-between gap-3">
-    <h3 class="min-w-0 truncate text-base" title={room.name}>{room.name}</h3>
+    <h3 class="min-w-0 truncate text-base" title={heading ?? room.name}>{heading ?? room.name}</h3>
     <Badge variant={status.attention ? 'destructive' : status.kind === 'heating' ? 'default' : 'secondary'} class="h-6 gap-1">
       {#if status.kind === 'heating'}<Flame aria-hidden="true" />{:else if status.kind === 'window'}<Wind aria-hidden="true" />{:else if status.attention}<TriangleAlert aria-hidden="true" />{/if}
       {status.label}
