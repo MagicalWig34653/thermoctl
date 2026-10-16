@@ -951,17 +951,15 @@
       "heating",
       "heating"
     ],
-<<<<<<< HEAD
     "thermoctl/web/ui_api_devices.py": [
       "actuator",
       "actuators",
       "actuators"
-=======
+    ],
     "thermoctl/web/ui_api_operations.py": [
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird.",
       "Ventilschutz",
       "Ventilschutz-Abstand"
->>>>>>> ui/api-regulation
     ],
     "thermoctl/web/ui_api_reports.py": [
       "/heating-time"
