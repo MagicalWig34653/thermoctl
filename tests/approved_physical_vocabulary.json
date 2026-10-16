@@ -753,6 +753,9 @@
     "thermoctl/web/start_views.py": [
       "warmth"
     ],
+    "thermoctl/web/ui_api_rooms.py": [
+      "warmth"
+    ],
     "thermoctl/web/templates/base_core.html": [
       "// umschaltet."
     ],
