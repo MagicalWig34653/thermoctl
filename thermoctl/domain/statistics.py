@@ -23,6 +23,7 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from sqlalchemy import select
@@ -52,6 +53,64 @@ GAP_FACTOR = 3
 # value a fresh installation's migration seeds the setting with.
 DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS = 500_000
 DAYS_PER_YEAR = 365
+HOURS_PER_DAY = 24
+
+# Modellrechnung für den Warnhinweis an der PI-Regelung (Raumtechnik): Schaltspiele je
+# Stunde. PI im ungünstigsten Fall wechselt alle zwei Minuten (30 je Stunde); bei 30 %
+# Tastgrad sind es 18; die Hysterese mit den Vorgabewerten (je 300 s Mindest-Ein- und
+# -Ausschaltdauer, ein Schaltspiel je zehn Minuten) höchstens 6. Das sind angenommene
+# Höchstwerte, keine Messung -- gemessen wird je Gerät unter „Relaisverschleiß“.
+PI_WORST_CASE_CYCLES_PER_HOUR = 30
+PI_30_PERCENT_DUTY_CYCLES_PER_HOUR = 18
+HYSTERESIS_MAX_CYCLES_PER_HOUR = 6
+
+
+@dataclass(frozen=True)
+class SwitchingModelRow:
+    id: str
+    per_hour: int
+    per_day: int
+    per_year: int
+
+
+@dataclass(frozen=True)
+class PiSwitchingModel:
+    rows: list[SwitchingModelRow]
+    worst_case_per_year: int
+    assumed_lifetime_operations: int
+    #: Ungünstigster Fall im Jahr geteilt durch die angenommene Lebensdauer, auf zwei
+    #: Stellen (kaufmännisch gerundet) -- „rund 0,53 solcher Relaislebensdauern im Jahr“.
+    worst_case_ratio: Decimal
+
+
+def _model_row(row_id: str, per_hour: int) -> SwitchingModelRow:
+    per_day = per_hour * HOURS_PER_DAY
+    return SwitchingModelRow(
+        id=row_id, per_hour=per_hour, per_day=per_day, per_year=per_day * DAYS_PER_YEAR
+    )
+
+
+def pi_switching_model(assumed_lifetime_operations: int) -> PiSwitchingModel:
+    """Schalttabelle und Verhältnis ungünstigster Fall zu angenommener Lebensdauer.
+
+    Die Rechnung gehört in die Domäne, damit Oberfläche und Schnittstellen dieselben
+    Zahlen zeigen; die Oberfläche rechnet nicht selbst.
+    """
+    rows = [
+        _model_row("pi_worst_case", PI_WORST_CASE_CYCLES_PER_HOUR),
+        _model_row("pi_30_percent_duty", PI_30_PERCENT_DUTY_CYCLES_PER_HOUR),
+        _model_row("hysteresis_max", HYSTERESIS_MAX_CYCLES_PER_HOUR),
+    ]
+    worst = rows[0].per_year
+    ratio = (Decimal(worst) / Decimal(assumed_lifetime_operations)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    return PiSwitchingModel(
+        rows=rows,
+        worst_case_per_year=worst,
+        assumed_lifetime_operations=assumed_lifetime_operations,
+        worst_case_ratio=ratio,
+    )
 
 
 @dataclass(frozen=True)

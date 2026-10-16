@@ -4,6 +4,8 @@ import { ApiError } from '../src/lib/api.ts';
 import {
   actuationHeadline,
   actuationRows,
+  measurementLine,
+  STALE_MEASUREMENT_NOTICE,
   filterRooms,
   isTemperatureField,
   nowPercent,
@@ -27,6 +29,7 @@ function room(patch: Partial<Room> = {}): Room {
     temperature_c: '20.5',
     measured_at: '2026-10-16T08:00:00+00:00',
     measured_age_seconds: 120,
+    measurement_stale: false,
     sensor: {
       status_code: 'ok',
       status_label: 'In Ordnung',
@@ -55,6 +58,36 @@ test('roomStatus: Reihenfolge Sensor, Fenster, Aus, Heizanforderung', () => {
   assert.equal(roomStatus(room({ sensor: { ...room().sensor, window_open: true } })).kind, 'window');
   assert.equal(roomStatus(room({ operating_mode: { code: 'off', label: 'Aus' } })).kind, 'off');
   assert.equal(roomStatus(room({ decision: null })).kind, 'unknown');
+});
+
+test('roomStatus: vergessenes Fenster heißt „Fenster vergessen“, offenes „Fenster offen“', () => {
+  const alarm = room({ sensor: { ...room().sensor, window_alarm: true } });
+  assert.deepEqual(roomStatus(alarm), { kind: 'window', label: 'Fenster vergessen', attention: true });
+  assert.equal(roomStatus(room({ sensor: { ...room().sensor, window_open: true } })).label, 'Fenster offen');
+});
+
+test('veralteter Messwert: Anlagensicht nennt den Gerätezustand, Wohnungssicht den neutralen Effekt', () => {
+  const stale = room({
+    measurement_stale: true,
+    sensor: { ...room().sensor, status_code: 'veraltet', status_label: 'Zeitüberschreitung' },
+  });
+  // Anlagensicht wie bisher
+  assert.deepEqual(roomStatus(stale), { kind: 'sensor', label: 'Zeitüberschreitung', attention: true });
+  assert.match(measurementLine(stale).text, /^Zeitüberschreitung vor 2 Min\.$/);
+  assert.equal(measurementLine(stale).problem, true);
+  // Wohnungssicht: kein Gerätewort, Entscheidung bleibt sichtbar, kein Alarm
+  assert.equal(STALE_MEASUREMENT_NOTICE, 'Messwert möglicherweise nicht aktuell – die Heizung regelt weiter.');
+  assert.equal(roomStatus(stale, true).kind, 'heating');
+  const line = measurementLine(stale, true);
+  assert.ok(line.text.startsWith(STALE_MEASUREMENT_NOTICE));
+  assert.doesNotMatch(line.text, /Zeitüberschreitung|Sensor|Zigbee|MQTT/);
+  assert.equal(line.problem, false);
+  // Ohne jeden Messwert bleibt es ein Problem, auch in der Wohnungssicht
+  const none = room({ temperature_c: null, measurement_stale: true, sensor: { ...room().sensor, status_code: 'keine_quelle', status_label: 'Keine Quelle' } });
+  assert.equal(roomStatus(none, true).kind, 'sensor');
+  assert.deepEqual(measurementLine(none, true), { text: 'Keine Quelle', problem: true });
+  // Frischer Wert: unverändert
+  assert.deepEqual(measurementLine(room(), true), { text: 'Messung vor 2 Min.', problem: false });
 });
 
 test('plannedDiffers vergleicht Decimal-Strings exakt', () => {

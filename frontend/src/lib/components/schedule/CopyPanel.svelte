@@ -40,7 +40,8 @@
 
 <section aria-labelledby="copy-title" class="rounded-xl border bg-card p-4">
   <h2 id="copy-title" class="mb-1 text-lg">Kopieren</h2>
-  <div class="grid gap-6 md:grid-cols-2">
+  <div class="grid gap-6 {plan.can_edit ? 'md:grid-cols-2' : ''}">
+    {#if plan.can_edit}
     <div class="grid content-start gap-3">
       <h3 class="m-0 text-base">Tag auf mehrere Tage</h3>
       <p class="m-0 text-sm text-muted-foreground">Der vollständige Tagesplan ersetzt die Pläne der Zieltage.</p>
@@ -63,6 +64,7 @@
         >
       </div>
     </div>
+    {/if}
 
     <div class="grid content-start gap-3">
       <h3 class="m-0 text-base">Wochenplan in andere Räume</h3>

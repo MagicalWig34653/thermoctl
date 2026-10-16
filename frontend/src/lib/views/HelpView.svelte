@@ -3,6 +3,7 @@
   import { Search } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
+  import SourceLink from '$lib/components/shell/SourceLink.svelte';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { toFailure, type Failure } from '$lib/rooms/logic';
   import { EXPLANATIONS, GLOSSARY_HINT } from '$lib/help/explanations';
@@ -78,6 +79,10 @@
   </ul>
   <p class="mt-3 mb-0 text-sm text-muted-foreground">{GLOSSARY_HINT}</p>
 </section>
+
+<p class="mb-6 max-w-3xl text-sm text-muted-foreground" data-testid="help-source">
+  thermoctl ist freie Software unter der AGPL-3.0. Den Quelltext der laufenden Fassung findest du hier: <SourceLink />.
+</p>
 
 <h2 class="mb-3 text-xl">Glossar</h2>
 

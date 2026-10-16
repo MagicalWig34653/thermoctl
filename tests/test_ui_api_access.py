@@ -38,7 +38,7 @@ from thermoctl.db.models.credential import ApiToken, ApiTokenPermission, Session
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.oauth import OAuthRefreshToken
-from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.domain.kiosk import issue_kiosk_token
 from thermoctl.domain.oauth import REFRESH_TTL, register_client
@@ -764,6 +764,21 @@ def test_token_of_another_user_with_token_self_is_not_manageable(client_als: Als
 
 
 # -- Kiosk-Zugänge ----------------------------------------------------------------------
+
+
+def test_kiosk_list_carries_the_plant_timezone_not_the_browsers(
+    client_als: Als, session: Session
+) -> None:
+    """Der Ablauf eines Zugangs wird in der Anlagen-Zeitzone angezeigt; ohne Einrichtung gilt UTC."""
+    client = client_als(ADMIN)
+    row = session.get(Setting, 1)
+    assert row is not None
+    row.timezone = "Pacific/Auckland"
+    session.flush()
+    assert client.get("/ui-api/access/kiosk-tokens").json()["timezone"] == "Pacific/Auckland"
+    session.delete(row)
+    session.flush()
+    assert client.get("/ui-api/access/kiosk-tokens").json()["timezone"] == "UTC"
 
 
 def test_kiosk_issue_list_and_plaintext_once(

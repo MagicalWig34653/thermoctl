@@ -562,7 +562,9 @@ def _schedule(session: Session, principal: Principal, zone: Zone) -> ScheduleOut
             for m in modes
         ],
         can_edit=can_edit,
-        copy_targets=_copy_targets(session, principal, zone) if can_edit else [],
+        # Auch vom nur lesbaren Raum aus: Die Übernahme braucht an der Quelle nur `zone.read`;
+        # welche Ziele beschreibbar sind, entscheidet allein `schedule.manage` je Ziel.
+        copy_targets=_copy_targets(session, principal, zone),
     )
 
 

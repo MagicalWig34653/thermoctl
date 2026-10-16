@@ -100,6 +100,8 @@ export interface KioskRow {
 export interface KioskData {
   tokens: KioskRow[];
   zones: ZoneRef[];
+  /** Zeitzone der Anlage; Zeitpunkte der Zugänge werden darin angezeigt. */
+  timezone: string;
 }
 export interface IssuedKiosk {
   token: KioskRow;

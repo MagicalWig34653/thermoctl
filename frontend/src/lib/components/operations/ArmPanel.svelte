@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/rooms/Notice.svelte';
-  import { armOutcome, errorAt, type ArmOutcome } from '$lib/operations/logic';
+  import { armOutcome, errorAt, SENDING_LATCH_NOTE, type ArmOutcome } from '$lib/operations/logic';
   import { createSaver } from '$lib/operations/saver.svelte';
   import type { ArmedResult, Operation } from '$lib/operations/types';
   import type { OperationsClient } from '$lib/operations/client';
@@ -59,7 +59,7 @@
 <section class="max-w-[820px] rounded-xl border bg-card p-5" aria-labelledby="arm-title" data-testid="arm-panel">
   <h2 id="arm-title" class="mb-1">Freigabe ändern</h2>
   <p class="mb-4 text-sm text-muted-foreground">
-    Das ändert nur die gespeicherte Freigabe. Die MQTT-Sendefreigabe ändert sich dadurch nicht; sie wird beim Start des Dienstes gebaut.
+    Das ändert nur die gespeicherte Freigabe. Die Sendefreigabe ändert sich dadurch nicht. <span data-testid="arm-latch-note">{SENDING_LATCH_NOTE}</span>
   </p>
 
   {#if !open}
@@ -79,7 +79,7 @@
       <h3 class="text-base">{target ? 'Regelung scharf schalten' : 'Zurück in den Trockenlauf'}</h3>
       {#if target}
         <Notice tone="warn">
-          Nach der Freigabe sendet die Regelung echte Befehle an die Heizung, sobald der MQTT-Riegel offen ist. Das geschieht erst nach einem Neustart des Dienstes.
+          Nach der Freigabe sendet die Regelung echte Befehle an die Heizung, sobald der Sende-Riegel offen ist – für MQTT und für Meross. Das geschieht erst nach einem Neustart des Dienstes.
         </Notice>
       {/if}
       <div>

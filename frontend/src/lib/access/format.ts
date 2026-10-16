@@ -1,10 +1,22 @@
 // Darstellung von Zeitpunkten und Zuständen der Zugangsansichten.
 
-export function formatDateTime(iso: string | null, never = '—'): string {
+/**
+ * Zeitpunkt in der angegebenen Zeitzone (die der Anlage; vom Server geliefert). Ohne oder mit
+ * unbekannter Zeitzone gilt die des Browsers, damit die Anzeige nie ausfällt.
+ */
+export function formatDateTime(iso: string | null, never = '—', timeZone?: string | null): string {
   if (iso === null || iso === '') return never;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return never;
-  return new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' };
+  if (timeZone) {
+    try {
+      return new Intl.DateTimeFormat('de-DE', { ...options, timeZone }).format(d);
+    } catch {
+      // Unbekannte Zeitzone: weiter mit der des Browsers.
+    }
+  }
+  return new Intl.DateTimeFormat('de-DE', options).format(d);
 }
 
 export type TokenTone = 'ok' | 'muted' | 'warn';

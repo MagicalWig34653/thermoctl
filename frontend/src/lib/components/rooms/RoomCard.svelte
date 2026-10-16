@@ -4,15 +4,16 @@
   import { useApp } from '$lib/context';
   import { appHref } from '$lib/paths';
   import { formatCelsius, formatTemperature } from '$lib/rooms/decimal';
-  import { formatAge, formatInstant, plannedDiffers, roomStatus } from '$lib/rooms/logic';
+  import { formatInstant, measurementLine, plannedDiffers, roomStatus } from '$lib/rooms/logic';
   import type { Room } from '$lib/rooms/types';
   import DayTrack from './DayTrack.svelte';
 
   let { room, timezone, nowFraction, heading }: { room: Room; timezone: string; nowFraction: number; heading?: string } = $props();
-  const { prefix } = useApp();
-  const status = $derived(roomStatus(room));
+  const { prefix, session } = useApp();
+  const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
+  const status = $derived(roomStatus(room, tenant));
+  const line = $derived(measurementLine(room, tenant));
   const differs = $derived(plannedDiffers(room));
-  const sensorProblem = $derived(room.sensor.status_code !== 'ok' || room.temperature_c === null);
 </script>
 
 <a
@@ -34,9 +35,7 @@
       <div class="text-4xl leading-none font-semibold tracking-tight tabular-nums" aria-label={`Ist ${formatCelsius(room.temperature_c)}`}>
         {formatTemperature(room.temperature_c)}<span class="ml-1 text-lg font-normal text-muted-foreground">°C</span>
       </div>
-      <div class="mt-1 text-xs {sensorProblem ? 'text-destructive' : 'text-muted-foreground'}">
-        {#if room.temperature_c === null}{room.sensor.status_label}{:else}{room.sensor.status_code === 'ok' ? 'Messung' : room.sensor.status_label} {formatAge(room.measured_age_seconds)}{/if}
-      </div>
+      <div class="mt-1 text-xs {line.problem ? 'text-destructive' : 'text-muted-foreground'}" data-testid="measurement-line">{line.text}</div>
     </div>
     <div class="text-right">
       <div class="text-xs text-muted-foreground">Soll</div>

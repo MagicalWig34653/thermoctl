@@ -10,6 +10,7 @@
     formatAge,
     formatInstant,
     isTemperatureField,
+    measurementLine,
     plannedDiffers,
     roomActionsUi,
     roomStatus,
@@ -30,7 +31,7 @@
   import RoomFormDialog from '$lib/components/zones/RoomFormDialog.svelte';
 
   let { id }: { id: number } = $props();
-  const { api, prefix, router } = useApp();
+  const { api, prefix, router, session } = useApp();
 
   interface Page {
     detail: RoomDetail;
@@ -52,7 +53,9 @@
   const room = $derived(data?.detail ?? null);
   const tz = $derived(data?.timezone ?? 'UTC');
   const ui = $derived(room ? roomActionsUi(room, room.next_switch !== null) : null);
-  const status = $derived(room ? roomStatus(room) : null);
+  const tenantView = $derived(session.bootstrap?.ui_profile === 'tenant');
+  const status = $derived(room ? roomStatus(room, tenantView) : null);
+  const line = $derived(room ? measurementLine(room, tenantView) : null);
 
   // -- Schreibende Aufrufe: einer nach dem anderen, nie automatisch wiederholt ------------------
 
@@ -244,8 +247,8 @@
             <div class="text-5xl leading-none font-semibold tracking-tight tabular-nums" data-testid="ist" aria-label={`Ist ${formatCelsius(room.temperature_c)}`}>
               {formatTemperature(room.temperature_c)}<span class="ml-1 text-xl font-normal text-muted-foreground">°C</span>
             </div>
-            <div class="mt-1 text-xs {room.sensor.status_code === 'ok' ? 'text-muted-foreground' : 'text-destructive'}">
-              {room.sensor.status_code === 'ok' ? 'Messung' : room.sensor.status_label} {formatAge(room.measured_age_seconds)}
+            <div class="mt-1 text-xs {line?.problem ? 'text-destructive' : 'text-muted-foreground'}" data-testid="measurement-line">
+              {line?.text}
             </div>
           </div>
           <div>
@@ -421,7 +424,7 @@
       <details class={card} open>
         <summary class="flex cursor-pointer items-center gap-1 text-base font-semibold">Sensor<HelpTip term="sensor" /></summary>
         <dl class="mt-3 mb-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt class="text-muted-foreground">Status</dt><dd class="m-0">{room.sensor.status_label}</dd>
+          <dt class="text-muted-foreground">Status</dt><dd class="m-0">{tenantView && room.measurement_stale ? 'Möglicherweise nicht aktuell' : room.sensor.status_label}</dd>
           <dt class="text-muted-foreground">Gemessen</dt><dd class="m-0">{formatInstant(room.measured_at, tz)} ({formatAge(room.measured_age_seconds)})</dd>
           <dt class="text-muted-foreground">Fenster</dt><dd class="m-0">{room.sensor.window_alarm ? 'Alarm' : room.sensor.window_open ? 'offen' : room.sensor.window_open === false ? 'geschlossen' : 'unbekannt'}{room.sensor.window_open_by_temperature ? ' (aus Temperaturverlauf erkannt)' : ''}</dd>
           <dt class="text-muted-foreground">Messwert hängt</dt><dd class="m-0">{room.sensor.stuck ? 'ja' : 'nein'}</dd>

@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button';
   import SettingsSearch from './SettingsSearch.svelte';
   import AppearanceDialog from './AppearanceDialog.svelte';
+  import SourceLink from './SourceLink.svelte';
 
   let {
     areas,
@@ -208,6 +209,9 @@
   >
     {@render children()}
   </main>
+  <footer class="mx-auto w-full max-w-6xl px-4 pb-6 text-xs text-muted-foreground sm:px-7">
+    thermoctl steht unter der AGPL-3.0. <SourceLink />
+  </footer>
 </div>
 
 <AppearanceDialog bind:open={appearanceOpen} />

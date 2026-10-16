@@ -2,11 +2,17 @@
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { PERIODS, type PeriodId } from '$lib/history/format';
+  import { historyWording } from '$lib/history/wording';
+  import Notice from '$lib/components/rooms/Notice.svelte';
   import HeatingTime from './HeatingTime.svelte';
   import HistoryChart from './HistoryChart.svelte';
 
   const { session } = useApp();
   const zones = $derived(session.bootstrap?.zones ?? []);
+  const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
+  const w = $derived(historyWording(tenant));
+  // Ob die Anlage scharf ist, meldet der Verlauf selbst (`control_armed`); der erste geladene genügt.
+  let armed = $state<boolean | null>(null);
 
   let period = $state<PeriodId>('7d');
   let zoneId = $state<number | null>(null);
@@ -19,6 +25,21 @@
   <h1>Temperatur &amp; Heizzeit</h1>
   <p class="text-muted-foreground">Verlauf der Raumtemperaturen mit Sollwerten und Heizanforderung, dazu die Heizzeit je Raum.</p>
 </header>
+
+{#if armed === false}
+  <div class="mb-4 max-w-3xl" data-testid="history-dry-run">
+    <Notice tone="warn"><strong>{w.dryRun.title}</strong> {w.dryRun.text}</Notice>
+  </div>
+{/if}
+
+{#if w.help}
+  <section class="mb-4 max-w-3xl text-sm text-muted-foreground" aria-label="So liest du den Verlauf" data-testid="history-help">
+    <p class="mt-0">{w.help.intro}</p>
+    <ul class="m-0 grid list-disc gap-1 pl-5">
+      {#each w.help.bullets as line (line)}<li>{line}</li>{/each}
+    </ul>
+  </section>
+{/if}
 
 {#if zones.length === 0}
   <p class="text-muted-foreground">Für dein Konto sind keine Räume sichtbar.</p>
@@ -56,8 +77,9 @@
             filters={false}
             lazy={i > 1}
             heading="h2"
-            onLoaded={(ms) => {
+            onLoaded={(ms, controlArmed) => {
               if (firstLoadMs === null) firstLoadMs = ms;
+              armed = controlArmed;
             }}
           />
         </li>

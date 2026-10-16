@@ -14,7 +14,9 @@ export interface Bucket {
   effective_min_c: string | null;
   effective_max_c: string | null;
   heat_percent: number | null;
-  /** `null`: unbekannt (vor der Aufzeichnung), `"0"`: belegt keine Absenkung. */
+  /** Kleinste Absenkung im Fach; `null`: unbekannt (vor der Aufzeichnung). */
+  solar_setback_min_k: string | null;
+  /** Größte Absenkung im Fach; `null`: unbekannt (vor der Aufzeichnung), `"0"`: belegt keine Absenkung. */
   solar_setback_k: string | null;
 }
 
@@ -31,6 +33,8 @@ export interface History {
   end: string;
   resolution_seconds: number;
   rows: number;
+  /** Nicht scharf: Sollwert und Heizanforderung sind Entscheidungen („hätte“), keine Aufzeichnung. */
+  control_armed: boolean;
   units: { temperature: string; setback: string; heat: string };
   limits: {
     max_span_days: number;

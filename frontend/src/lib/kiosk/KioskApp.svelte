@@ -3,6 +3,7 @@
   import { runtimePrefix } from '$lib/api';
   import { createAppearance, type Theme } from '$lib/appearance.svelte';
   import { formatTemperature } from '$lib/rooms/decimal';
+  import SourceLink from '$lib/components/shell/SourceLink.svelte';
   import { createKioskClient } from './client';
   import { createKiosk } from './controller.svelte';
   import { ageText, clockText, heatText, INVALID_TEXT, overrideText } from './logic';
@@ -216,6 +217,8 @@
         <p class="text-sm text-muted-foreground">
           {clockText(data.now, data.timezone)} Uhr
           {#if kiosk.offline}· Stand der letzten Verbindung{/if}
+          <!-- AGPL §13: erreichbar, aber klein und ohne Tippfläche des Bedienbereichs. -->
+          · <SourceLink class="kiosk-source text-xs" />
         </p>
       {/if}
     </div>
@@ -317,9 +320,12 @@
             onkeydown={onDetailKey}
           >
             <div class="mx-auto flex max-w-xl flex-col gap-4 px-4 py-4">
-              <button type="button" class="kiosk-touch kiosk-btn self-start px-5" bind:this={backButton} onclick={closeRoom}>
-                Zurück zur Übersicht
-              </button>
+              <div class="flex items-center justify-between gap-3">
+                <button type="button" class="kiosk-touch kiosk-btn px-5" bind:this={backButton} onclick={closeRoom}>
+                  Zurück zur Übersicht
+                </button>
+                <SourceLink class="text-xs text-muted-foreground" />
+              </div>
               {@render roomCard(openRoomData, data)}
             </div>
           </div>

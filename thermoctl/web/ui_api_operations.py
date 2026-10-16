@@ -80,6 +80,7 @@ from thermoctl.domain.sensor_failure_policy import (
     list_backup_offset_candidates,
 )
 from thermoctl.domain.sensor_failure_policy import read_defaults as read_sensor_failure_defaults
+from thermoctl.domain.statistics import pi_switching_model
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zone_settings import (
     BY_NAME,
@@ -227,6 +228,22 @@ class BackupOffsetOut(BaseModel):
     offset_k: str
 
 
+class SwitchingModelRowOut(BaseModel):
+    id: str
+    per_hour: int
+    per_day: int
+    per_year: int
+
+
+class PiSwitchingModelOut(BaseModel):
+    """Modellrechnung zum Verschleißhinweis an der PI-Regelung; der Server rechnet."""
+
+    rows: list[SwitchingModelRowOut]
+    worst_case_per_year: int
+    assumed_lifetime_operations: int
+    worst_case_ratio: str
+
+
 class ParametersOut(BaseModel):
     zone_id: int
     name: str
@@ -239,6 +256,7 @@ class ParametersOut(BaseModel):
     #: `null`, wenn dieser Principal die Ausgleichswerte nicht sehen darf (`device.manage`).
     backup_offsets: list[BackupOffsetOut] | None
     assumed_relay_lifetime_operations: int
+    pi_switching_model: PiSwitchingModelOut
 
 
 # -- Raumtechnik: Eingabe -----------------------------------------------------------------
@@ -335,6 +353,8 @@ def _parameters(session: Session, principal: Principal, zone: Zone) -> Parameter
             )
             for candidate in list_backup_offset_candidates(session, zone)
         ]
+    lifetime = settings(session).assumed_relay_lifetime_operations
+    model = pi_switching_model(lifetime)
     return ParametersOut(
         zone_id=zone.id,
         name=zone.display_name,
@@ -368,7 +388,18 @@ def _parameters(session: Session, principal: Principal, zone: Zone) -> Parameter
             profiles=[ProfileOptionOut(id=row.id, name=row.name) for row in profiles],
         ),
         backup_offsets=offsets,
-        assumed_relay_lifetime_operations=settings(session).assumed_relay_lifetime_operations,
+        assumed_relay_lifetime_operations=lifetime,
+        pi_switching_model=PiSwitchingModelOut(
+            rows=[
+                SwitchingModelRowOut(
+                    id=row.id, per_hour=row.per_hour, per_day=row.per_day, per_year=row.per_year
+                )
+                for row in model.rows
+            ],
+            worst_case_per_year=model.worst_case_per_year,
+            assumed_lifetime_operations=model.assumed_lifetime_operations,
+            worst_case_ratio=format(model.worst_case_ratio, "f"),
+        ),
     )
 
 

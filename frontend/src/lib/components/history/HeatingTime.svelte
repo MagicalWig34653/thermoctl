@@ -7,6 +7,7 @@
   import { historyLimiter } from '$lib/history/shared';
   import { createQuery } from '$lib/history/query.svelte';
   import { buildQuery, formatDuration } from '$lib/history/reports';
+  import { HEATING_TIME_DISCLAIMER, HEATING_TIME_DRY_RUN, HEATING_TIME_SCOPE } from '$lib/history/wording';
   import type { HeatingTime } from '$lib/history/types';
 
   let { zoneId = null }: { zoneId?: number | null } = $props();
@@ -56,7 +57,7 @@
     {/if}
     {#if !data.control_armed}
       <div class="mb-3">
-        <Notice tone="info">Die Anlage läuft im Trockenlauf: Die Heizzeit zählt Entscheidungen der Regelung, es wurde nichts geschaltet.</Notice>
+        <Notice tone="warn"><strong>{HEATING_TIME_DRY_RUN.title}</strong> {HEATING_TIME_DRY_RUN.text} Die Heizzeit zählt Entscheidungen der Regelung, es wurde nichts geschaltet.</Notice>
       </div>
     {/if}
     {#if data.zones.length === 0}
@@ -107,6 +108,7 @@
       <p class="m-0 mt-3 text-xs text-muted-foreground">
         Tage ohne Messzeilen erscheinen als 0 und sind von „nicht geheizt“ nicht zu unterscheiden.
       </p>
+      <p class="m-0 mt-1 text-xs text-muted-foreground" data-testid="heating-disclaimer">{HEATING_TIME_SCOPE} {HEATING_TIME_DISCLAIMER}</p>
     {/if}
   {/if}
 </section>

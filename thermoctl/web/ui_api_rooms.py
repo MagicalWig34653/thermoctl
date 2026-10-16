@@ -36,7 +36,9 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain import change_log
 from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.fault import OK
 from thermoctl.domain.modes import DomainError, step_setpoint, update_setpoints
+from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     OverrideAlreadyRunning,
@@ -128,6 +130,18 @@ class SensorOut(BaseModel):
     window_alarm: bool
 
 
+class OutdoorOut(BaseModel):
+    """Die anlagenweite Außentemperatur, nur lesend (Domäne `outdoor_reading`).
+
+    `status` ist `ok`, `veraltet` oder `keine_quelle`; `temperature_c` ist nur bei `ok`
+    eine Zahl, die man anzeigen darf -- ein veralteter Wert wird nie als Temperatur gezeigt.
+    """
+
+    status: str
+    temperature_c: str | None
+    measured_at: str | None
+
+
 class SetpointOut(BaseModel):
     temperature_c: str
     reason: str
@@ -184,6 +198,9 @@ class RoomOut(BaseModel):
     temperature_c: str | None
     measured_at: str | None
     measured_age_seconds: int | None
+    #: Der Messwert ist nicht mehr frisch (Zustand aus `domain.fault.sensor_state`, dieselbe
+    #: Schwelle wie die Regelung). Für die Wohnungssicht: ein Effekt, keine Ursache.
+    measurement_stale: bool
     sensor: SensorOut
     setpoint: SetpointOut
     override: OverrideOut | None
@@ -212,6 +229,8 @@ class RoomsOut(BaseModel):
     poll_interval_seconds: int
     now_fraction: float
     actuation: ActuationOut
+    #: `null` in der Wohnungssicht (zeigt keine Anlagentechnik) und vor der Einrichtung.
+    outdoor: OutdoorOut | None
     rooms: list[RoomOut]
 
 
@@ -362,6 +381,7 @@ def _rooms(
                 measured_age_seconds=(
                     max(0, int((now - measured).total_seconds())) if measured is not None else None
                 ),
+                measurement_stale=status is not None and status.code != "ok",
                 sensor=SensorOut(
                     status_code=status.code if status is not None else "unknown",
                     status_label=status.label if status is not None else "unbekannt",
@@ -423,6 +443,21 @@ def _rooms(
             )
         )
     return rooms, context
+
+
+def _outdoor(
+    session: Session, principal: Principal, settings: Setting, now: datetime
+) -> OutdoorOut | None:
+    """Außentemperatur für die Anlagensicht; die Wohnungssicht bekommt sie nicht (wie bisher)."""
+    if principal.ui_profile is not WebUiProfile.ADMIN:
+        return None
+    reading = outdoor_reading(session, settings, now)
+    fresh = reading.status == OK and reading.temperature_c is not None
+    return OutdoorOut(
+        status=reading.status,
+        temperature_c=_dec(reading.temperature_c) if fresh else None,
+        measured_at=_iso(reading.measured_at),
+    )
 
 
 def _actuation(request: Request, session: Session, settings: Setting) -> ActuationOut:
@@ -542,6 +577,7 @@ def list_rooms(
                 cluster_standby=False,
                 state="dry_run",
             ),
+            outdoor=None,
             rooms=[],
         )
     rooms, context = _rooms(session, principal, zones, utcnow(), settings)
@@ -550,6 +586,7 @@ def list_rooms(
         poll_interval_seconds=cast("int", context["poll_interval_seconds"]),
         now_fraction=cast("float", context["now_fraction"]),
         actuation=_actuation(request, session, settings),
+        outdoor=_outdoor(session, principal, settings, utcnow()),
         rooms=rooms,
     )
 

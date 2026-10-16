@@ -7,8 +7,13 @@ import { compareDecimal } from '../rooms/decimal';
 import { toFailure, type Failure } from '../rooms/logic';
 import type {
   ArmedResult, ControlFieldName, InterfaceDetail, NotificationTest, NumberField,
-  OperationActuation, ParametersPatch, RoomParameters, Settings,
+  OperationActuation, ParametersPatch, PiSwitchingModel, RoomParameters, Settings,
 } from './types';
+
+/** Der zweite Riegel ist ein Wert für den ganzen Prozess, nicht ein Teil des MQTT-Clients:
+ *  Meross-Befehle gehen durch denselben beim Start eingefrorenen Wert (wie in der Alt-Oberfläche). */
+export const SENDING_PATHS = 'MQTT und Meross';
+export const SENDING_LATCH_NOTE = `Der zweite Riegel (Sendefreigabe) wird beim Start des Dienstes gebildet und gilt für alle Wege, auf denen Befehle hinausgehen (${SENDING_PATHS}).`;
 
 // -- Zahlen als Text ---------------------------------------------------------------------------
 
@@ -409,7 +414,7 @@ export interface StateCard {
   help: string;
 }
 
-/** Gespeicherte Freigabe, MQTT-Sendefreigabe, Führungsrolle und Trockenlauf: vier getrennte
+/** Gespeicherte Freigabe, Sendefreigabe, Führungsrolle und Trockenlauf: vier getrennte
  *  Tatsachen aus der Serverantwort. Keine wird aus einer anderen abgeleitet oder zu einem
  *  gemeinsamen „scharf“ zusammengezogen. */
 export function stateCards(a: OperationActuation): StateCard[] {
@@ -426,7 +431,7 @@ export function stateCards(a: OperationActuation): StateCard[] {
     },
     {
       id: 'sending',
-      title: 'MQTT-Sendefreigabe',
+      title: 'Sendefreigabe (MQTT und Meross)',
       value: a.sending_allowed ? 'Offen' : 'Gesperrt',
       detail: a.sending_allowed
         ? 'Der Prozess durfte beim Start senden.'
@@ -463,7 +468,7 @@ export function stateCards(a: OperationActuation): StateCard[] {
 export function operationHeadline(a: OperationActuation): { text: string; tone: Tone } {
   if (a.state === 'armed_restart_missing') {
     return {
-      text: 'Freigabe gespeichert, aber der MQTT-Riegel öffnet erst beim Neustart. Bis dahin wird nichts geschaltet.',
+      text: 'Freigabe gespeichert, aber der Sende-Riegel (MQTT und Meross) öffnet erst beim Neustart. Bis dahin wird nichts geschaltet.',
       tone: 'warn',
     };
   }
@@ -478,7 +483,7 @@ export function operationHeadline(a: OperationActuation): { text: string; tone: 
 /** Wird eine Entscheidung gerade ausgeführt? Nur wenn der Server `live` meldet und diese
  *  Instanz führt. Bei ausstehendem Neustart oder Reserve nie. */
 export function decisionEffect(a: OperationActuation): { executes: boolean; text: string } {
-  if (a.restart_required) return { executes: false, text: 'Wird nicht ausgeführt: Der MQTT-Riegel öffnet erst beim Neustart.' };
+  if (a.restart_required) return { executes: false, text: 'Wird nicht ausgeführt: Der Sende-Riegel (MQTT und Meross) öffnet erst beim Neustart.' };
   if (a.dry_run) return { executes: false, text: 'Wird nicht ausgeführt: Trockenlauf.' };
   if (a.cluster_standby) return { executes: false, text: 'Wird nicht ausgeführt: Diese Instanz ist Reserve.' };
   return { executes: true, text: 'Wird an die Aktoren gesendet.' };
@@ -501,7 +506,7 @@ export function armOutcome(requested: boolean, result: ArmedResult): ArmOutcome 
     if (a.restart_required) {
       return {
         tone: 'warn',
-        text: `${lead} Der MQTT-Riegel öffnet aber erst beim Neustart – bis dahin wird nichts geschaltet.`,
+        text: `${lead} Der Sende-Riegel (MQTT und Meross) öffnet aber erst beim Neustart – bis dahin wird nichts geschaltet.`,
       };
     }
     if (a.cluster_standby) {
@@ -565,4 +570,44 @@ export function displayDetailValue(detail: InterfaceDetail): string {
     return 'hinterlegt';
   }
   return detail.value;
+}
+
+
+// -- PI-Warnung: Schalttabelle ------------------------------------------------------------------
+
+const SWITCHING_LABELS: Record<string, string> = {
+  pi_worst_case: 'PI, ungünstigster Fall (Modell)',
+  pi_30_percent_duty: 'PI bei 30 % Tastgrad (Modell)',
+  hysteresis_max: 'Hysterese, mit Vorgabewerten höchstens (Modell)',
+};
+
+const COUNT = new Intl.NumberFormat('de-DE', { useGrouping: true });
+
+/** Ganze Zahl mit Tausenderpunkt (nur Darstellung; die Werte rechnet der Server). */
+export function formatCount(value: number): string {
+  return COUNT.format(value);
+}
+
+export interface SwitchingTableRow {
+  id: string;
+  label: string;
+  perHour: string;
+  perDay: string;
+  perYear: string;
+}
+
+/** Zeilen der Modellrechnung zur Anzeige; es wird nichts gerechnet, nur beschriftet und formatiert. */
+export function switchingTable(model: PiSwitchingModel): SwitchingTableRow[] {
+  return model.rows.map((row) => ({
+    id: row.id,
+    label: SWITCHING_LABELS[row.id] ?? row.id,
+    perHour: formatCount(row.per_hour),
+    perDay: formatCount(row.per_day),
+    perYear: formatCount(row.per_year),
+  }));
+}
+
+/** „rund 0,53 solcher Relaislebensdauern im Jahr“, mit dem vom Server gelieferten Verhältnis. */
+export function wearRatioSentence(model: PiSwitchingModel): string {
+  return `Mit der in den Regelvorgaben hinterlegten, austauschbaren Annahme von derzeit ${formatCount(model.assumed_lifetime_operations)} elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine Meross-Herstellerangabe – öffentliche Daten dazu fehlen) entspricht der ungünstigste Fall rund ${toInput(model.worst_case_ratio)} solcher Relaislebensdauern im Jahr.`;
 }

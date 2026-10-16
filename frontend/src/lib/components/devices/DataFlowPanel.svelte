@@ -5,7 +5,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { createDevicesClient } from '$lib/devices/client';
   import { failureText, deviceFailure } from '$lib/devices/errors';
-  import { flowDiagram } from '$lib/devices/diagram';
+  import { FLOW_NOTE, flowDiagram } from '$lib/devices/diagram';
   import type { FlowZone } from '$lib/devices/types';
   import { createQuery } from '$lib/history/query.svelte';
   import FlowDiagram from './FlowDiagram.svelte';
@@ -88,6 +88,7 @@
             </ul>
           {/if}
         {/if}
+        <p class="m-0 mt-2 text-sm text-muted-foreground" data-testid="flow-note">{FLOW_NOTE}</p>
       </article>
     {/each}
   {/if}

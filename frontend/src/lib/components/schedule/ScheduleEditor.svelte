@@ -6,7 +6,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { createScheduleClient } from '$lib/schedule/client';
   import { createEditor } from '$lib/schedule/editor.svelte';
-  import { zoneLabel } from '$lib/schedule/format';
+  import { readOnlyNotice, zoneLabel } from '$lib/schedule/format';
   import { modeColor, refOf } from '$lib/schedule/geometry';
   import type { Intent } from '$lib/schedule/intents';
   import { formatCelsius } from '$lib/rooms/decimal';
@@ -81,7 +81,7 @@
         <div>
           <h2 id="plan-title" class="mb-1">{plan.zone_name}</h2>
           <p class="m-0 text-sm text-muted-foreground">
-            {#if !plan.can_edit}Du kannst diesen Plan ansehen.
+            {#if !plan.can_edit}{readOnlyNotice(plan)}
             {:else}Auf dem Plan ziehen, um eine Zeit anzulegen.{/if}
           </p>
         </div>
@@ -194,7 +194,7 @@
 
   <div class="mt-6 grid gap-6">
     <PreviewStrip preview={editor.preview} error={editor.previewError} />
-    {#if plan.can_edit}
+    {#if plan.can_edit || plan.copy_targets.length}
       <CopyPanel {plan} {activeDay} busy={editor.busy || editor.conflict} onintent={act} />
     {/if}
   </div>

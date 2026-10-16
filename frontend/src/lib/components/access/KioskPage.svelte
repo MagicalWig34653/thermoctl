@@ -21,6 +21,8 @@
   const client = createAccessClient(api);
   const kiosk = createResource<KioskData>(() => client.kioskTokens());
   const actions = createActions(() => kiosk.load());
+  // Zeiten in der Zeitzone der Anlage, nicht in der des Browsers.
+  const tz = $derived(kiosk.data?.timezone ?? null);
   onMount(() => void kiosk.load());
   onDestroy(() => kiosk.stop());
 
@@ -104,7 +106,7 @@
             {t.control_allowed ? 'darf bedienen' : 'nur ansehen'}
           </p>
           <p class="m-0 text-sm text-muted-foreground">
-            Ausgestellt {formatDateTime(t.created_at)} · gültig bis {formatDateTime(t.expires_at, 'unbegrenzt')} · zuletzt benutzt {formatDateTime(t.last_used_at, 'nie')}
+            Ausgestellt {formatDateTime(t.created_at, '—', tz)} · gültig bis {formatDateTime(t.expires_at, 'unbegrenzt', tz)} · zuletzt benutzt {formatDateTime(t.last_used_at, 'nie', tz)}
           </p>
           {#if t.state === 'active'}
             <div class="pt-1">

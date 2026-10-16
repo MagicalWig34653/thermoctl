@@ -4,11 +4,11 @@ import type { Term } from '../rooms/glossary';
 export const OPS_TERMS: Record<string, Term> = {
   armed: {
     title: 'Gespeicherte Freigabe',
-    text: 'Der in der Datenbank gespeicherte Schalter „Regelung freigegeben“. Er überdauert den Neustart, schaltet aber allein nichts: Dazu muss auch die MQTT-Sendefreigabe stehen.',
+    text: 'Der in der Datenbank gespeicherte Schalter „Regelung freigegeben“. Er überdauert den Neustart, schaltet aber allein nichts: Dazu muss auch die Sendefreigabe (MQTT und Meross) stehen.',
   },
   sending: {
-    title: 'MQTT-Sendefreigabe',
-    text: 'Ein Riegel, den der Prozess beim Start baut. Eine Freigabe im laufenden Betrieb öffnet ihn nicht; erst ein Neustart liest die gespeicherte Freigabe neu ein.',
+    title: 'Sendefreigabe (MQTT und Meross)',
+    text: 'Ein Riegel, den der Prozess beim Start baut. Er gilt für alle Wege, auf denen Befehle hinausgehen: MQTT und Meross. Eine Freigabe im laufenden Betrieb öffnet ihn nicht; erst ein Neustart liest die gespeicherte Freigabe neu ein.',
   },
   role: {
     title: 'Führungsrolle im Verbund',

@@ -61,6 +61,9 @@ class Bucket:
     effective_min_c: float | None
     effective_max_c: float | None
     heat_percent: int | None
+    #: Kleinste und größte Absenkung im Fach. Wechselt sie im Fach, ist es eine Spanne;
+    #: nur den Höchstwert zu zeigen würde die Absenkung für das ganze Fach behaupten.
+    solar_setback_min_k: float | None
     solar_setback_k: float | None
 
 
@@ -164,6 +167,7 @@ def _bucket(at: datetime, samples: list[Sample]) -> Bucket:
         heat_percent=(
             round(100 * sum(1 for s in samples if s.heat) / len(samples)) if samples else None
         ),
+        solar_setback_min_k=min(setbacks) if setbacks else None,
         solar_setback_k=max(setbacks) if setbacks else None,
     )
 
