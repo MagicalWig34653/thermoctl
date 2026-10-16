@@ -92,6 +92,7 @@ export interface Audit {
   entries: AuditEntry[];
   sources: Named[];
   actions: string[];
+  zones: { id: number; name: string }[];
 }
 
 export interface ChangeField {

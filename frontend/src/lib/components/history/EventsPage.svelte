@@ -6,10 +6,10 @@
   import { formatInstant } from '$lib/rooms/logic';
   import DeviceCommandsPanel from '$lib/components/devices/DeviceCommandsPanel.svelte';
   import { createQuery } from '$lib/history/query.svelte';
-  import { buildQuery, classifyRevertError, type RevertOutcome } from '$lib/history/reports';
+  import { AUDIT_TEXT_MAX, auditQuery, buildQuery, classifyRevertError, type RevertOutcome } from '$lib/history/reports';
   import type { Audit, Change, Changes, RevertResult } from '$lib/history/types';
 
-  const { api } = useApp();
+  const { api, prefix } = useApp();
   type Tab = 'audit' | 'changes' | 'commands';
   let tab = $state<Tab>('changes');
 
@@ -19,17 +19,18 @@
   let user = $state('');
   let actionCode = $state('');
   let objectText = $state('');
+  let zoneId = $state('');
+  let text = $state('');
+  let openId = $state<number | null>(null);
   let source = $state('');
   let changeType = $state('');
   let hideReverted = $state(false);
   let auditPage = $state(1);
   let changesPage = $state(1);
 
-  const audit = createQuery(() =>
-    api.get<Audit>(
-      `/ui-api/audit${buildQuery({ from_date: fromDate, to_date: toDate, user, action_code: actionCode, object: objectText, source, page: auditPage })}`,
-    ),
-  );
+  const auditFilter = () => ({ fromDate, toDate, user, actionCode, zoneId, objectText, source, text });
+  const audit = createQuery(() => api.get<Audit>(`/ui-api/audit${auditQuery(auditFilter(), auditPage)}`));
+  const csvHref = $derived(`${prefix}/ui-api/audit.csv${auditQuery(auditFilter())}`);
   const changes = createQuery(() =>
     api.get<Changes>(
       `/ui-api/changes${buildQuery({ from_date: fromDate, to_date: toDate, change_type: changeType, source, hide_reverted: hideReverted, page: changesPage })}`,
@@ -38,7 +39,7 @@
 
   $effect(() => {
     if (tab === 'audit') {
-      void [fromDate, toDate, user, actionCode, objectText, source, auditPage];
+      void [fromDate, toDate, user, actionCode, zoneId, objectText, text, source, auditPage];
       audit.load();
     } else if (tab === 'changes') {
       void [fromDate, toDate, changeType, source, hideReverted, changesPage];
@@ -53,6 +54,7 @@
   const resetPages = () => {
     auditPage = 1;
     changesPage = 1;
+    openId = null;
   };
 
   // -- Rücknahme ---------------------------------------------------------------------------
@@ -126,8 +128,15 @@
         <option value="">Alle</option>
         {#each audit.data?.actions ?? [] as a (a)}<option value={a}>{a}</option>{/each}
       </select></label>
+    <label class="grid gap-1 text-sm"><span class="text-muted-foreground">Raum</span>
+      <select class="h-9 rounded-lg border bg-background px-2" bind:value={zoneId} onchange={resetPages}>
+        <option value="">Alle</option>
+        {#each audit.data?.zones ?? [] as z (z.id)}<option value={String(z.id)}>{z.name}</option>{/each}
+      </select></label>
     <label class="grid gap-1 text-sm"><span class="text-muted-foreground">Objekt</span>
-      <input type="search" class="h-9 rounded-lg border bg-background px-2" bind:value={objectText} onchange={resetPages} /></label>
+      <input type="search" class="h-9 rounded-lg border bg-background px-2 disabled:opacity-50" bind:value={objectText} disabled={zoneId !== ''} placeholder="z. B. token" onchange={resetPages} /></label>
+    <label class="grid gap-1 text-sm sm:col-span-2"><span class="text-muted-foreground">Text (Beschreibung, Einzelheiten, Objekt)</span>
+      <input type="search" class="h-9 rounded-lg border bg-background px-2" maxlength={AUDIT_TEXT_MAX} bind:value={text} onchange={resetPages} /></label>
   {:else}
     <label class="grid gap-1 text-sm"><span class="text-muted-foreground">Art</span>
       <select class="h-9 rounded-lg border bg-background px-2" bind:value={changeType} onchange={resetPages}>
@@ -158,6 +167,9 @@
     {#if data.entries.length === 0}
       <p class="text-muted-foreground" role="status">Keine Einträge für diese Filter.</p>
     {:else}
+      <div class="mb-2 flex justify-end">
+        <a class="text-sm underline underline-offset-4" href={csvHref} download data-testid="audit-csv">Als CSV herunterladen</a>
+      </div>
       <div class="overflow-x-auto rounded-xl border">
         <table class="w-full min-w-[40rem] border-collapse text-sm" data-testid="audit-table">
           <caption class="sr-only">Audit-Protokoll, Seite {data.page}</caption>
@@ -169,6 +181,7 @@
               <th scope="col" class="px-3 py-2 font-medium">Aktion</th>
               <th scope="col" class="px-3 py-2 font-medium">Objekt</th>
               <th scope="col" class="px-3 py-2 font-medium">Beschreibung</th>
+              <th scope="col" class="px-3 py-2 font-medium"><span class="sr-only">Details</span></th>
             </tr>
           </thead>
           <tbody>
@@ -179,11 +192,28 @@
                 <td class="px-3 py-2">{e.actor ?? '—'}</td>
                 <td class="px-3 py-2">{e.action}</td>
                 <td class="px-3 py-2">{e.object_type}{e.object_id ? ` ${e.object_id}` : ''}</td>
-                <td class="px-3 py-2">
-                  {e.summary}
-                  {#if e.detail}<details class="text-xs text-muted-foreground"><summary class="cursor-pointer">Einzelheiten</summary><pre class="m-0 whitespace-pre-wrap">{e.detail}</pre></details>{/if}
+                <td class="px-3 py-2">{e.summary}</td>
+                <td class="px-3 py-2 text-right">
+                  <Button variant="ghost" size="sm" aria-expanded={openId === e.id} aria-controls={`audit-detail-${e.id}`} onclick={() => (openId = openId === e.id ? null : e.id)}>{openId === e.id ? 'Zuklappen' : 'Details'}</Button>
                 </td>
               </tr>
+              {#if openId === e.id}
+                <tr id={`audit-detail-${e.id}`} class="bg-muted/30" data-testid="audit-detail">
+                  <td colspan="7" class="px-3 py-3">
+                    <dl class="sticky left-0 m-0 grid w-[calc(100vw-4.5rem)] max-w-full gap-x-4 gap-y-1 text-sm sm:grid-cols-[10rem_1fr]">
+                      <dt class="text-muted-foreground">Nummer</dt><dd class="m-0">{e.id}</dd>
+                      <dt class="text-muted-foreground">Zeit</dt><dd class="m-0">{when(e.occurred_at, data.timezone)}</dd>
+                      <dt class="text-muted-foreground">Quelle</dt><dd class="m-0">{e.source.label}</dd>
+                      <dt class="text-muted-foreground">Benutzer</dt><dd class="m-0">{e.actor ?? '—'}</dd>
+                      <dt class="text-muted-foreground">Aktion</dt><dd class="m-0">{e.action}</dd>
+                      <dt class="text-muted-foreground">Objekt</dt><dd class="m-0">{e.object_type}{e.object_id ? ` ${e.object_id}` : ''}</dd>
+                      <dt class="text-muted-foreground">Beschreibung</dt><dd class="m-0">{e.summary}</dd>
+                      <dt class="text-muted-foreground">Einzelheiten</dt>
+                      <dd class="m-0">{#if e.detail}<pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs">{e.detail}</pre>{:else}—{/if}</dd>
+                    </dl>
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

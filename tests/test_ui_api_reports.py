@@ -28,8 +28,8 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ShadowDecision
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain import audit_query, history_report
 from thermoctl.domain import change_log as cl
-from thermoctl.domain import history_report
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.change_log import Actor
 from thermoctl.domain.schedule import ScheduleError
@@ -676,6 +676,153 @@ def test_audit_pagination_and_validation(client_als: Als, session: Session) -> N
         )["field"]
         == "to_date"
     )
+
+
+def _record(session: Session, summary: str, **extra: Any) -> None:
+    source(session, "web")
+    audit.record(
+        session,
+        source="web",
+        action=extra.pop("action", "zone.updated"),
+        object_type=extra.pop("object_type", "zone"),
+        summary=summary,
+        **extra,
+    )
+    session.flush()
+
+
+def test_audit_free_text_searches_summary_detail_and_object(
+    client_als: Als, session: Session
+) -> None:
+    create_settings(session)
+    _record(session, "Sollwert Küche", object_id="7")
+    _record(session, "Anderes", detail="Grund: FROSTSCHUTZ aktiv", object_id="8")
+    _record(session, "Drittes", object_type="gadget", object_id="kessel-9")
+    client = client_als([("audit.read", None)])
+
+    def found(q: str) -> list[str]:
+        response = client.get("/ui-api/audit", params={"q": q})
+        return [e["summary"] for e in response.json()["entries"]]
+
+    assert found("küche") == ["Sollwert Küche"]
+    assert found("frostschutz") == ["Anderes"]
+    assert found("kessel") == ["Drittes"]
+    assert found("gadget") == ["Drittes"]
+    assert found("  küche  ") == ["Sollwert Küche"]
+    assert found("gibtesnicht") == []
+    assert len(found("")) == 3
+
+
+def test_audit_free_text_wildcards_are_literal(client_als: Als, session: Session) -> None:
+    create_settings(session)
+    _record(session, "100% sicher")
+    _record(session, "a_b")
+    _record(session, "axb")
+    _record(session, "pfad\\datei")
+    client = client_als([("audit.read", None)])
+
+    def found(q: str) -> list[str]:
+        response = client.get("/ui-api/audit", params={"q": q})
+        return [e["summary"] for e in response.json()["entries"]]
+
+    assert found("%") == ["100% sicher"]
+    assert found("_") == ["a_b"]
+    assert found("a_b") == ["a_b"]
+    assert found("\\") == ["pfad\\datei"]
+    assert found("/") == []
+
+
+def test_audit_free_text_length_is_limited(client_als: Als, session: Session) -> None:
+    create_settings(session)
+    client = client_als([("audit.read", None)])
+    assert client.get("/ui-api/audit", params={"q": "x" * 100}).status_code == 200
+    assert _fehler(client.get("/ui-api/audit", params={"q": "x" * 101}), 422, "validation")[
+        "field"
+    ] == "q"
+    assert _fehler(client.get("/ui-api/audit.csv", params={"q": "x" * 101}), 422, "validation")[
+        "field"
+    ] == "q"
+
+
+def test_audit_room_filter_and_room_list_show_only_visible_rooms(
+    client_als: Als, session: Session
+) -> None:
+    create_settings(session)
+    sichtbar = create_zone(session, "Sichtbar")
+    versteckt = create_zone(session, "Versteckt")
+    _record(session, "im sichtbaren", object_id=str(sichtbar.id))
+    _record(session, "im versteckten", object_id=str(versteckt.id))
+    client = client_als([("audit.read", None), ("zone.read", sichtbar.id)])
+
+    body = client.get("/ui-api/audit", params={"object": f"zone:{sichtbar.id}"}).json()
+    assert [e["summary"] for e in body["entries"]] == ["im sichtbaren"]
+    assert body["zones"] == [{"id": sichtbar.id, "name": "Sichtbar"}]
+
+
+def test_audit_csv_exports_the_filtered_entries(client_als: Als, session: Session) -> None:
+    create_settings(session)
+    _record(session, "=HYPERLINK(1)", detail="+cmd", object_id="1")
+    _record(session, "Normal, mit \"Komma\"", detail="zeile1\nzeile2", object_id="2")
+    _record(session, "Fremd", action="token.issued", object_type="token")
+    client = client_als([("audit.read", None)])
+
+    response = client.get("/ui-api/audit.csv", params={"action_code": "zone.updated"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.headers["content-disposition"] == 'attachment; filename="ereignisse.csv"'
+    assert response.headers["cache-control"] == "no-store"
+    rows = list(csv.reader(io.StringIO(response.text)))
+    assert rows[0] == [
+        "time_utc", "source", "actor", "action", "object_type", "object_id", "summary", "detail",
+    ]
+    assert len(rows) == 3
+    assert rows[1][6:] == ['Normal, mit "Komma"', "zeile1\nzeile2"]
+    assert rows[2][6:] == ["'=HYPERLINK(1)", "'+cmd"]
+    assert rows[2][1:3] == ["web", ""]
+
+    text_only = client.get("/ui-api/audit.csv", params={"q": "fremd"}).text
+    assert "Fremd" in text_only and "HYPERLINK" not in text_only
+
+
+def test_audit_csv_names_token_actor_and_has_a_row_limit(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_settings(session)
+    owner = create_user(session, "besitzer")
+    token = ApiToken(user_id=owner.id, name="-token", token_hash="h" * 64, prefix="abc")
+    session.add(token)
+    session.flush()
+    source(session, "api")
+    for index in range(3):
+        audit.record(
+            session,
+            source="api",
+            action="a",
+            object_type="o",
+            summary=f"E{index}",
+            token_id=token.id,
+        )
+    session.flush()
+    client = client_als([("audit.read", None)])
+    rows = list(csv.reader(io.StringIO(client.get("/ui-api/audit.csv").text)))
+    assert [r[2] for r in rows[1:]] == ["'-token"] * 3
+
+    monkeypatch.setattr(ui_api_reports, "MAX_EXPORT_ROWS", 2)
+    monkeypatch.setattr(audit_query, "MAX_EXPORT_ROWS", 2)
+    rows = list(csv.reader(io.StringIO(client.get("/ui-api/audit.csv").text)))
+    assert [r[6] for r in rows[1:3]] == ["E2", "E1"]
+    assert len(rows) == 4 and rows[3][0].startswith("Hinweis: auf 2 Zeilen gekürzt")
+
+
+def test_audit_csv_access_and_validation(
+    client_als: Als, tenant_client: Als, client: TestClient, session: Session
+) -> None:
+    assert client.get("/ui-api/audit.csv").status_code == 401
+    _fehler(tenant_client([("audit.read", None)]).get("/ui-api/audit.csv"), 403, "wrong_profile")
+    _fehler(client_als([("zone.read", None)]).get("/ui-api/audit.csv"), 403, "forbidden")
+    create_settings(session)
+    admin = client_als([("audit.read", None)])
+    _fehler(admin.get("/ui-api/audit.csv", params={"from_date": "x"}), 422, "validation")
 
 
 # -- Änderungsprotokoll und Rücknahme -----------------------------------------------------
