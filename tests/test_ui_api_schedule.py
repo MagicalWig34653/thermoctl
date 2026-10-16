@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_zone, source, zone_with_schedule
@@ -21,6 +22,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.web import ui_api_schedule
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
 
@@ -1287,3 +1289,69 @@ def test_schedule_router_carries_csrf_protection() -> None:
 
     assert csrf_protection in [d.dependency for d in router.dependencies]
     assert router.include_in_schema is False
+
+
+# -- Sperre der Zone (siehe tests/test_ui_api_schedule_concurrency.py für das echte Rennen) --
+
+
+def test_lock_zone_reports_an_unchanged_plan_as_true(session: Session) -> None:
+    zone = _raum(session)
+    assert ui_api_schedule._lock_zone(session, zone.id) is True
+
+
+def test_lock_zone_treats_mariadb_snapshot_conflict_as_a_changed_plan(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MariaDB 11.6+ meldet die überholte Zeile selbst (1020); das ist ein Konflikt, kein 500."""
+    zone = _raum(session)
+    real = session.execute
+    calls = 0
+
+    def failing(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 3:  # die gesperrte Zweitlesung der Punkte
+            raise OperationalError("SELECT", {}, Exception(1020, "Record has changed"))
+        return real(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "execute", failing)
+    assert ui_api_schedule._lock_zone(session, zone.id) is False
+
+
+def test_lock_zone_does_not_swallow_other_database_errors(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    zone = _raum(session)
+    real = session.execute
+    calls = 0
+
+    def failing(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OperationalError("SELECT", {}, Exception(2013, "Lost connection"))
+        return real(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "execute", failing)
+    with pytest.raises(OperationalError):
+        ui_api_schedule._lock_zone(session, zone.id)
+
+
+def test_undo_is_stale_when_the_plan_moved_before_the_lock(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    tag = _mode(session, "nacht").id
+    token = _call(
+        client,
+        "POST",
+        f"/ui-api/schedule/{zone.id}/paint",
+        {"version": "0", "weekday": 2, "start_minute": 600, "end_minute": 720, "mode_id": tag},
+    ).json()["undo_token"]
+    monkeypatch.setattr(ui_api_schedule, "_lock_zone", lambda _session, _zone_id: False)
+    _fehler(
+        _call(client, "POST", f"/ui-api/schedule/{zone.id}/undo", {"undo_token": token}),
+        409,
+        "undo_stale",
+    )

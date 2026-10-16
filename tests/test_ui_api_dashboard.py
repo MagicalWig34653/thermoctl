@@ -535,6 +535,30 @@ def test_reset_restores_the_default_and_keeps_counting(
     assert _put(client, 2, [_section("Neu")]).json()["version"] == 3
 
 
+def test_losing_the_race_for_a_reset_is_not_an_error(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Zwei Zurücksetzen ohne Zeile zugleich: Das zweite INSERT scheitert am Schlüssel;
+    das Ziel ist erreicht, also 200 statt 500, und die Zeile der anderen bleibt."""
+    user_id = _login(client, session, "a", ZONE_READ)
+    session.add(DashboardLayout(user_id=user_id, version=1, customized=False,
+                                updated_at=datetime(2026, 1, 1)))
+    session.flush()
+    real_get = Session.get
+
+    def blind(self: Session, entity: Any, ident: Any, *args: Any, **kwargs: Any) -> Any:
+        if entity is DashboardLayout:
+            return None
+        return real_get(self, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", blind)
+    response = client.delete(URL, headers=_headers(client))
+    assert response.status_code == 200
+    assert response.json()["customized"] is False
+    monkeypatch.undo()
+    assert session.get(DashboardLayout, user_id) is not None
+
+
 def test_reset_without_a_stored_layout(client: TestClient, session: Session) -> None:
     _login(client, session, "a", ZONE_READ)
     body = client.delete(URL, headers=_headers(client)).json()
