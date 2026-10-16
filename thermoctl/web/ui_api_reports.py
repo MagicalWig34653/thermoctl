@@ -38,7 +38,13 @@ from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import history_report
-from thermoctl.domain.audit_query import ENTRIES_PER_PAGE, list_audit
+from thermoctl.domain.audit_query import (
+    ENTRIES_PER_PAGE,
+    MAX_EXPORT_ROWS,
+    MAX_TEXT_LENGTH,
+    export_audit,
+    list_audit,
+)
 from thermoctl.domain.authz import Forbidden, has_permission, visible_zones
 from thermoctl.domain.change_log import (
     CHANGE_TYPES,
@@ -512,6 +518,11 @@ class AuditEntryOut(BaseModel):
     detail: str | None
 
 
+class ZoneRefOut(BaseModel):
+    id: int
+    name: str
+
+
 class AuditOut(BaseModel):
     timezone: str
     page: int
@@ -520,6 +531,19 @@ class AuditOut(BaseModel):
     entries: list[AuditEntryOut]
     sources: list[NamedOut]
     actions: list[str]
+    zones: list[ZoneRefOut]
+
+
+def _audit_filters(
+    from_date: str, to_date: str, text: str
+) -> tuple[date | None, date | None, str]:
+    from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
+    if from_day is not None and to_day is not None and to_day < from_day:
+        raise _invalid("Das Bis-Datum darf nicht vor dem Von-Datum liegen.", "to_date")
+    needle = text.strip()
+    if len(needle) > MAX_TEXT_LENGTH:
+        raise _invalid(f"Der Suchtext darf höchstens {MAX_TEXT_LENGTH} Zeichen lang sein.", "q")
+    return from_day, to_day, needle
 
 
 @router.get("/audit")
@@ -532,14 +556,13 @@ def show_audit(
     action_code: str = "",
     object: str = "",  # noqa: A002 - Filtername wie in der HTML-Ansicht
     source: str = "",
+    q: str = "",
     page: str = "1",
 ) -> AuditOut:
     """Das Protokoll mit Filtern und Seiten (50 je Seite), neueste zuerst."""
     _require_admin_ui(principal)
     _need(principal, "audit.read")
-    from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
-    if from_day is not None and to_day is not None and to_day < from_day:
-        raise _invalid("Das Bis-Datum darf nicht vor dem Von-Datum liegen.", "to_date")
+    from_day, to_day, needle = _audit_filters(from_date, to_date, q)
     number = _page(page)
     timezone_name, _settings = _timezone(session)
     rows, has_more = list_audit(
@@ -550,6 +573,7 @@ def show_audit(
         action_code=action_code,
         source=source,
         object=object,
+        text=needle,
         page=number,
         timezone_name=timezone_name,
     )
@@ -582,6 +606,70 @@ def show_audit(
         actions=list(
             session.scalars(select(AuditEvent.action).distinct().order_by(AuditEvent.action))
         ),
+        zones=[
+            ZoneRefOut(id=z.id, name=z.name)
+            for z in visible_zones(session, principal, "zone.read")
+        ],
+    )
+
+
+@router.get("/audit.csv")
+def export_audit_csv(
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    from_date: str = "",
+    to_date: str = "",
+    user: str = "",
+    action_code: str = "",
+    object: str = "",  # noqa: A002 - Filtername wie in der HTML-Ansicht
+    source: str = "",
+    q: str = "",
+) -> Response:
+    """Die gefilterten Ereignisse als CSV (höchstens `MAX_EXPORT_ROWS`, sonst Hinweiszeile)."""
+    _require_admin_ui(principal)
+    _need(principal, "audit.read")
+    from_day, to_day, needle = _audit_filters(from_date, to_date, q)
+    timezone_name, _settings = _timezone(session)
+    rows, truncated = export_audit(
+        session,
+        from_day=from_day,
+        to_day=to_day,
+        user=user,
+        action_code=action_code,
+        source=source,
+        object=object,
+        text=needle,
+        timezone_name=timezone_name,
+    )
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(
+        ["time_utc", "source", "actor", "action", "object_type", "object_id", "summary", "detail"]
+    )
+    for event, origin, account, token in rows:
+        actor = account.username if account is not None else token.name if token is not None else ""
+        writer.writerow(
+            [
+                _iso(event.occurred_at) or "",
+                csv_cell(origin.code),
+                csv_cell(actor),
+                csv_cell(event.action),
+                csv_cell(event.object_type),
+                csv_cell(event.object_id or ""),
+                csv_cell(event.summary),
+                csv_cell(event.detail or ""),
+            ]
+        )
+    if truncated:
+        note = f"Hinweis: auf {MAX_EXPORT_ROWS} Zeilen gekürzt, bitte Filter enger setzen"
+        writer.writerow([note])
+    return Response(
+        buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="ereignisse.csv"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

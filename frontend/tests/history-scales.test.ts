@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { formatClock, temperatureScale, temperatureTickLabel, timeTicks, zoneOffsetMs } from '../src/lib/history/scales.ts';
 import { tooltipPlacement } from '../src/lib/history/tooltip.ts';
 import { createLimiter } from '../src/lib/history/limiter.ts';
-import { buildQuery, classifyRevertError, formatDuration, wearLabel } from '../src/lib/history/reports.ts';
+import { AUDIT_TEXT_MAX, auditObjectFilter, auditQuery, auditSearchText, buildQuery, classifyRevertError, formatDuration, wearLabel } from '../src/lib/history/reports.ts';
 import { ApiError } from '../src/lib/api.ts';
 
 test('temperatureScale: Achse umschließt alle Werte, Marken in gleichen Schritten', () => {
@@ -183,4 +183,24 @@ test('describeBucket: Lücke wird als Lücke benannt, nicht als Wert', () => {
   const gap = describeBucket({ start: 'x', rows: 0, measurements: 0, temperature_c: null, temperature_min_c: null, temperature_max_c: null, scheduled_min_c: null, scheduled_max_c: null, effective_min_c: null, effective_max_c: null, heat_percent: null, solar_setback_k: null }, '10:00');
   assert.match(gap, /Messlücke/);
   assert.doesNotMatch(gap, /°C/);
+});
+
+const emptyFilter = { fromDate: '', toDate: '', user: '', actionCode: '', zoneId: '', objectText: '', source: '', text: '' };
+
+test('auditSearchText: Ränder weg, auf die Obergrenze gekürzt', () => {
+  assert.equal(auditSearchText('  frost  '), 'frost');
+  assert.equal(auditSearchText('x'.repeat(AUDIT_TEXT_MAX + 20)).length, AUDIT_TEXT_MAX);
+});
+
+test('auditObjectFilter: Raum geht dem Objekttext vor, Unsinn wird nicht zum Raum', () => {
+  assert.equal(auditObjectFilter('7', 'token'), 'zone:7');
+  assert.equal(auditObjectFilter('', ' token '), 'token');
+  assert.equal(auditObjectFilter('7; DROP', 'x'), 'x');
+});
+
+test('auditQuery: Filter kodiert, leere entfallen, Seite nur wenn gesetzt', () => {
+  assert.equal(auditQuery(emptyFilter), '');
+  assert.equal(auditQuery({ ...emptyFilter, text: ' 100% & _ ', zoneId: '3', source: 'web' }, 2),
+    '?object=zone%3A3&source=web&q=100%25+%26+_&page=2');
+  assert.equal(auditQuery({ ...emptyFilter, actionCode: 'zone.updated' }), '?action_code=zone.updated');
 });

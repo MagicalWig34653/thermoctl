@@ -14,6 +14,44 @@ export function buildQuery(params: Record<string, string | number | boolean | nu
   return text ? `?${text}` : '';
 }
 
+/** Obergrenze des Suchtexts; der Server lehnt Längeres mit 422 ab. */
+export const AUDIT_TEXT_MAX = 100;
+
+/** Suchtext für die Abfrage: Ränder weg, auf die Obergrenze gekürzt. */
+export function auditSearchText(text: string): string {
+  return text.trim().slice(0, AUDIT_TEXT_MAX);
+}
+
+/** Der Objektfilter: ein gewählter Raum (`zone:ID`) geht dem Freitext vor. */
+export function auditObjectFilter(zoneId: string, objectText: string): string {
+  return /^\d+$/.test(zoneId) ? `zone:${zoneId}` : objectText.trim();
+}
+
+export interface AuditFilter {
+  fromDate: string;
+  toDate: string;
+  user: string;
+  actionCode: string;
+  zoneId: string;
+  objectText: string;
+  source: string;
+  text: string;
+}
+
+/** Abfragetext der gefilterten Ereignisse; Seite nur für die Liste, nicht für die CSV. */
+export function auditQuery(filter: AuditFilter, page?: number): string {
+  return buildQuery({
+    from_date: filter.fromDate,
+    to_date: filter.toDate,
+    user: filter.user,
+    action_code: filter.actionCode,
+    object: auditObjectFilter(filter.zoneId, filter.objectText),
+    source: filter.source,
+    q: auditSearchText(filter.text),
+    page,
+  });
+}
+
 /** 5400 wird zu „1 Std. 30 Min.“; unter einer Minute „< 1 Min.“; 0 „0 Min.“. */
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0 Min.';

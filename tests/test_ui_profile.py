@@ -399,6 +399,7 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("GET", "/ui-api/heating-time"): "Lesemodell, zone.read je Zone",
     ("GET", "/ui-api/relay-wear"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
     ("GET", "/ui-api/audit"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
+    ("GET", "/ui-api/audit.csv"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
     ("GET", "/ui-api/changes"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
     ("GET", "/ui-api/changes/{change_id}"): "Profilprüfung im Endpunkt, audit.read",
     ("POST", "/ui-api/changes/{change_id}/revert"): "Profilprüfung im Endpunkt, audit.read",
