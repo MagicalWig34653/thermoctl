@@ -392,6 +392,268 @@ def undo_schedule_gesture(
     )
 
 
+# -- Block operations -----------------------------------------------------------------
+#
+# The schedule is a ring of switch points: every minute of the week belongs to the block of
+# the latest point before it, so a non-empty plan has no gaps. A *block* is the run from
+# one switch point to the next (it may cross midnight and the Sunday/Monday seam; a lone
+# point owns the whole week). "Free" therefore means: no other block starts inside the
+# target range -- the range lies in the interior of a single block (the background), which
+# the new block then splits. Whatever a block leaves behind takes the mode that was in
+# effect before the block began (the preceding block simply continues; with no other block
+# left, the configured frost-protection mode is the background of the empty plan).
+# All operations either write one complete new plan plus one audit event or raise before
+# touching anything.
+
+
+def _block_entries(session: Session, zone: Zone) -> tuple[list[SchedulePoint], dict[int, int]]:
+    points = _zone_points(session, zone.id)
+    return points, {_point_minute(point): point.setpoint_mode_id for point in points}
+
+
+def _frost_mode(session: Session) -> int:
+    settings = session.get(Setting, 1)
+    if settings is None:  # pragma: no cover - setup and every normal request guarantee it
+        raise RuntimeError("Die Grundeinstellungen fehlen.")
+    return settings.frost_protection_mode_id
+
+
+def _ring_mode(entries: dict[int, int], minute: int, fallback: int) -> int:
+    if not entries:
+        return fallback
+    earlier = [m for m in entries if m <= minute]
+    return entries[max(earlier) if earlier else max(entries)]
+
+
+def _in_ring(minute: int, start: int, length: int) -> bool:
+    return (minute - start) % MINUTES_PER_WEEK < length
+
+
+def _locate_block(
+    entries: dict[int, int], weekday: int, start_minute: int, end_minute: int
+) -> tuple[int, int, int]:
+    """Returns (absolute start, length, mode) of exactly the addressed block."""
+    if not 1 <= weekday <= 7:
+        raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
+    if not 0 <= start_minute < 1440 or not (
+        start_minute < end_minute <= start_minute + MINUTES_PER_WEEK
+    ):
+        raise ScheduleError("time_range", "Bitte einen gültigen Zeitraum auswählen.")
+    start = (weekday - 1) * 1440 + start_minute
+    length = end_minute - start_minute
+    others = [(m - start) % MINUTES_PER_WEEK for m in entries if m != start]
+    actual = min(others, default=MINUTES_PER_WEEK)
+    if start not in entries or actual != length:
+        raise ScheduleError("block", "Dieser Block existiert nicht (mehr).")
+    return start, length, entries[start]
+
+
+def _check_target(weekday: int, start_minute: int) -> int:
+    if not 1 <= weekday <= 7:
+        raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
+    if not 0 <= start_minute < 1440:
+        raise ScheduleError("time_range", "Bitte einen gültigen Zeitraum auswählen.")
+    return (weekday - 1) * 1440 + start_minute
+
+
+# The range is free (`_ensure_free`), so there is nothing to delete, only the way back to
+# the previous mode to write at its end.
+def _paint_ring(entries: dict[int, int], start: int, length: int, mode: int, fallback: int) -> None:
+    end = (start + length) % MINUTES_PER_WEEK
+    end_mode = _ring_mode(entries, end, fallback)
+    entries[start] = mode
+    if length < MINUTES_PER_WEEK:
+        entries[end] = end_mode
+
+
+def _ensure_free(entries: dict[int, int], start: int, length: int) -> None:
+    if any(_in_ring(minute, start, length) for minute in entries):
+        raise ScheduleError("overlap", "Dort liegt bereits ein anderer Block.")
+
+
+def _commit_block_change(
+    session: Session,
+    zone: Zone,
+    points: list[SchedulePoint],
+    entries: dict[int, int],
+    *,
+    what: str,
+    detail: str,
+    user_id: int | None,
+    token_id: int | None,
+    source: str,
+) -> ScheduleGesture | None:
+    before = schedule_snapshot(points)
+    after = _canonical_snapshot(entries)
+    if after == before:
+        return None
+    _replace_snapshot(session, zone, after)
+    event = audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="schedule",
+        object_id=str(zone.id),
+        summary=f"Zeitplan für Zone '{zone.display_name}': Block {what}",
+        detail=detail,
+        user_id=user_id,
+        token_id=token_id,
+    )
+    return before, after, _schedule_revision(session, event)
+
+
+def _block_label(start: int, length: int) -> str:
+    first = _label_for(start // 1440 + 1, start % 1440)
+    last = (start + length) % MINUTES_PER_WEEK
+    return f"{first}–{_label_for(last // 1440 + 1, last % 1440)}"
+
+
+def move_schedule_block(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    start_minute: int,
+    end_minute: int,
+    to_weekday: int,
+    to_start_minute: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Moves a block (same length) to a free place; its old range falls back."""
+    points, entries = _block_entries(session, zone)
+    start, length, mode = _locate_block(entries, weekday, start_minute, end_minute)
+    target = _check_target(to_weekday, to_start_minute)
+    del entries[start]
+    _ensure_free(entries, target, length)
+    _paint_ring(entries, target, length, mode, _frost_mode(session))
+    return _commit_block_change(
+        session, zone, points, entries, what="verschoben",
+        detail=f"{_block_label(start, length)} → {_block_label(target, length)}",
+        user_id=user_id, token_id=token_id, source=source,
+    )
+
+
+def duplicate_schedule_block(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    start_minute: int,
+    end_minute: int,
+    to_weekday: int,
+    to_start_minute: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Copies a block to a free place; the source stays."""
+    points, entries = _block_entries(session, zone)
+    start, length, mode = _locate_block(entries, weekday, start_minute, end_minute)
+    target = _check_target(to_weekday, to_start_minute)
+    _ensure_free(entries, target, length)
+    _paint_ring(entries, target, length, mode, _frost_mode(session))
+    return _commit_block_change(
+        session, zone, points, entries, what="dupliziert",
+        detail=f"{_block_label(start, length)} → {_block_label(target, length)}",
+        user_id=user_id, token_id=token_id, source=source,
+    )
+
+
+def delete_schedule_block(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    start_minute: int,
+    end_minute: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Removes a block; the preceding block continues over its range."""
+    points, entries = _block_entries(session, zone)
+    start, length, _mode = _locate_block(entries, weekday, start_minute, end_minute)
+    del entries[start]
+    return _commit_block_change(
+        session, zone, points, entries, what="gelöscht",
+        detail=_block_label(start, length),
+        user_id=user_id, token_id=token_id, source=source,
+    )
+
+
+def resize_schedule_block(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    start_minute: int,
+    end_minute: int,
+    new_start_minute: int,
+    new_end_minute: int,
+    adjacent: bool,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Moves exactly one edge of a block (minutes relative to the weekday, unwrapped).
+
+    Shrinking: the freed range takes the mode before the block (with `adjacent`, the
+    following block grows back over a freed tail instead). Growing swallows part of the
+    neighbour and is only allowed with `adjacent`, which moves the shared edge; it
+    collides if the neighbour would vanish completely.
+    """
+    points, entries = _block_entries(session, zone)
+    start, length, mode = _locate_block(entries, weekday, start_minute, end_minute)
+    start_changed = new_start_minute != start_minute
+    end_changed = new_end_minute != end_minute
+    if start_changed and end_changed:
+        raise ScheduleError("time_range", "Es kann nur eine Kante auf einmal geändert werden.")
+    if not new_start_minute < new_end_minute <= new_start_minute + MINUTES_PER_WEEK:
+        raise ScheduleError("time_range", "Bitte einen gültigen Zeitraum auswählen.")
+    if not start_changed and not end_changed:
+        return None
+    fallback = _frost_mode(session)
+    new_start = (start + new_start_minute - start_minute) % MINUTES_PER_WEEK
+    new_length = new_end_minute - new_start_minute
+    del entries[start]
+    before_mode = _ring_mode(entries, start, fallback)
+    end = (start + length) % MINUTES_PER_WEEK
+    neighbour = entries.get(end) if end != start else None
+    if start_changed:
+        shift = new_start_minute - start_minute
+        if shift > 0:
+            entries[(start + shift) % MINUTES_PER_WEEK] = mode
+        else:
+            if not adjacent or any(
+                _in_ring(minute, start + shift, -shift) for minute in entries
+            ):
+                raise ScheduleError("overlap", "Dort liegt bereits ein anderer Block.")
+            entries[(start + shift) % MINUTES_PER_WEEK] = mode
+    else:
+        entries[start] = mode
+        shift = new_end_minute - end_minute
+        if shift < 0:
+            if adjacent and neighbour is not None:
+                del entries[end]
+                entries[(end + shift) % MINUTES_PER_WEEK] = neighbour
+            else:
+                entries[(end + shift) % MINUTES_PER_WEEK] = before_mode
+        else:
+            if not adjacent or neighbour is None or any(
+                0 < (minute - end) % MINUTES_PER_WEEK <= shift for minute in entries
+            ):
+                raise ScheduleError("overlap", "Dort liegt bereits ein anderer Block.")
+            del entries[end]
+            entries[(end + shift) % MINUTES_PER_WEEK] = neighbour
+    return _commit_block_change(
+        session, zone, points, entries, what="angepasst",
+        detail=f"{_block_label(start, length)} → {_block_label(new_start, new_length)}",
+        user_id=user_id, token_id=token_id, source=source,
+    )
+
+
 # Only for the readable audit text. The interface's labeling lives in the view; here
 # it is about an entry that should still be understandable weeks later.
 _DAYS = {1: "Mo", 2: "Di", 3: "Mi", 4: "Do", 5: "Fr", 6: "Sa", 7: "So"}

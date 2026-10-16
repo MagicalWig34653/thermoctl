@@ -412,6 +412,11 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
         "Profilprüfung im Endpunkt (Anlagensicht)",
     ("DELETE", "/ui-api/schedule/{zone_id}/points/{point_id}"):
         "Profilprüfung im Endpunkt (Anlagensicht)",
+    **{
+        ("POST", f"/ui-api/schedule/{{zone_id}}/block/{name}"):
+            "Profilprüfung im Endpunkt (Anlagensicht)"
+        for name in ("move", "duplicate", "resize", "delete")
+    },
     ("POST", "/ui-api/schedule/{zone_id}/copy-day"):
         "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
     ("POST", "/ui-api/schedule/{zone_id}/copy-week"):
