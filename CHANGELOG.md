@@ -9,6 +9,62 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.18.0 — 2026-10-17
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (Dashboard-Layouts je Benutzer, Alembic `a7c3e91d5b24`).
+- **Das Abbild baut das Frontend selbst.** Node läuft nur in einer Build-Stufe, im Endabbild ist es nicht enthalten.
+- **Alte Lesezeichen leiten weiter** (alle früheren GET-Pfade führen auf `/app`). Alte Formular-POSTs gibt es nicht mehr.
+- **Der Kiosk-Link `/kiosk/{token}` bleibt gültig** und führt auf die neue Kioskansicht. Die braucht JavaScript; die
+  alte Kioskseite lief ohne.
+- **Home-Assistant-Ingress bleibt nutzbar** (Asset-Pfade relativ, der Präfix wird zur Laufzeit eingesetzt).
+- **Noch nicht an der echten Anlage erprobt:** Passkey-Anmeldung mit echtem Authenticator, Touchgeräte und der Betrieb
+  unter Home-Assistant-Ingress. Die Tests decken das nicht ab; bitte einmal von Hand durchgehen.
+- **Teilweise noch offen:** einen Schaltpunkt ohne Zeiger oder Touch neu anlegen (per Tastatur nur verschieben und
+  kürzen) sowie drei Anzeigefelder der Notbetrieb-Aktortabelle (`phase_deadline_at`, `cycle_source`,
+  `sensor_timeout_seconds`).
+- **Offene Entscheidungen des Projektinhabers** bleiben unverändert (Impressum der öffentlichen Seite, Abschluss von
+  Phase 2, Ablösung des Altsystems, Übernahme der MQTT-Zugangsdaten im Add-on, Rest des Sicherheitsstands); siehe
+  [docs/STATUS.md](docs/STATUS.md). Ob die neue Oberfläche am Sicherheitsstand von 2026-09-04 etwas ändert, ist nicht
+  neu bewertet.
+
+### Neu
+
+- **Komplett neue Weboberfläche (Svelte 5).** Eine gemeinsame Shell für Bewohner und Verwaltung; was sichtbar ist, folgt
+  den Rechten. Sieben Menübereiche und eine Einstellungssuche.
+- **Persönliches Dashboard** mit Galerie, Layout je Benutzer gespeichert.
+- **Wochenplan-Editor:** Ziehen, Duplizieren mit Alt, Entf, Rückgängig/Wiederholen und ein Formular.
+- **Verlauf** mit Maus-Zoom, Datentabelle und CSV-Export.
+- **Gerätekarte und Anlagenbild**; **eigene Seite für die Sonnenabsenkung**.
+- **Akzentfarben** und Darstellung Hell, Dunkel oder System.
+- **Kiosk als eigene Ansicht.**
+- **Ereignisse** mit Freitext, Raumfilter, CSV-Export und Detailansicht.
+- **Passkey-Anmeldung** in der neuen Oberfläche.
+
+### Geändert
+
+- Die Weboberfläche spricht den Session-JSON-Vertrag `/ui-api` und für den Kiosk `/kiosk-api`. REST-API, MCP und MQTT
+  sind unverändert.
+- **Mieter-Konten können Wochenplan-Zeiten ihrer Räume bearbeiten**, weil allein das Recht `schedule.manage` je Raum
+  entscheidet, nicht mehr das Oberflächenprofil.
+- **Anmeldung und Konto:** Längengrenzen bei der Anmeldung, gedrosselter Passwortwechsel, `last_seen`/`last_used`
+  werden höchstens einmal je Minute geschrieben.
+- Antworten tragen die Header `nosniff` und `no-store`.
+- Gerätekarte und Schaltprotokoll verbergen Geräte unsichtbarer Räume.
+- Die Datumsfilter des Schaltprotokolls schneiden am lokalen Tag.
+- Die Zeitplan-Schreibwege sperren die Zone; die Versionsprüfung ist auch auf MariaDB atomar.
+- Die Tastenzuordnung verlangt das Recht in jeder Zone des Bediengeräts.
+
+### Entfernt
+
+- Die alte Jinja/HTMX/Bootstrap-Oberfläche samt aller Formular-POSTs, des `/login`-Formulars und von `POST /logout`.
+- Die HTML-Passwortänderung ohne bisheriges Passwort. Das eigene Passwort ändert nur noch `PUT /ui-api/account/password`
+  mit dem bisherigen Passwort.
+- Bewusst serverseitig geblieben: OAuth-Zustimmung, Passkey-JSON-Routen und die Einlösung des Kiosk-Links.
+
+---
+
 ## 0.17.1 — 2026-10-15
 
 ### Beim Upgrade zu wissen
