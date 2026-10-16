@@ -19,6 +19,8 @@
   } from '$lib/rooms/logic';
   import { createResource } from '$lib/rooms/resource.svelte';
   import type { OverrideEnd, Rooms, RoomDetail } from '$lib/rooms/types';
+  import { PERIODS, type PeriodId } from '$lib/history/format';
+  import HistoryChart from '$lib/components/history/HistoryChart.svelte';
   import DayTrack from './DayTrack.svelte';
   import HelpTip from './HelpTip.svelte';
   import Notice from './Notice.svelte';
@@ -168,6 +170,9 @@
   let editOpen = $state(false);
   let deleteOpen = $state(false);
   let roomNotice = $state<string | null>(null);
+
+  // Verlauf des Raums: derselbe Baustein wie unter Auswertung, Raum fest, Zeitraum wählbar.
+  let historyPeriod = $state<PeriodId>('24h');
 
   // Mobil: zwei Ansichten
   let view = $state<'control' | 'tech'>('control');
@@ -395,6 +400,18 @@
           </div>
         </section>
       {/if}
+
+      <section aria-labelledby="room-history-title" data-testid="room-history">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="room-history-title" class="m-0 text-base">Verlauf</h2>
+          <div class="flex gap-1" role="group" aria-label="Zeitraum des Verlaufs">
+            {#each PERIODS as p (p.id)}
+              <Button variant={historyPeriod === p.id ? 'secondary' : 'outline'} size="sm" class="min-h-9" aria-pressed={historyPeriod === p.id} onclick={() => (historyPeriod = p.id)}>{p.label}</Button>
+            {/each}
+          </div>
+        </div>
+        <HistoryChart zones={[{ id: room.id, name: room.name }]} zoneId={room.id} period={historyPeriod} filters={false} compact lazy heading="h3" title="Temperaturverlauf" />
+      </section>
 
       <ReportCard zoneId={room.id} hideWhenEmpty />
     </div>

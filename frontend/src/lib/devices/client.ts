@@ -4,7 +4,7 @@
 import type { Api } from '../api';
 import { buildQuery } from '../history/reports';
 import type {
-  CheckVerdict, CommandLog, ConnectResult, Controllers, DeviceMap, FlowZone, Survey, ZoneDevices,
+  CheckVerdict, CommandLog, ConnectResult, Controllers, DeviceMap, FlowZone, Plant, Survey, ZoneDevices,
 } from './types';
 
 export function createDevicesClient(api: Api) {
@@ -29,6 +29,10 @@ export function createDevicesClient(api: Api) {
       api.post<ZoneDevices>(`${zone(id)}/source`, { device_id: deviceId }),
     swap: (id: number, oldId: number, newId: number) =>
       api.post<ZoneDevices>(`${zone(id)}/swap`, { old_device_id: oldId, new_device_id: newId }),
+    plant: () => api.get<Plant>('/ui-api/plant'),
+    zoneButton: (id: number, body: { device_id: number; action_code: string; command: string | null; step_k: string | null }) =>
+      api.post<ZoneDevices>(`${zone(id)}/button`, body),
+    zoneDataFlow: (id: number) => api.get<FlowZone>(`/ui-api/zones/${id}/data-flow`),
     dataFlow: () => api.get<{ zones: FlowZone[] }>('/ui-api/zones/data-flow'),
     controllers: () => api.get<Controllers>('/ui-api/controllers'),
     channel: (body: {

@@ -5,6 +5,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { createDevicesClient } from '$lib/devices/client';
   import { deviceFailure, failureText } from '$lib/devices/errors';
+  import { bindableControllers, buttonBody, draftChanged, draftKey, draftOf, type ButtonDraft } from '$lib/devices/buttons';
   import type { ZoneDevices } from '$lib/devices/types';
 
   let { zoneId }: { zoneId: number } = $props();
@@ -41,6 +42,8 @@
     if (busy) return false;
     busy = true;
     notice = null;
+    buttonKey = nextButton;
+    nextButton = null;
     try {
       generation += 1;
       data = await action();
@@ -109,6 +112,19 @@
       swapNew = '';
     }
   }
+  // Tastenzuordnung: Entwürfe je Gerät und Taste; Eingegebenes bleibt nach dem Neulesen erhalten.
+  let buttonDrafts = $state<Record<string, ButtonDraft>>({});
+  let buttonKey = $state<string | null>(null);
+  let nextButton: string | null = null;
+  const draft = (deviceId: number, action: string, stored: ButtonDraft): ButtonDraft => buttonDrafts[draftKey(deviceId, action)] ?? stored;
+  function edit(deviceId: number, action: string, stored: ButtonDraft, patch: Partial<ButtonDraft>) {
+    buttonDrafts[draftKey(deviceId, action)] = { ...draft(deviceId, action, stored), ...patch };
+  }
+  async function saveButton(deviceId: number, action: string, value: ButtonDraft) {
+    const key = draftKey(deviceId, action);
+    nextButton = key;
+    if (await run(() => client.zoneButton(zoneId, buttonBody(deviceId, action, value)), 'Tastenbelegung übernommen.')) delete buttonDrafts[key];
+  }
   async function applyMode(id: number) {
     const mode = modeDraft[id];
     if (!mode) return;
@@ -126,7 +142,7 @@
       <h2 id="zone-title" class="m-0">{data.zone.name}</h2>
       {#if !data.may_edit}<p class="m-0 text-sm text-muted-foreground">Nur Ansicht: Für das Ändern fehlt die Berechtigung.</p>{/if}
     </div>
-    {#if notice}<Notice tone={notice.tone}>{notice.text}</Notice>{/if}
+    {#if notice && buttonKey === null}<Notice tone={notice.tone}>{notice.text}</Notice>{/if}
     {#if loadError}<Notice tone="error">{loadError}</Notice>{/if}
     {#if data.picture.defects.length}
       <Notice tone="warn">
@@ -195,6 +211,36 @@
         </ul>
       {/each}
     </div>
+
+    {#if data.may_edit && bindableControllers(data).length}
+      <div class="rounded-xl border bg-card p-4" data-testid="zone-buttons">
+        <h3 class="m-0 text-base">Tastenzuordnung</h3>
+        <p class="m-0 text-sm text-muted-foreground">Was eine Taste der Bediengeräte dieses Raums auslöst. Die Belegung gilt für das Gerät in allen seinen Räumen. Zu sehen sind Tasten, die schon einmal gedrückt wurden.</p>
+        {#each bindableControllers(data) as c (c.device.id)}
+          <h4 class="mb-1 mt-3 text-sm font-semibold">{c.device.name}</h4>
+          <ul class="m-0 grid list-none gap-2 p-0">
+            {#each c.bindings as b (b.action)}
+              {@const stored = draftOf(b)}
+              {@const v = draft(c.device.id, b.action, stored)}
+              <li class="grid gap-2 rounded-lg border p-3" data-testid="zone-binding">
+                <div class="font-medium">Taste {b.action}</div>
+                <div class="grid gap-2 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
+                  <label class="grid gap-1 text-sm"><span>Aktion</span>
+                    <select class="h-11 min-w-0 rounded-lg border bg-background px-3" value={v.command} onchange={(e) => edit(c.device.id, b.action, stored, { command: e.currentTarget.value })}>
+                      <option value="">— nichts —</option>
+                      {#each data.commands as cmd (cmd.id)}<option value={cmd.code}>{cmd.label}</option>{/each}
+                    </select></label>
+                  <label class="grid gap-1 text-sm"><span>Schrittweite (K)</span>
+                    <input class="h-11 min-w-0 rounded-lg border bg-background px-3" inputmode="decimal" placeholder="0,5" value={v.step} oninput={(e) => edit(c.device.id, b.action, stored, { step: e.currentTarget.value })} /></label>
+                  <Button variant="outline" disabled={busy || !draftChanged(b, v)} onclick={() => saveButton(c.device.id, b.action, v)}>Übernehmen</Button>
+                </div>
+                {#if buttonKey === draftKey(c.device.id, b.action) && notice}<Notice tone={notice.tone}>{notice.text}</Notice>{/if}
+              </li>
+            {/each}
+          </ul>
+        {/each}
+      </div>
+    {/if}
 
     {#if data.may_edit}
       <form class="grid gap-3 rounded-xl border bg-card p-4" onsubmit={add}>

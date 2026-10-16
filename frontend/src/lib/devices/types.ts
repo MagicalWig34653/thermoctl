@@ -155,6 +155,38 @@ export interface ZoneDevices {
   required_capabilities: Record<string, string[]>;
   thermostat_modes: ThermostatModeInfo[];
   picture: { defects: string[] };
+  /** Bediengeräte dieses Raums mit gesehenen Tasten (nur Lesen; Schreiben über `zone_button`). */
+  controllers: { device: { id: number; name: string }; bindings: Binding[] }[];
+  commands: Named[];
+}
+
+// -- Anlagenbild --------------------------------------------------------------------------
+
+export interface PlantDevice {
+  id: number;
+  name: string;
+  model: string | null;
+  capabilities: string[];
+  active: boolean;
+  unsuitable: string | null;
+  assignment_id: number | null;
+}
+
+export interface PlantZone {
+  zone_id: number;
+  name: string;
+  temperature_source: PlantDevice | null;
+  window_contacts: PlantDevice[];
+  actuators: PlantDevice[];
+  controllers: PlantDevice[];
+  defects: string[];
+}
+
+export interface Plant {
+  /** `null`: noch keine Meldung der Brücke. */
+  bridge: boolean | null;
+  zones: PlantZone[];
+  without_zone: PlantDevice[];
 }
 
 // -- Datenfluss ---------------------------------------------------------------------------

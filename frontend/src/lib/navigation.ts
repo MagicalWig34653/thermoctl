@@ -122,6 +122,15 @@ export const AREAS: readonly NavArea[] = [
         keywords: 'Tastenbelegung Kanal Taste Ereignis',
       },
       {
+        id: 'anlagenbild',
+        label: 'Anlagenbild',
+        // `/plant` ist beim Server kein eigener Navigationseintrag; die Seite hängt an der
+        // Geräteübersicht. Ob die Person sie sehen darf, entscheidet `/ui-api/plant`.
+        paths: [],
+        alsoWith: ['/devices'],
+        keywords: 'Anlage Diagramm Brücke Zigbee2MQTT Messquelle Aktor Fensterkontakt Geräte ohne Raum',
+      },
+      {
         id: 'karte',
         label: 'Gerätekarte',
         paths: ['/devices/map', '/zones/data-flow'],

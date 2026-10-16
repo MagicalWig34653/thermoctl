@@ -6,6 +6,7 @@
   import Placeholder from '$lib/components/Placeholder.svelte';
   import ControllersPage from '$lib/components/devices/ControllersPage.svelte';
   import DevicesPage from '$lib/components/devices/DevicesPage.svelte';
+  import PlantPage from '$lib/components/devices/PlantPage.svelte';
   import MapPage from '$lib/components/devices/MapPage.svelte';
   import EventsPage from '$lib/components/history/EventsPage.svelte';
   import HistoryPage from '$lib/components/history/HistoryPage.svelte';
@@ -42,6 +43,8 @@
   <DevicesPage />
 {:else if key === 'geraete/bediengeraete'}
   <ControllersPage />
+{:else if key === 'geraete/anlagenbild'}
+  <PlantPage />
 {:else if key === 'geraete/karte'}
   <MapPage />
 {:else if key === 'personen/rechte'}

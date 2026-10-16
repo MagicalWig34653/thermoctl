@@ -119,3 +119,15 @@ test('alsoWith: die Seite erscheint auch ohne eigenen Pfad, aber nur wenn der ge
     }
   }
 });
+
+test('Anlagenbild steht unter Geräte und erscheint mit der Geräteübersicht, nicht ohne', () => {
+  const geraete = AREAS.find((a) => a.id === 'geraete')!;
+  const page = geraete.pages.find((p) => p.id === 'anlagenbild')!;
+  assert.deepEqual(page.paths, []);
+  assert.deepEqual(page.alsoWith, ['/devices']);
+  const some = buildVisibleAreas([{ path: '/devices', label: 'Geräte', section: 'main' }]);
+  assert.ok(some.find((a) => a.id === 'geraete')!.pages.some((p) => p.id === 'anlagenbild'));
+  const none = buildVisibleAreas([{ path: '/audit', label: 'Protokoll', section: 'analysis' }]);
+  assert.equal(none.some((a) => a.id === 'geraete'), false);
+  assert.deepEqual(searchNavigation(some, 'Anlagenbild').map((r) => r.to), ['/geraete/anlagenbild']);
+});
