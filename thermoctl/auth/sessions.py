@@ -50,13 +50,21 @@ def create_session(
     return entry, secret
 
 
+LAST_SEEN_RESOLUTION = timedelta(seconds=60)
+
+
 def resolve_session(session: Session, cookie_value: str) -> Session_ | None:
     entry = session.scalar(
         select(Session_).where(Session_.token_hash == hash_secret(cookie_value))
     )
     if entry is None or entry.revoked_at is not None or entry.expires_at <= utcnow():
         return None
-    entry.last_seen_at = utcnow()
+    now = utcnow()
+    # Not on every request: a write per request makes two parallel requests of the same
+    # session contend for the row (SQLite: "database is locked", reported by the Svelte
+    # app, which loads several resources at once). The session list shows the minute.
+    if now - entry.last_seen_at >= LAST_SEEN_RESOLUTION:
+        entry.last_seen_at = now
     return entry
 
 
