@@ -34,7 +34,7 @@ from thermoctl.domain.passkey import (
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap, templates
-from thermoctl.web.urls import cookie_path, prefixed
+from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 
 router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
@@ -80,6 +80,11 @@ async def finish_authentication(
         return _reject()
     if not isinstance(response, dict):
         return _reject()
+    # Optional wish of the Svelte login page where to go afterwards. It is taken out
+    # before the assertion is verified (it is not part of it) and only ever leaves
+    # again as `safe_return_to` answers it -- the client never gets its own value back.
+    requested = response.pop("return_to", None)
+    return_to = safe_return_to(requested) if isinstance(requested, str) else None
 
     try:
         user = verify_authentication(session, settings, response)
@@ -94,7 +99,10 @@ async def finish_authentication(
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
-    result = JSONResponse({"status": "signed_in", "redirect": prefixed(request, "/")})
+    content: dict[str, str] = {"status": "signed_in", "redirect": prefixed(request, "/")}
+    if return_to is not None:
+        content["return_to"] = return_to
+    result = JSONResponse(content)
     result.set_cookie(
         COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,

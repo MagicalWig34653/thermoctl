@@ -293,3 +293,18 @@ def test_a_fresh_setup_token_still_works(session: Session) -> None:
     )
 
     assert benutzer.username == "lino"
+
+
+def test_setup_with_an_unknown_timezone_returns_to_the_form(
+    client: TestClient, session: Session
+) -> None:
+    marker = create_setup_token(session)
+    response = client.post(
+        "/setup",
+        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
+              "timezone": "Mars/Olympus", "setup_token": marker},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "Diese Zeitzone ist nicht bekannt." in response.text
+    assert session.query(User).count() == 0

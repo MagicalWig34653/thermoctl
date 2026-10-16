@@ -1,6 +1,6 @@
 import { mount } from 'svelte';
 import { runtimePrefix } from '$lib/api';
-import { isKioskPath } from '$lib/paths';
+import { isKioskPath, isSetupPath } from '$lib/paths';
 import './app.css';
 
 // Die Kioskansicht hat einen eigenen Principal (Kiosk-Cookie), eine eigene Schnittstelle und
@@ -9,6 +9,9 @@ import './app.css';
 const target = document.getElementById('app')!;
 if (isKioskPath(window.location.pathname, runtimePrefix())) {
   void import('$lib/kiosk/KioskApp.svelte').then(({ default: KioskApp }) => mount(KioskApp, { target }));
+} else if (isSetupPath(window.location.pathname, runtimePrefix())) {
+  // Ersteinrichtung: ohne Hülle, ohne Bootstrap (es gibt noch keine Sitzung und keinen Benutzer).
+  void import('$lib/setup/SetupApp.svelte').then(({ default: SetupApp }) => mount(SetupApp, { target }));
 } else {
   void import('./App.svelte').then(({ default: App }) => mount(App, { target }));
 }

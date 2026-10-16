@@ -24,7 +24,7 @@ from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web.auth_views import _ERROR_MESSAGE, attempt_login, set_session_cookies
 from thermoctl.web.navigation import visible_navigation
-from thermoctl.web.urls import cookie_path
+from thermoctl.web.urls import cookie_path, safe_return_to
 
 router = APIRouter(
     prefix="/ui-api", dependencies=[Depends(csrf_protection)], include_in_schema=False
@@ -79,6 +79,9 @@ def bootstrap(
 class LoginIn(BaseModel):
     username: str
     password: str
+    # Wish of the login page where to go afterwards (e.g. back to /oauth/consent).
+    # Never trusted: only `safe_return_to` decides, and only its answer goes back.
+    return_to: str | None = None
 
 
 @router.post("/login")
@@ -90,7 +93,11 @@ async def login(
     if outcome is None:
         return JSONResponse({"detail": _ERROR_MESSAGE}, status_code=401)
     _user, secret, lifetime_s = outcome
-    response = JSONResponse({"ok": True})
+    content: dict[str, bool | str] = {"ok": True}
+    return_to = safe_return_to(body.return_to)
+    if return_to is not None:
+        content["return_to"] = return_to
+    response = JSONResponse(content)
     set_session_cookies(response, request, secret, lifetime_s)
     return response
 

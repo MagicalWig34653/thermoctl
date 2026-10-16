@@ -1,31 +1,87 @@
 <script lang="ts">
-  import { Thermometer } from '@lucide/svelte';
+  import { onMount } from 'svelte';
+  import { passkeySupported } from '$lib/access/passkey';
+  import { appHref } from '$lib/paths';
+  import { fetchPasskeysOffered, passkeyLogin, passkeyLoginMessage } from '$lib/auth/login';
+  import { requestedReturnTo, targetHref } from '$lib/auth/target';
+  import { loadSetupStatus } from '$lib/setup/client';
+  import { KeyRound, Thermometer } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Label } from '$lib/components/ui/label';
   import { useApp } from '$lib/context';
 
-  const { session, router } = useApp();
+  const { session, router, api, prefix } = useApp();
 
   let username = $state('');
   let password = $state('');
   let error = $state<string | null>(null);
   let pending = $state(false);
+  let passkeysOffered = $state(false);
+  let hint = $state<string | null>(null);
+
+  // Nur ein Wunsch aus der Adresse; ob er gilt, sagt der Server (`target` in den Antworten).
+  const returnTo = $derived(requestedReturnTo(router.search));
+  const showPasskey = $derived(passkeysOffered && passkeySupported());
+
+  onMount(() => {
+    void (async () => {
+      // Ohne Benutzer führt die Anmeldung ins Leere: dann zur Ersteinrichtung (wie `/` im Altsystem).
+      if ((await loadSetupStatus(api)) === 'open') {
+        window.location.replace(appHref(prefix, '/setup'));
+        return;
+      }
+      passkeysOffered = await fetchPasskeysOffered(api);
+    })();
+  });
+
+  /** Voll-Seitenwechsel auf ein vom Server bestätigtes Ziel (z. B. die OAuth-Zustimmung). */
+  function leave(target: string) {
+    window.location.assign(targetHref(prefix, target));
+  }
+
+  function arrived() {
+    // Die Adresse ist unverändert geblieben; nur von der Anmeldeadresse selbst geht es zur Übersicht.
+    if (router.path === '/login') router.navigate('/', { replace: true });
+  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     if (pending) return;
     pending = true;
     error = null;
-    const result = await session.login(username.trim(), password);
+    hint = null;
+    const result = await session.login(username.trim(), password, returnTo);
     pending = false;
-    if (result === null) {
-      // Die Adresse ist unverändert geblieben; nur von der Anmeldeadresse selbst geht es zur Übersicht.
-      if (router.path === '/login') router.navigate('/', { replace: true });
-      password = '';
+    password = '';
+    if (result.error !== null) {
+      error = result.error;
+    } else if (result.target !== null) {
+      leave(result.target);
     } else {
-      error = result;
-      password = '';
+      arrived();
+    }
+  }
+
+  async function withPasskey() {
+    if (pending) return;
+    pending = true;
+    error = null;
+    hint = 'Warte auf den Authenticator …';
+    try {
+      const { target } = await passkeyLogin({ api, credentials: navigator.credentials }, returnTo);
+      if (target !== null) {
+        leave(target);
+        return;
+      }
+      const failed = await session.finishLogin();
+      if (failed === null) arrived();
+      else error = failed;
+    } catch (failure) {
+      error = passkeyLoginMessage(failure);
+    } finally {
+      pending = false;
+      hint = null;
     }
   }
 </script>
@@ -76,8 +132,20 @@
         <p class="mt-4 text-sm text-destructive" role="alert">{error}</p>
       {/if}
       <Button type="submit" class="mt-5 w-full" disabled={pending || !username || !password}>
-        {pending ? 'Anmelden …' : 'Anmelden'}
+        {pending && !hint ? 'Anmelden …' : 'Anmelden'}
       </Button>
+      {#if showPasskey}
+        <div class="my-4 flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+          <span class="h-px flex-1 bg-border"></span>oder<span class="h-px flex-1 bg-border"></span>
+        </div>
+        <Button type="button" variant="outline" class="w-full" disabled={pending} onclick={withPasskey}>
+          <KeyRound size={16} aria-hidden="true" />
+          Mit Passkey anmelden
+        </Button>
+        {#if hint}
+          <p class="mt-2 text-sm text-muted-foreground" role="status">{hint}</p>
+        {/if}
+      {/if}
     </form>
   </div>
 </main>
