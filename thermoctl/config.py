@@ -22,7 +22,7 @@ RESERVED_MCP_PATHS: tuple[str, ...] = (
     "/absence", "/account", "/app", "/ui-api", "/audit", "/changes", "/control", "/controllers",
     "/device-commands",
     "/devices", "/glossar", "/groups", "/heating-time", "/interfaces", "/kiosk",
-    "/kiosk-tokens", "/login", "/logout", "/modes", "/passkey", "/passkeys", "/plant",
+    "/kiosk-api", "/kiosk-tokens", "/login", "/logout", "/modes", "/passkey", "/passkeys", "/plant",
     "/relay-wear", "/schedule", "/settings", "/setup", "/statistics",
     "/temperature-history", "/tokens", "/users", "/vacation", "/zones",
 )
