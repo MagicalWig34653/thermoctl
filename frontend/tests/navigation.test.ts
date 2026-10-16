@@ -103,3 +103,19 @@ test('Einstellungssuche findet Seiten und Begriffe, nur im sichtbaren Teil', () 
   assert.deepEqual(searchNavigation(areas, 'token'), [], 'nicht sichtbarer Bereich darf nicht auftauchen');
   assert.deepEqual(searchNavigation(areas, '   '), []);
 });
+
+test('alsoWith: die Seite erscheint auch ohne eigenen Pfad, aber nur wenn der genannte Pfad da ist', () => {
+  const zones = { path: '/zones', label: 'Zonen', section: 'main' };
+  const admin = buildVisibleAreas([zones]);
+  const page = admin.find((a) => a.id === 'zeit')?.pages.find((p) => p.id === 'wochenplaene');
+  assert.ok(page, 'Wochenpläne fehlen in der Verwaltungssicht');
+  assert.deepEqual(page.links, []);
+  assert.equal(buildVisibleAreas([]).find((a) => a.id === 'zeit'), undefined);
+  for (const area of AREAS) {
+    for (const p of area.pages) {
+      for (const extra of p.alsoWith ?? []) {
+        assert.ok(serverItems().some((i) => i.path === extra), `${extra} kennt der Server nicht`);
+      }
+    }
+  }
+});

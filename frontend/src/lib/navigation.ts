@@ -21,6 +21,13 @@ export interface NavPage {
   label: string;
   /** Alte Server-Pfade, die in dieser Ansicht aufgehen (jeder Pfad genau einmal). */
   paths: readonly string[];
+  /**
+   * Server-Pfade, bei deren Vorhandensein die Seite ebenfalls erscheint, ohne ihr zu gehören (sie
+   * bleiben dort zugeordnet und liefern keine Links hierher). Für Ansichten, die der Server
+   * nicht als eigenen Navigationseintrag führt: Die Verwaltungssicht bearbeitet Zeitpläne bisher
+   * bei den Zonen. Reine Sichtbarkeit; der Schreibzugriff wird an jedem Endpunkt geprüft.
+   */
+  alsoWith?: readonly string[];
   /** Zusätzliche Suchbegriffe (Begriffe und Felder, die auf dieser Seite zu finden sind). */
   keywords: string;
 }
@@ -58,6 +65,7 @@ export const AREAS: readonly NavArea[] = [
         id: 'wochenplaene',
         label: 'Wochenpläne',
         paths: ['/schedule'],
+        alsoWith: ['/zones'],
         keywords: 'Zeitplan Schaltzeit Schaltpunkt Tagesplan kopieren',
       },
       {
@@ -237,7 +245,8 @@ export function buildVisibleAreas(items: readonly ServerNavItem[]): VisibleArea[
         const item = byPath.get(p);
         return item ? [{ path: p, label: item.label }] : [];
       });
-      return links.length ? [{ ...page, areaId: area.id, links }] : [];
+      const implied = page.alsoWith?.some((p) => byPath.has(p)) ?? false;
+      return links.length || implied ? [{ ...page, areaId: area.id, links }] : [];
     }),
     extraLinks: [],
   }));
