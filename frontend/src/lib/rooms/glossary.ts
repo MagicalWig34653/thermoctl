@@ -63,6 +63,26 @@ export const TERMS: Record<string, Term> = {
     title: 'Führung',
     text: 'Bei mehreren Instanzen schaltet nur die führende. Eine Reserve entscheidet nicht und sendet nichts.',
   },
+  history_band: {
+    title: 'Min./Max.',
+    text: 'Das Band zeigt den kleinsten und größten Messwert je Zeitabschnitt. Die Linie darin ist der Mittelwert. Bei langen Zeiträumen fasst ein Abschnitt viele Messungen zusammen.',
+  },
+  solar_setback: {
+    title: 'Sonnenabsenkung',
+    text: 'Zeiten, in denen der Sollwert wegen erwarteter Sonneneinstrahlung gesenkt wurde. „Unbekannt“ heißt: Für diese Zeit wurde das nicht aufgezeichnet. Das ist keine Wetterprognose.',
+  },
+  gap: {
+    title: 'Messlücke',
+    text: 'Eine Zeit, in der keine Messung vorliegt (länger als zehn Minuten ohne Wert). Die Lücke bleibt leer: Es wird nichts verbunden, geglättet oder geschätzt.',
+  },
+  heating_time: {
+    title: 'Heizzeit',
+    text: 'Die Zeit, in der die Regelung eine Heizanforderung hatte, je lokalem Tag. Sie zählt Entscheidungen, nicht geschaltete Geräte – im Trockenlauf wurde nichts geschaltet. Tage ohne Messung zählen als 0 und sind davon nicht zu unterscheiden.',
+  },
+  relay_wear: {
+    title: 'Relaisverschleiß',
+    text: 'Bestätigte Schaltwechsel je Gerät. Die Hochrechnung aufs Jahr und die angenommene Lebensdauer sind Schätzungen und keine Herstellerangabe.',
+  },
   emergency: {
     title: 'Notbetrieb',
     text: 'Ersatzregelung, wenn der Sensor ausfällt oder veraltet ist.',

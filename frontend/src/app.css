@@ -5,6 +5,7 @@
 @import './styles/base.css';
 @import './styles/shell.css';
 @import './styles/accessibility.css';
+@import './styles/history.css';
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant data-horizontal (&[data-orientation="horizontal"]);
