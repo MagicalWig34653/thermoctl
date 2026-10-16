@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { VisibleArea, VisiblePage } from '$lib/navigation';
   import Placeholder from '$lib/components/Placeholder.svelte';
+  import ControllersPage from '$lib/components/devices/ControllersPage.svelte';
+  import DevicesPage from '$lib/components/devices/DevicesPage.svelte';
+  import MapPage from '$lib/components/devices/MapPage.svelte';
   import EventsPage from '$lib/components/history/EventsPage.svelte';
   import HistoryPage from '$lib/components/history/HistoryPage.svelte';
   import WearPage from '$lib/components/history/WearPage.svelte';
@@ -20,6 +23,12 @@
   <EventsPage />
 {:else if key === 'auswertung/verschleiss'}
   <WearPage />
+{:else if key === 'geraete/liste'}
+  <DevicesPage />
+{:else if key === 'geraete/bediengeraete'}
+  <ControllersPage />
+{:else if key === 'geraete/karte'}
+  <MapPage />
 {:else if area.id === 'zeit' && page.id === 'wochenplaene'}
   <ScheduleView />
 {:else if area.id === 'zeit' && page.id === 'anlagenurlaub'}
