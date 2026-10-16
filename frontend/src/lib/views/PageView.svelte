@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { VisibleArea, VisiblePage } from '$lib/navigation';
+  import KioskPage from '$lib/components/access/KioskPage.svelte';
+  import PeoplePage from '$lib/components/access/PeoplePage.svelte';
+  import TokensPage from '$lib/components/access/TokensPage.svelte';
   import Placeholder from '$lib/components/Placeholder.svelte';
   import ControllersPage from '$lib/components/devices/ControllersPage.svelte';
   import DevicesPage from '$lib/components/devices/DevicesPage.svelte';
@@ -29,6 +32,12 @@
   <ControllersPage />
 {:else if key === 'geraete/karte'}
   <MapPage />
+{:else if key === 'personen/rechte'}
+  <PeoplePage {page} />
+{:else if key === 'personen/tokens'}
+  <TokensPage title={page.label} />
+{:else if key === 'personen/kiosk'}
+  <KioskPage title={page.label} />
 {:else if area.id === 'zeit' && page.id === 'wochenplaene'}
   <ScheduleView />
 {:else if area.id === 'zeit' && page.id === 'anlagenurlaub'}
