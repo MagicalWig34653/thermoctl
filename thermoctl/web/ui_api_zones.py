@@ -99,6 +99,17 @@ class RoomFormOptionsOut(BaseModel):
     room: RoomFormOut | None
 
 
+class RoomOrderOut(BaseModel):
+    id: int
+    sort_order: int
+
+
+class RoomOrdersOut(BaseModel):
+    """Sortierwert je sichtbarem Raum, in der Reihenfolge der Räume-Liste."""
+
+    rooms: list[RoomOrderOut]
+
+
 class DeleteImpactOut(BaseModel):
     """Was mit dem Raum verschwindet -- dieselben Zahlen wie die HTML-Löschseite."""
 
@@ -298,6 +309,18 @@ def room_form(
         name_limit=NAME_LIMIT,
         display_name_limit=DISPLAY_NAME_LIMIT,
         room=_room_form(zone) if zone is not None else None,
+    )
+
+
+@router.get("/room-orders")
+def room_orders(principal: Prin, session: Sess) -> RoomOrdersOut:
+    """Sortierwert der sichtbaren Räume (Anlagensicht, `zone.read`) für die Räume-Liste."""
+    _need_admin_ui(principal)
+    return RoomOrdersOut(
+        rooms=[
+            RoomOrderOut(id=zone.id, sort_order=zone.sort_order)
+            for zone in visible_zones(session, principal, "zone.read")
+        ]
     )
 
 

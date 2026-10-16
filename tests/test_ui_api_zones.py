@@ -83,6 +83,7 @@ def test_every_endpoint_needs_a_session(client: TestClient, session: Session) ->
     zone = _anlage(session)
     for method, url in (
         ("GET", "/ui-api/room-form"),
+        ("GET", "/ui-api/room-orders"),
         ("POST", "/ui-api/rooms"),
         ("PUT", f"/ui-api/rooms/{zone.id}"),
         ("GET", f"/ui-api/rooms/{zone.id}/delete-impact"),
@@ -667,6 +668,40 @@ def test_glossary_is_the_domain_glossary_for_every_login(
             "see_also": list(first.see_also),
         }
         assert {e["area"] for e in body["entries"]} <= set(body["areas"])
+
+
+# -- Sortierwerte der Räume-Liste ---------------------------------------------------------------
+
+
+def test_room_orders_list_only_visible_rooms_in_list_order(
+    client_als: Als, session: Session
+) -> None:
+    source(session, "web")
+    zweiter = create_zone(session, "zweiter")
+    erster = create_zone(session, "erster")
+    verdeckt = create_zone(session, "verdeckt")
+    zweiter.sort_order = 7
+    erster.sort_order = -2
+    verdeckt.sort_order = 1
+    session.flush()
+    body = client_als([("zone.read", erster.id), ("zone.read", zweiter.id)]).get(
+        "/ui-api/room-orders"
+    )
+    assert body.status_code == 200
+    assert body.json() == {
+        "rooms": [
+            {"id": erster.id, "sort_order": -2},
+            {"id": zweiter.id, "sort_order": 7},
+        ]
+    }
+    assert client_als([]).get("/ui-api/room-orders").json() == {"rooms": []}
+
+
+def test_room_orders_belong_to_the_plant_view(tenant_client: Als, session: Session) -> None:
+    zone = _anlage(session)
+    _fehler(
+        tenant_client([("zone.read", zone.id)]).get("/ui-api/room-orders"), 403, "wrong_profile"
+    )
 
 
 # -- Verdrahtung -------------------------------------------------------------------------------

@@ -32,6 +32,11 @@ export interface RoomValues {
   sort_order: string;
 }
 
+/** `GET /ui-api/room-orders`: Sortierwert je sichtbarem Raum. */
+export interface RoomOrders {
+  rooms: { id: number; sort_order: number }[];
+}
+
 export interface RoomPatch {
   name?: string;
   display_name?: string;

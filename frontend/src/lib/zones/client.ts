@@ -11,6 +11,7 @@ import type {
   RoomCreateBody,
   RoomForm,
   RoomFormOptions,
+  RoomOrders,
   RoomPatch,
 } from './types';
 
@@ -19,6 +20,7 @@ export function createZonesClient(api: Api) {
     /** Auswahllisten; mit `zoneId` zusätzlich die aktuellen Werte des Raums. */
     form: (zoneId?: number) =>
       api.get<RoomFormOptions>(zoneId === undefined ? '/ui-api/room-form' : `/ui-api/room-form?zone_id=${zoneId}`),
+    orders: () => api.get<RoomOrders>('/ui-api/room-orders'),
     create: (body: RoomCreateBody) => api.post<RoomForm>('/ui-api/rooms', body),
     save: (zoneId: number, patch: RoomPatch) => api.put<RoomForm>(`/ui-api/rooms/${zoneId}`, patch),
     deleteImpact: (zoneId: number) => api.get<DeleteImpact>(`/ui-api/rooms/${zoneId}/delete-impact`),

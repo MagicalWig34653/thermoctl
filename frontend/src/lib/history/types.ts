@@ -67,7 +67,7 @@ export interface RelayWear {
     lifetime_percent_per_year: number;
     lifetime_years: number | null;
     wear_level: string;
-    days: { day: string; operations: number }[];
+    days: { day: string; operations: number; annual_projection: number }[];
   }[];
 }
 

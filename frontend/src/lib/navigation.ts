@@ -340,6 +340,19 @@ export function searchNavigation(areas: readonly VisibleArea[], query: string): 
   return out;
 }
 
+/** Pfad in der Oberfläche für einen alten Server-Pfad (`/devices` -> `/geraete/liste`), oder
+ *  `null`, wenn die Abbildung ihn nicht kennt. Konto und Startseite stehen außerhalb der Bereiche. */
+export function appPathOf(serverPath: string): string | null {
+  if (serverPath === '/') return '/';
+  if (serverPath === '/account') return '/konto';
+  for (const area of AREAS) {
+    for (const page of area.pages) {
+      if (page.paths.includes(serverPath)) return `/${area.id}/${page.id}`;
+    }
+  }
+  return null;
+}
+
 export function areaPath(areaId: string): string {
   return areaId === 'uebersicht' ? '/' : `/${areaId}`;
 }

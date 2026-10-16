@@ -175,19 +175,23 @@
         <Dialog.Description>Die Person meldet sich mit diesem Namen und Passwort an und kann es unter Konto ändern.</Dialog.Description>
       </Dialog.Header>
       <label class="grid gap-1 text-sm font-medium">Benutzername
-        <input class={field} bind:value={form.username} required maxlength="64" autocomplete="off" autocapitalize="none" aria-invalid={actions.notice?.failure?.field === 'username'} />
+        <input class={field} bind:value={form.username} required maxlength="64" autocomplete="off" autocapitalize="none" aria-invalid={actions.notice?.failure?.field === 'username'} aria-describedby="user-name-hint" />
+        <span id="user-name-hint" class="text-xs font-normal text-muted-foreground">Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.</span>
       </label>
       <label class="grid gap-1 text-sm font-medium">Anzeigename
-        <input class={field} bind:value={form.display_name} maxlength="128" autocomplete="off" />
+        <input class={field} bind:value={form.display_name} maxlength="128" autocomplete="off" aria-describedby="user-display-hint" />
+        <span id="user-display-hint" class="text-xs font-normal text-muted-foreground">So erscheint die Person im Protokoll.</span>
       </label>
       <label class="grid gap-1 text-sm font-medium">Startpasswort
-        <input class={field} type="password" bind:value={form.password} required autocomplete="new-password" aria-invalid={actions.notice?.failure?.field === 'password'} />
+        <input class={field} type="password" bind:value={form.password} required autocomplete="new-password" aria-invalid={actions.notice?.failure?.field === 'password'} aria-describedby="user-pw-hint" />
+        <span id="user-pw-hint" class="text-xs font-normal text-muted-foreground">Mindestens 12 Zeichen.</span>
       </label>
       <label class="grid gap-1 text-sm font-medium">Gruppe
         <select class={field} bind:value={form.group_id}>
           <option value="">Keine Gruppe</option>
           {#each users.data?.groups ?? [] as g (g.id)}<option value={String(g.id)}>{g.name}</option>{/each}
         </select>
+        <span class="text-xs font-normal text-muted-foreground">Ohne Gruppe hat die Person keinerlei Rechte.</span>
       </label>
       {#if actions.notice?.where === 'create'}<Notice tone={actions.notice.tone}>{actions.notice.text}</Notice>{/if}
       <Dialog.Footer>
@@ -207,6 +211,7 @@
       </Dialog.Header>
       <label class="grid gap-1 text-sm font-medium">Neues Passwort
         <input class={field} type="password" bind:value={pw} required autocomplete="new-password" aria-invalid={actions.notice?.failure?.field === 'password'} />
+        <span class="text-xs font-normal text-muted-foreground">Mindestens 12 Zeichen.</span>
       </label>
       {#if actions.notice?.where === 'password'}<Notice tone={actions.notice.tone}>{actions.notice.text}</Notice>{/if}
       <Dialog.Footer>

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { ExternalLink } from '@lucide/svelte';
   import type { VisibleLink } from '$lib/navigation';
-  import { legacyHref } from '$lib/paths';
+  import { appHref, legacyHref } from '$lib/paths';
+  import { appPathOf } from '$lib/navigation';
   import { useApp } from '$lib/context';
 
   let {
@@ -10,6 +11,12 @@
     links,
   }: { title: string; description?: string; links: VisibleLink[] } = $props();
   const { prefix } = useApp();
+  // Ein Ziel, das die Oberfläche kennt, bleibt in ihr; nur ein unbekannter Server-Pfad geht
+  // als Vollseitenladen zur Serverseite (die ihrerseits umleitet).
+  const hrefOf = (path: string) => {
+    const inApp = appPathOf(path);
+    return inApp === null ? legacyHref(prefix, path) : appHref(prefix, inApp);
+  };
 </script>
 
 <header class="mb-6">
@@ -25,10 +32,9 @@
   <ul class="m-0 flex list-none flex-col gap-2 p-0">
     {#each links as link (link.path)}
       <li>
-        <!-- Vollseitenladen mit Präfix: die alte HTML-Seite, nicht die Oberfläche. -->
         <a
           class="inline-flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"
-          href={legacyHref(prefix, link.path)}
+          href={hrefOf(link.path)}
         >
           {link.label}
           <ExternalLink size={14} aria-hidden="true" />

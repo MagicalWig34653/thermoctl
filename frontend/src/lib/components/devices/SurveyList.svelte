@@ -6,8 +6,9 @@
   import { createDevicesClient } from '$lib/devices/client';
   import { createQuery } from '$lib/history/query.svelte';
   import { formatInstant } from '$lib/rooms/logic';
+  import { appHref } from '$lib/paths';
 
-  const { api } = useApp();
+  const { api, prefix } = useApp();
   const client = createDevicesClient(api);
   const survey = createQuery(() => client.survey());
   let text = $state('');
@@ -47,7 +48,16 @@
       {#if survey.data.without_zone}<span class="text-sm text-muted-foreground">{survey.data.without_zone} ohne Raum</span>{/if}
     </div>
     {#if survey.failure}<Notice tone="error">{survey.failure.message}</Notice>{/if}
-    {#if !shown.length}
+    {#if !survey.data.devices.length}
+      <div class="rounded-xl border bg-card p-4" data-testid="survey-empty">
+        <p class="mb-1 font-medium">Noch kein Gerät bekannt.</p>
+        <p class="m-0 text-muted-foreground">
+          Entweder ist MQTT nicht eingerichtet, oder es ist noch keine Gerätenachricht eingegangen.
+          Der Zustand der Anbindung steht unter
+          <a class="underline" href={appHref(prefix, '/system/verbindungen')}>Verbindungen</a>.
+        </p>
+      </div>
+    {:else if !shown.length}
       <p class="text-muted-foreground">Keine Geräte gefunden.</p>
     {:else}
       <ul class="m-0 grid list-none gap-3 p-0 md:grid-cols-2" aria-label="Geräteliste">

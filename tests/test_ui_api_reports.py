@@ -624,6 +624,9 @@ def test_relay_wear_counts_confirmed_transitions_for_visible_zones_only(
     assert device["wear_level"] == "normal"
     assert device["lifetime_years"] is not None
     assert sum(d["operations"] for d in device["days"]) == 2
+    # Tageswert je Tag auf ein Jahr hochgerechnet: 365 Kalendertage, ohne Mittelung.
+    assert all(d["annual_projection"] == d["operations"] * 365 for d in device["days"])
+    assert any(d["annual_projection"] == 730 for d in device["days"])
     assert body["assumed_lifetime_operations"] == 500_000
 
 

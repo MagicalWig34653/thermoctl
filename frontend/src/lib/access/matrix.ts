@@ -87,3 +87,10 @@ export function profileLabel(profile: string): string {
   if (profile === 'tenant') return 'Mietersicht';
   return profile;
 }
+
+/** Gilt ein Recht anlagenweit, decken die Raumfelder es schon ab: Sie sind dann gesperrt, nicht
+ *  nur abgedunkelt, damit niemand ein Kästchen ohne Wirkung anhakt. Ist die ganze Matrix
+ *  gesperrt, sind es auch die Raumfelder. */
+export function roomFieldsLocked(row: { plantWide: boolean }, matrixDisabled: boolean): boolean {
+  return matrixDisabled || row.plantWide;
+}

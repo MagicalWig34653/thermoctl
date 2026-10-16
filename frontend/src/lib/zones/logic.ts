@@ -137,3 +137,23 @@ export function groupByLetter(entries: readonly GlossaryEntry[]): LetterGroup[] 
 export function termOf(entries: readonly GlossaryEntry[], id: string): string {
   return entries.find((entry) => entry.id === id)?.term ?? id;
 }
+
+export interface RoomShortcut {
+  label: string;
+  to: string;
+}
+
+/** Sprunglinks einer Raumzeile der Räume-Liste: Zeitplan, Geräte und Datenfluss, aber nur die
+ *  Ansichten, die diese Person überhaupt sieht (Darstellung, jeder Endpunkt prüft erneut). */
+export function roomShortcuts(
+  areas: readonly { id: string; pages: readonly { id: string }[] }[],
+  roomId: number,
+): RoomShortcut[] {
+  const has = (area: string, page: string) =>
+    areas.some((a) => a.id === area && a.pages.some((p) => p.id === page));
+  const out: RoomShortcut[] = [];
+  if (has('zeit', 'wochenplaene')) out.push({ label: 'Zeitplan', to: `/zeit/wochenplaene?zone=${roomId}` });
+  if (has('geraete', 'liste')) out.push({ label: 'Geräte', to: '/geraete/liste' });
+  if (has('geraete', 'karte')) out.push({ label: 'Datenfluss', to: '/geraete/karte' });
+  return out;
+}

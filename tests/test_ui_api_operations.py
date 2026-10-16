@@ -1523,7 +1523,7 @@ def test_interfaces_never_return_a_secret(
     mcp = by_key["mcp"]["details"][0]
     assert mcp["value"] == "hinterlegt"
     assert by_key["mqtt"]["state"] == "configured"
-    assert by_key["mqtt"]["more"] == {"label": "Geräte ansehen", "path": "/devices"}
+    assert by_key["mqtt"]["more"] == {"label": "Geräte ansehen", "path": "/geraete/liste"}
     assert by_key["benachrichtigung"]["more"] is None
     assert by_key["mcp"]["hint"] is not None
     assert body["homebridge_broker_configured"] is True
