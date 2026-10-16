@@ -77,15 +77,29 @@ async def report_problem(
     form = await request.form()
     kind = str(form.get("kind", ""))
     note = str(form.get("note", ""))
-    user_record = session.get(User, principal.user_id)
-
     try:
-        notice = build_report(
-            session, zone, kind, note, now=utcnow(), user=user_record
-        )
+        message = await submit_report(request, session, principal, zone, kind, note)
     except DomainError as exc:
         return _back(request, {"report_errors": exc.notice, "zone_id": zone.id})
+    return _back(request, {"report_notice": message, "zone_id": zone.id})
 
+
+async def submit_report(
+    request: Request,
+    session: Session,
+    principal: Principal,
+    zone: Zone,
+    kind: str,
+    note: str,
+) -> str:
+    """Der gemeinsame Schreibweg von HTML-View und `/ui-api` (Grundsatz 6).
+
+    Baut die Meldung, schreibt sie ins Audit und stellt sie zu; liefert den Satz, der dem
+    Melder gesagt wird. Wirft `DomainError` bei einer ungültigen Eingabe, bevor etwas
+    geschrieben wurde.
+    """
+    user_record = session.get(User, principal.user_id)
+    notice = build_report(session, zone, kind, note, now=utcnow(), user=user_record)
     audit.record(
         session,
         source="web",
@@ -101,22 +115,12 @@ async def report_problem(
     env_settings = get_settings()
     row = control_settings(session)
     if env_settings.notify_webhook is None or not notice_enabled(notice.kind, row):
-        return _back(
-            request,
-            {
-                "report_notice": (
-                    "Die Meldung wurde aufgenommen. Eine automatische Weiterleitung "
-                    "ist für diese Anlage nicht eingerichtet."
-                ),
-                "zone_id": zone.id,
-            },
+        return (
+            "Die Meldung wurde aufgenommen. Eine automatische Weiterleitung "
+            "ist für diese Anlage nicht eingerichtet."
         )
-    await notification.deliver(
-        request.app.state.session_factory, env_settings, notice
-    )
-    return _back(
-        request, {"report_notice": "Die Meldung wurde weitergegeben.", "zone_id": zone.id}
-    )
+    await notification.deliver(request.app.state.session_factory, env_settings, notice)
+    return "Die Meldung wurde weitergegeben."
 
 
 def _back(request: Request, parameter: dict[str, object]) -> Response:

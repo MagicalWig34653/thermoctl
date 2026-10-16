@@ -6,6 +6,7 @@
   import PasskeysCard from '$lib/components/account/PasskeysCard.svelte';
   import PasswordCard from '$lib/components/account/PasswordCard.svelte';
   import SessionsCard from '$lib/components/account/SessionsCard.svelte';
+  import ReportCard from '$lib/components/zones/ReportCard.svelte';
   import { useApp } from '$lib/context';
   import { createAccessClient } from '$lib/access/client';
   import { createResource } from '$lib/access/resource.svelte';
@@ -56,6 +57,7 @@
   <PasswordCard />
   <SessionsCard />
   {#if account.data?.passkeys_available}<PasskeysCard />{/if}
+  <ReportCard />
 
   <section class="max-w-xl rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="help-title">
     <h2 id="help-title" class="m-0 text-lg">Hilfe</h2>

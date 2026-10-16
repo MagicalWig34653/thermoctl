@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ArrowLeft, Minus, Plus, SkipForward } from '@lucide/svelte';
+  import { ArrowLeft, Minus, Pencil, Plus, SkipForward, Trash2 } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { appHref } from '$lib/paths';
   import { Button } from '$lib/components/ui/button';
@@ -23,9 +23,12 @@
   import HelpTip from './HelpTip.svelte';
   import Notice from './Notice.svelte';
   import RoomTechnik from '$lib/components/operations/RoomTechnik.svelte';
+  import ReportCard from '$lib/components/zones/ReportCard.svelte';
+  import RoomDeleteDialog from '$lib/components/zones/RoomDeleteDialog.svelte';
+  import RoomFormDialog from '$lib/components/zones/RoomFormDialog.svelte';
 
   let { id }: { id: number } = $props();
-  const { api, prefix } = useApp();
+  const { api, prefix, router } = useApp();
 
   interface Page {
     detail: RoomDetail;
@@ -161,6 +164,11 @@
     await run('opmode', () => api.put<RoomDetail>(`${base}/operating-mode`, { code }), 'Betriebsart geändert.');
   }
 
+  // Raum bearbeiten / löschen (Dialoge laden ihre Daten selbst; der Server entscheidet über Rechte)
+  let editOpen = $state(false);
+  let deleteOpen = $state(false);
+  let roomNotice = $state<string | null>(null);
+
   // Mobil: zwei Ansichten
   let view = $state<'control' | 'tech'>('control');
 
@@ -192,7 +200,15 @@
     {#if status}
       <span class="rounded-full px-2.5 py-0.5 text-xs font-medium {status.attention ? 'bg-destructive/10 text-destructive' : 'bg-secondary'}">{status.label}</span>
     {/if}
+    {#if ui.operatingMode.show}
+      <span class="ml-auto flex gap-2">
+        <Button variant="outline" onclick={() => { roomNotice = null; editOpen = true; }} data-testid="room-edit"><Pencil aria-hidden="true" />Bearbeiten</Button>
+        <Button variant="outline" onclick={() => { roomNotice = null; deleteOpen = true; }} data-testid="room-delete"><Trash2 aria-hidden="true" />Löschen</Button>
+      </span>
+    {/if}
   </header>
+
+  {#if roomNotice}<div class="mb-4"><Notice tone="success">{roomNotice}</Notice></div>{/if}
 
   {#if page.failure}
     <div class="mb-4"><Notice tone="warn">Aktualisieren fehlgeschlagen: {page.failure.message} Angezeigt ist der letzte bekannte Stand.</Notice></div>
@@ -379,6 +395,8 @@
           </div>
         </section>
       {/if}
+
+      <ReportCard zoneId={room.id} hideWhenEmpty />
     </div>
 
     <!-- Technik -->
@@ -465,4 +483,20 @@
       {/if}
     </div>
   </div>
+{/if}
+
+{#if room}
+  <RoomFormDialog
+    bind:open={editOpen}
+    zoneId={room.id}
+    ondone={(saved) => {
+      roomNotice = `Raum „${saved.display_name}“ gespeichert.`;
+      void page.refresh();
+    }}
+  />
+  <RoomDeleteDialog
+    bind:open={deleteOpen}
+    zoneId={room.id}
+    ondone={() => router.navigate('/uebersicht/raeume')}
+  />
 {/if}

@@ -10,6 +10,7 @@
   import EventsPage from '$lib/components/history/EventsPage.svelte';
   import HistoryPage from '$lib/components/history/HistoryPage.svelte';
   import WearPage from '$lib/components/history/WearPage.svelte';
+  import RoomsPage from '$lib/components/zones/RoomsPage.svelte';
   import ModesAdmin from '$lib/components/schedule/ModesAdmin.svelte';
   import ScheduleView from '$lib/components/schedule/ScheduleView.svelte';
   import VacationPanel from '$lib/components/schedule/VacationPanel.svelte';
@@ -29,7 +30,9 @@
   const key = $derived(`${area.id}/${page.id}`);
 </script>
 
-{#if key === 'auswertung/verlauf'}
+{#if key === 'uebersicht/raeume'}
+  <RoomsPage />
+{:else if key === 'auswertung/verlauf'}
   <HistoryPage />
 {:else if key === 'auswertung/ereignisse'}
   <EventsPage />

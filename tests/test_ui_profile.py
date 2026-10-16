@@ -484,6 +484,17 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     },
     ("POST", "/ui-api/settings/notifications/test"): "Profilprüfung im Endpunkt (Anlagensicht)",
     ("GET", "/ui-api/interfaces"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    # Räume anlegen/bearbeiten/löschen, Probleme melden, Glossar (`ui_api_zones`): Anlagensicht
+    # prüft der Endpunkt selbst (`wrong_profile`); Melden und Glossar gehören beiden Oberflächen.
+    ("GET", "/ui-api/room-form"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("POST", "/ui-api/rooms"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("PUT", "/ui-api/rooms/{zone_id}"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("GET", "/ui-api/rooms/{zone_id}/delete-impact"):
+        "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("DELETE", "/ui-api/rooms/{zone_id}"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("GET", "/ui-api/report-options"): "beide Oberflächen, report.create je Zone",
+    ("POST", "/ui-api/rooms/{zone_id}/report"): "beide Oberflächen, report.create je Zone",
+    ("GET", "/ui-api/glossary"): "reiner Erklärtext für beide Oberflächen, nur Anmeldung",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",

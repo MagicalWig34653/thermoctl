@@ -145,6 +145,7 @@ from thermoctl.web.ui_api_operations import router as ui_api_operations_router
 from thermoctl.web.ui_api_reports import router as ui_api_reports_router
 from thermoctl.web.ui_api_rooms import router as ui_api_rooms_router
 from thermoctl.web.ui_api_schedule import router as ui_api_schedule_router
+from thermoctl.web.ui_api_zones import router as ui_api_zones_router
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
@@ -1329,6 +1330,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_api_devices_router)
     app.include_router(ui_api_access_router)
     app.include_router(ui_api_operations_router)
+    app.include_router(ui_api_zones_router)
     # Eigener Principal (Kiosk-Cookie), eigene CSRF-Semantik -- bewusst nicht unter /ui-api.
     app.include_router(kiosk_api_router)
     app.include_router(kiosk_admin_router)
