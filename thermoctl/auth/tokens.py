@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +9,8 @@ from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import Permission
 from thermoctl.domain.authz import Forbidden, has_permission, principal_for_user
+
+LAST_USED_RESOLUTION = timedelta(seconds=60)
 
 
 def issue_token(
@@ -61,7 +63,11 @@ def resolve_token(session: Session, plaintext: str) -> ApiToken | None:
         return None
     if token.expires_at is not None and token.expires_at <= utcnow():
         return None
-    token.last_used_at = utcnow()
+    now = utcnow()
+    # Not on every request: a write per request makes parallel requests with the same
+    # token contend for the row (SQLite: "database is locked"). Lists show the minute.
+    if token.last_used_at is None or now - token.last_used_at >= LAST_USED_RESOLUTION:
+        token.last_used_at = now
     return token
 
 

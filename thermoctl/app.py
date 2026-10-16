@@ -1510,6 +1510,26 @@ def create_app() -> FastAPI:
         return response
 
     @app.middleware("http")
+    async def response_hardening(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Central security headers for the Svelte app's surfaces, not per route.
+
+        `/ui-api` and `/kiosk-api` answer with per-user data: `no-store` keeps it out of
+        shared caches (a route that set its own `Cache-Control` keeps it). `nosniff` also
+        covers `/app` and `/static`. No `frame-ancestors` / `X-Frame-Options` on `/app`:
+        Home Assistant's Ingress embeds it in an iframe (docs/self-hosting.md).
+        """
+        response = await call_next(request)
+        path = request.scope["path"]
+        api = path.startswith(("/ui-api/", "/kiosk-api/"))
+        if api:
+            response.headers.setdefault("Cache-Control", "no-store")
+        if api or path == "/app" or path.startswith(("/app/", "/static/")):
+            response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @app.middleware("http")
     async def resolve_root_path(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:

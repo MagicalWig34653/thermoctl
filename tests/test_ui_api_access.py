@@ -958,3 +958,30 @@ def test_sessions_left_untouched_by_listing(client_als: Als, session: Session) -
     before = session.query(Session_).filter(Session_.revoked_at.is_not(None)).count()
     client.get("/ui-api/account/sessions")
     assert session.query(Session_).filter(Session_.revoked_at.is_not(None)).count() == before
+
+
+def test_password_change_throttles_wrong_attempts_and_success_resets(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from thermoctl.web.auth_views import FEHLVERSUCHE
+
+    delays: list[float] = []
+
+    async def merken(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", merken)
+    client = client_als([])
+    me = session.get(User, _me(client))
+    assert me is not None
+    me.password_hash = hash_password("das-alte-passwort-1")
+    url = "/ui-api/account/password"
+    key = f"passwort:{me.id}"
+    FEHLVERSUCHE.pop(key, None)
+    wrong = {"current_password": "falsch-falsch-1", "new_password": LONG_PASSWORD}
+    for _ in range(3):
+        _err(_call(client, "PUT", url, wrong), 403, "wrong_password")
+    assert delays == [1, 2, 4] and FEHLVERSUCHE[key] == 3
+    ok = _call(client, "PUT", url, {"current_password": "das-alte-passwort-1", "new_password": LONG_PASSWORD})
+    assert ok.status_code == 200
+    assert delays == [1, 2, 4, 5] and FEHLVERSUCHE[key] == 0

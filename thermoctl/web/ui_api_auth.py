@@ -38,6 +38,10 @@ _CLOSED = "Die Einrichtung ist bereits abgeschlossen."
 # Spaltenbreiten des Datenmodells (identity.User, operations.Setting); längere Eingaben
 # wären auf MariaDB ein Datenbankfehler statt einer Rückmeldung am Feld.
 _MAX_LENGTH = {"username": 64, "display_name": 128, "timezone": 64}
+# Raw (untrimmed) ceilings: password so Argon2id cannot be fed megabytes, the token far
+# above any real one.
+_MAX_PASSWORD = 1024
+_MAX_SETUP_TOKEN = 256
 
 
 class LoginOptionsOut(BaseModel):
@@ -89,6 +93,15 @@ def setup(
     """
     if not setup_needed(session):
         return _closed()
+    for field, raw, limit in (
+        ("username", body.username, _MAX_LENGTH["username"]),
+        ("display_name", body.display_name, _MAX_LENGTH["display_name"]),
+        ("timezone", body.timezone, _MAX_LENGTH["timezone"]),
+        ("password", body.password, _MAX_PASSWORD),
+        ("setup_token", body.setup_token, _MAX_SETUP_TOKEN),
+    ):
+        if len(raw) > limit:
+            return _field_error(field, f"Höchstens {limit} Zeichen.", _UNPROCESSABLE)
     values = {
         "username": body.username.strip(),
         "display_name": body.display_name.strip(),
@@ -97,12 +110,6 @@ def setup(
     for field, value in values.items():
         if not value:
             return _field_error(field, "Bitte ausfüllen.", _UNPROCESSABLE)
-        if len(value) > _MAX_LENGTH[field]:
-            return _field_error(
-                field,
-                f"Höchstens {_MAX_LENGTH[field]} Zeichen.",
-                _UNPROCESSABLE,
-            )
     try:
         run_setup(
             session,

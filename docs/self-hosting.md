@@ -285,6 +285,14 @@ Assistant selbst (nur ein anderer Port), ignoriert der Browser beim Cookie-Abgle
 Port — im ungünstigen Fall verlangt das Ergebnis dann eine erneute Anmeldung, aber kein
 Konto wird dabei einem anderen zugänglich.
 
+**Einbettung (bewusste Entscheidung):** `/app` trägt weder `frame-ancestors` noch
+`X-Frame-Options`, weil Home Assistant die Oberfläche per Ingress in einem iframe einbettet;
+ein Verbot würde das Add-on unbenutzbar machen. Schutz vor Clickjacking leisten stattdessen
+`SameSite`-Cookies und das CSRF-Token. Ausgenommen davon ist die OAuth-Zustimmung
+(`/oauth/consent`), die `frame-ancestors 'none'` behält. `/ui-api`, `/kiosk-api`, `/app`
+und `/static` setzen `X-Content-Type-Options: nosniff`, die beiden APIs zusätzlich
+`Cache-Control: no-store`.
+
 **Passkeys** sind an einen einzigen Hostnamen gebunden (`THERMOCTL_PASSKEY_RP_ID`).
 Unterscheiden sich die Hostnamen von Ingress und direktem Zugang, funktioniert die
 Passkey-Anmeldung nur unter dem konfigurierten — unter dem jeweils anderen bleibt die

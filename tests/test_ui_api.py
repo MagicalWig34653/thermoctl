@@ -69,3 +69,23 @@ def test_valid_csrf_passes_under_ui_api(client_als: Als) -> None:
         )
     response = client.post("/ui-api/csrf-probe", headers={"X-CSRF-Token": token})
     assert response.json() == {"ok": True}
+
+
+def test_api_responses_carry_no_store_and_nosniff(client) -> None:
+    response = client.get("/ui-api/bootstrap")
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    login = client.get("/ui-api/login-options")
+    assert login.headers["Cache-Control"] == "no-store"
+    kiosk = client.get("/kiosk-api/bootstrap")
+    assert kiosk.headers["X-Content-Type-Options"] == "nosniff"
+    assert kiosk.headers["Cache-Control"] == "no-store"
+
+
+def test_app_and_static_get_nosniff_but_no_framing_ban(client) -> None:
+    for path in ("/app", "/static/favicon.svg"):
+        response = client.get(path, follow_redirects=True)
+        assert response.headers["X-Content-Type-Options"] == "nosniff", path
+        assert "X-Frame-Options" not in response.headers
+        assert "frame-ancestors" not in response.headers.get("Content-Security-Policy", "")
+    assert "X-Content-Type-Options" not in client.get("/login").headers

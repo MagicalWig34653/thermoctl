@@ -47,3 +47,24 @@ def test_logout_with_stale_token_clears_cookies_as_json(client: TestClient, user
     assert response.status_code == 403
     assert response.json()["stale"] is True
     assert "max-age=0" in response.headers["set-cookie"].lower()
+
+
+def test_oversized_login_input_is_the_neutral_401_and_audits_no_long_id(
+    client: TestClient, user: User, session
+) -> None:
+    from sqlalchemy import select
+
+    from thermoctl.db.models.operations import AuditEvent
+
+    for body in (
+        {"username": "u" * 65, "password": "x"},
+        {"username": "lino", "password": "p" * 1025},
+    ):
+        response = client.post("/ui-api/login", json=body)
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Benutzername oder Passwort falsch."}
+    ids = session.scalars(select(AuditEvent.object_id)).all()
+    assert all(i is None or len(i) <= 64 for i in ids)
+    # the limits themselves are still accepted
+    ok = client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
+    assert ok.status_code == 200

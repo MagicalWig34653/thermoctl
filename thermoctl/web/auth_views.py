@@ -87,6 +87,35 @@ async def login_form(
     )
 
 
+# Column width of `user.username` / `audit_log.object_id`, and a ceiling for the password
+# so an unauthenticated caller cannot make Argon2id hash megabytes. Over the limit the
+# answer is the same neutral failure as for wrong data.
+MAX_USERNAME_LENGTH = 64
+MAX_PASSWORD_LENGTH = 1024
+
+
+async def throttle(key: str) -> int:
+    """Waits according to the failed attempts recorded for `key`; returns that count.
+
+    Shared by the login and the password change, so there is one throttle, not two.
+    """
+    previous_failures = FEHLVERSUCHE.get(key, 0)
+    # `await`, not `time.sleep`: this handler runs on the same event loop as the
+    # control cycle. A blocking sleep here stops the loop for everyone, so an
+    # unauthenticated caller could delay heating decisions by hammering /login --
+    # the actuators would keep their last state while the controller is stalled.
+    await sleep(min(2**previous_failures, 5))
+    return previous_failures
+
+
+def record_failure(key: str, previous_failures: int) -> None:
+    _merke_fehlversuch(key, previous_failures + 1)
+
+
+def reset_failures(key: str) -> None:
+    FEHLVERSUCHE[key] = 0
+
+
 async def attempt_login(
     request: Request, session: Session, username: str, password: str
 ) -> tuple[User, str, int] | None:
@@ -96,12 +125,9 @@ async def attempt_login(
     own copy of the throttle, the constant-time comparison or the audit entries.
     Returns the user, the session secret and its lifetime, or `None` on failure.
     """
-    previous_failures = FEHLVERSUCHE.get(username, 0)
-    # `await`, not `time.sleep`: this handler runs on the same event loop as the
-    # control cycle. A blocking sleep here stops the loop for everyone, so an
-    # unauthenticated caller could delay heating decisions by hammering /login --
-    # the actuators would keep their last state while the controller is stalled.
-    await sleep(min(2**previous_failures, 5))
+    if len(username) > MAX_USERNAME_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
+        return None
+    previous_failures = await throttle(username)
 
     user = session.scalar(select(User).where(User.username == username))
     # The password check ALWAYS runs, even for an unknown username -- then against a
@@ -121,7 +147,7 @@ async def attempt_login(
         )
 
     if not successful:
-        _merke_fehlversuch(username, previous_failures + 1)
+        record_failure(username, previous_failures)
         # The same summary for existing and non-existing usernames alike — the audit
         # entry is allowed to reveal what happened, but the HTTP response to the
         # caller must not reveal whether the username exists.
@@ -132,7 +158,7 @@ async def attempt_login(
         return None
 
     assert user is not None
-    FEHLVERSUCHE[username] = 0
+    reset_failures(username)
     user.last_login_at = utcnow()
 
     lifetime_s = session_lifetime_s(session)

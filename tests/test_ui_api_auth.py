@@ -296,3 +296,17 @@ def test_passkey_login_with_a_target_but_a_bad_assertion_stays_refused(
     )
     assert response.status_code == 401
     assert "return_to" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("field", "limit"),
+    [("username", 64), ("display_name", 128), ("timezone", 64), ("password", 1024),
+     ("setup_token", 256)],
+)
+def test_setup_input_over_the_limit_is_a_422_on_that_field(
+    client: TestClient, field: str, limit: int
+) -> None:
+    body = _body("irgendein-token", **{field: "a" * (limit + 1)})
+    response = client.post("/ui-api/setup", json=body)
+    assert response.status_code == 422
+    assert response.json()["field"] == field

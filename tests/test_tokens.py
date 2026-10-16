@@ -41,3 +41,22 @@ def test_revoking_a_token_sets_revoked_at(session: Session) -> None:
     revoke_token(session, token)
     assert token.revoked_at is not None
     assert isinstance(token.revoked_at, datetime)
+
+
+def test_last_used_is_written_only_after_the_resolution(session: Session, monkeypatch) -> None:
+    from thermoctl.auth.tokens import LAST_USED_RESOLUTION
+
+    owner = user_with_permissions(session, "zuletzt", [("zone.read", None)])
+    token, plaintext = issue_token(session, owner, "t", [("zone.read", None)], None)
+    start = utcnow().replace(microsecond=0)
+    clock = [start]
+    monkeypatch.setattr("thermoctl.auth.tokens.utcnow", lambda: clock[0])
+
+    resolve_token(session, plaintext)
+    assert token.last_used_at == start  # first use is always written
+    clock[0] = start + LAST_USED_RESOLUTION - timedelta(seconds=1)
+    resolve_token(session, plaintext)
+    assert token.last_used_at == start  # too soon: no write, no row contention
+    clock[0] = start + LAST_USED_RESOLUTION
+    resolve_token(session, plaintext)
+    assert token.last_used_at == start + LAST_USED_RESOLUTION  # exactly at the limit

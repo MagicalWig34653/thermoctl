@@ -25,6 +25,7 @@ from collections.abc import Set as AbstractSet
 from datetime import datetime, timedelta
 from typing import Annotated
 
+from anyio import to_thread
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -64,6 +65,7 @@ from thermoctl.domain.principal import Principal
 from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
 from thermoctl.web.admin_views import _token_grants, replace_token_grants
+from thermoctl.web.auth_views import record_failure, reset_failures, throttle
 from thermoctl.web.ui_api_rooms import RoomApiError, _iso, _require_admin_ui, _RoomsRoute
 
 router = APIRouter(
@@ -952,7 +954,7 @@ def show_account(
 
 
 @router.put("/account/password")
-def change_own_password(
+async def change_own_password(
     request: Request,
     body: OwnPasswordIn,
     principal: Annotated[Principal, Depends(current_principal)],
@@ -965,10 +967,16 @@ def change_own_password(
     eigene Sitzung bleibt, jede andere endet (`set_password`).
     """
     user = _owner(session, principal)
-    if not verify_password(body.current_password, user.password_hash):
+    # Same throttle as the login (own key per user, so a wrong guess here does not
+    # delay the real sign-in); awaited, and Argon2id off the event loop.
+    key = f"passwort:{user.id}"
+    previous_failures = await throttle(key)
+    if not await to_thread.run_sync(verify_password, body.current_password, user.password_hash):
+        record_failure(key, previous_failures)
         raise RoomApiError(
             403, "Das bisherige Passwort stimmt nicht.", "wrong_password", field="current_password"
         )
+    reset_failures(key)
     try:
         set_password(
             session, user, body.new_password,
