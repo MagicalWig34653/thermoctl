@@ -4,7 +4,7 @@ Die Begriffe stehen in `thermoctl/data/glossar.json` und nirgends sonst. Was dar
 entsteht, ist abgeleitet:
 
 * die Seite `/glossar` und die kleinen Hilfe-Symbole in der Oberfläche
-  (`web/glossary_views.py`, `web/templates/glossar.html`),
+  (`web/ui_api_zones.py`, Svelte-Seite „Glossar & Hilfe“),
 * die Datei `docs/glossar.md` (`tools/glossar_erzeugen.py` ruft `render_markdown`
   hier auf, und ein Test hält beide Fassungen im Gleichschritt),
 * später die öffentliche Webseite, die dieselbe JSON-Datei liest.

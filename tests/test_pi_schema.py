@@ -231,7 +231,7 @@ def test_pi_eligibility_names_the_reason_before_anything_is_switched_on(
     session: Session,
 ) -> None:
     """Shown to the operator *before* the switch (specification section 6) -- this
-    is the same function `web.daily_views` calls to decide whether to grey out the
+    is the same function the web UI calls to decide whether to grey out the
     checkbox."""
     create_settings(session)
     zone = create_zone(session, "pi-diagnose")

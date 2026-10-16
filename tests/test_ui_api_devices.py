@@ -1,6 +1,6 @@
 """Geräte unter `/ui-api`: Überblick, Anlagenbild, Karte, Zuordnung, Datenfluss, Bediengeräte.
 
-Der Adapter ist dünn; getestet wird, dass er dieselben Domänenwege geht wie die HTML-Views
+Der Adapter ist dünn; getestet wird, dass er dieselben Domänenwege geht wie zuvor die HTML-Oberfläche
 (Wirkung in der Datenbank), dass Rechte und Zonenfilter je Endpunkt greifen (401/403/404,
 CSRF, Profil) und dass Gründe der Domäne als `{detail, code}` ankommen.
 """

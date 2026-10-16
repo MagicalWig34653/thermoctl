@@ -4,9 +4,9 @@ Pure functions only -- the same style as `emergency_operation.py`,
 `emergency_cycle.py` and `emergency_actuator_plan.py`: no database, no clock,
 every bit of already-persisted state arrives as a plain argument. Three
 callers share this module (Grundsatz 6 -- a rule, here a wording, lives once):
-the plant/tenant/kiosk banners (`web/start_views.py`, `web/tenant_views.py`,
-`web/kiosk_views.py`), the control page's detailed per-actuator breakdown
-(`web/control_views.py`), and the REST/MCP `emergency-state` read (`services/
+the plant/tenant/kiosk banners (`web/ui_api_rooms.py`, `web/kiosk_api.py`), the
+control page's detailed per-actuator breakdown (`web/ui_api_operations.py`), and the
+REST/MCP `emergency-state` read (`services/
 emergency_state.py`). All three must describe the exact same persisted state
 the exact same way; a wording fixed in only one adapter is the kind of drift
 Grundsatz 6 exists to rule out.
@@ -31,7 +31,7 @@ from thermoctl.domain import emergency_actuator_plan, emergency_cycle, emergency
 class ZoneEmergencyBanner:
     """One zone's banner for start/tenant/kiosk: a short headline plus one
     sentence of plain-language detail. Both strings are already final HTML
-    text (escaped by the template like any other Jinja variable) -- nothing
+    text (the Svelte UI renders it as text, never as markup) -- nothing
     further to interpolate downstream."""
 
     stage: str

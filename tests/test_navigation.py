@@ -76,6 +76,6 @@ def test_navigation_permissions_match_destination_guards() -> None:
 
 
 def test_every_navigation_endpoint_is_a_ui_api_handler() -> None:
-    """Die Navigation verweist auf die Endpunkte der Svelte-Oberfläche, nicht auf Alt-Views."""
+    """Die Navigation verweist auf Endpunkte der Svelte-Oberfläche, nicht auf Alt-Seiten."""
     for item in NAVIGATION_ITEMS:
         assert item.endpoint.startswith("thermoctl.web.ui_api_"), item.endpoint

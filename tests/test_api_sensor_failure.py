@@ -4,7 +4,7 @@ Ausgleichswerten (`/api/v1/zones/{id}/sensor-failure`).
 
 CSRF ist hier nicht Thema -- REST authentifiziert über Bearer-Token, nicht über
 die Sitzungs-Cookie-Formulare, für die `csrf_protection` greift (siehe
-`thermoctl/web/control_views.py`'s eigener CSRF-Test für die HTML-Seite).
+der frühere CSRF-Test der HTML-Seite).
 """
 
 from collections.abc import Callable

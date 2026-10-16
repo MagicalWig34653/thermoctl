@@ -281,7 +281,6 @@ def test_an_armed_plant_shows_no_dry_run_warning(
     assert "hätte" not in page
 
 
-# -- HTMX, CSRF, Präfix --------------------------------------------------------
 
 
 

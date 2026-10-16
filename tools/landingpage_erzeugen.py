@@ -93,8 +93,8 @@ HERO_BILD = Bild(
     "anlage-startseite.png",
     "Anlagensicht",
     "Alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.",
-    "Startseite der Anlagensicht: Freigabestatus, geplanter Urlaub und die ersten Zonen "
-    "mit Ist-Wert, Sollwert und Zeitplan-Band. Demodaten.",
+    "Übersicht der Anlagensicht: Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, ein "
+    "Notbetriebs-Hinweis und die Kennzahlen „Auf einen Blick“. Demodaten.",
 )
 
 EINBLICKE: tuple[Bild, ...] = (
@@ -103,15 +103,15 @@ EINBLICKE: tuple[Bild, ...] = (
         "Zeitplan einer Zone",
         "Zeiträume im Raster malen oder Schaltpunkte ziehen. Die Vorschau zeigt, was "
         "gerade gilt, auch mit laufender Übersteuerung.",
-        "Zeitplan der Zone Bad mit Vorschau für die nächsten 24 Stunden, Werkzeugen zum "
-        "Zeitmalen und Wochenraster. Demodaten.",
+        "Wochenplan der Zone Bad mit Modusauswahl und Wochenraster, in dem Zeiträume per "
+        "Ziehen angelegt werden. Demodaten.",
     ),
     Bild(
         "anlage-schaltprotokoll.png",
         "Schaltprotokoll",
         "Jeder Befehl mit Zeitpunkt, Zone, Gerät, Ergebnis und Begründung, auch im "
         "Trockenlauf.",
-        "Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: "
+        "Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: "
         "ausgeführt, im Trockenlauf unterdrückt oder gescheitert. Demodaten.",
     ),
     Bild(
@@ -119,24 +119,23 @@ EINBLICKE: tuple[Bild, ...] = (
         "Notbetrieb bei Sensorausfall",
         "Festtakt, Rückkehrprüfung, Notsollwert und eine optionale Außenkennlinie sind "
         "anlagenweit einstellbar.",
-        "Karte „Notbetrieb bei Sensorausfall“ mit Festtakt, Rückkehrprüfung, "
-        "Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen. "
-        "Demodaten.",
+        "Seite „Notbetrieb & Sensorfehler“ mit Standardprofil, Festtakt und den Punkten "
+        "der Außentemperaturkurve. Demodaten.",
     ),
     Bild(
         "wohnung-startseite-mobil.png",
         "Wohnungssicht auf dem Telefon",
         "Bewohner sehen nur ihre eigenen Räume, in Alltagssprache.",
-        "Wohnungssicht am Seitenanfang: Hinweis zum Notbetrieb, laufende Abwesenheit und "
-        "die erste Raumkarte. Demodaten.",
+        "Übersicht der Wohnungssicht am Telefon: Hinweis zum Notbetrieb und die "
+        "Kennzahlen „Auf einen Blick“. Demodaten.",
     ),
     Bild(
-        "wohnung-heizzeit-mobil.png",
-        "Heizzeit je Raum",
-        "Die Heizdauer der letzten 7, 30 oder 90 Tage als Orientierung, kein Energie- "
-        "oder Kostenmesser.",
-        "Seite Heizzeit der Wohnungssicht mit Auswahl 7, 30 oder 90 Tage und einem "
-        "Balkendiagramm je Raum. Demodaten.",
+        "wohnung-verlauf-mobil.png",
+        "Temperatur und Heizzeit je Raum",
+        "Der Verlauf der Raumtemperatur mit Sollwert und Heizanforderung, dazu die "
+        "Heizzeit als Orientierung, kein Energie- oder Kostenmesser.",
+        "Seite „Temperatur & Heizzeit“ der Wohnungssicht am Telefon mit Hinweis zum "
+        "Trockenlauf und Erläuterung des Diagramms. Demodaten.",
     ),
     Bild(
         "kiosk-dashboard.png",

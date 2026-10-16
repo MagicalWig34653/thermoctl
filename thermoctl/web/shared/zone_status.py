@@ -1,4 +1,4 @@
-"""Zonenstatus fuer die Startseiten: ein Aufbau fuer Alt-View und /ui-api."""
+"""Zonenstatus fuer die Startseiten: ein Aufbau fuer /ui-api."""
 from datetime import datetime
 from decimal import Decimal
 

@@ -601,14 +601,17 @@ def test_relay_wear_counts_confirmed_transitions_for_visible_zones_only(
     hidden = create_zone(session, "versteckt")
     relay = create_device(session, "relais-1")
     hidden_relay = create_device(session, "relais-2")
-    now = _now()
-    for minutes_ago, state in [(30, "ON"), (20, "OFF"), (10, "ON")]:
+    # Mittag UTC vor zwei Tagen: alle drei Befehle liegen am selben lokalen Kalendertag,
+    # egal wann der Test läuft (ein "jetzt minus Minuten" teilt sich kurz nach Mitternacht
+    # auf zwei Tage auf).
+    base = _now().replace(hour=12, minute=0) - timedelta(days=2)
+    for minutes_after, state in [(0, "ON"), (10, "OFF"), (20, "ON")]:
         for target, device in ((zone, relay), (hidden, hidden_relay)):
             create_device_command(
                 session,
                 target,
                 device,
-                at=now - timedelta(minutes=minutes_ago),
+                at=base + timedelta(minutes=minutes_after),
                 command="switch",
                 payload=f'{{"state": "{state}"}}',
             )

@@ -226,8 +226,8 @@ def test_swagger_ui_depends_on_no_foreign_address(client: TestClient) -> None:
     """The bundled build pulls its files from a CDN, and the icon from
     `fastapi.tiangolo.com`.
 
-    Both contradict what already applies to Bootstrap and HTMX
-    (static/HERKUNFT.md): on a home network without internet access the page
+    Both contradict what static/HERKUNFT.md states for all
+    front-end code: on a home network without internet access the page
     would stay blank, and every request would tell a third party when
     someone opens the heating control.
     """

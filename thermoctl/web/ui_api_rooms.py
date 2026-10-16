@@ -1,9 +1,9 @@
 """Räume für die Svelte-Oberfläche: Lesemodell und Alltagsaktionen (`/ui-api/rooms`).
 
 Dünner Adapter (Grundsatz 6): Zustand, aufgelöster Sollwert, Übersteuerung, Tagesverlauf
-und Entscheidung kommen aus `start_views.zone_status_context`, derselben Rechnung wie
-die HTML-Startseite; geschrieben wird mit denselben Domänenfunktionen wie in den
-HTML-Views. Hier steht keine Fachregel und nichts, was der Browser nachrechnen müsste:
+und Entscheidung kommen aus `web/shared/zone_status.py`, derselben Rechnung wie
+zuvor die HTML-Startseite; geschrieben wird mit denselben Domänenfunktionen wie dort.
+Hier steht keine Fachregel und nichts, was der Browser nachrechnen müsste:
 Alter, Segmentgrenzen und Rechte kommen fertig.
 
 Rechte werden in jedem Endpunkt neu geprüft. Eine Zone, die es nicht gibt, und eine,
@@ -373,7 +373,7 @@ def _require(principal: Principal, permission: str, zone: Zone) -> None:
 
 
 def _require_admin_ui(principal: Principal) -> None:
-    """Die Seiten dahinter gehören in den HTML-Views zur Anlagensicht (`admin_ui_only`)."""
+    """Die Seiten dahinter gehören zur Anlagensicht."""
     if principal.ui_profile is not WebUiProfile.ADMIN:
         raise RoomApiError(403, "Diese Aktion gehört nicht zu Ihrer Oberfläche.", "wrong_profile")
 
@@ -618,7 +618,7 @@ def _plant(
     states: dict[int, tuple[ZoneState, SensorStatus]],
     now: datetime,
 ) -> PlantOut:
-    """Dieselben Quellen wie `start_views.start`, nur lesend: `app.state`, Zustände, Urlaub."""
+    """Die Quellen der Übersicht, nur lesend: `app.state`, Zustände, Urlaub."""
     vacation = current_or_upcoming_vacation(session, now)
     return PlantOut(
         bridge_reachable=getattr(request.app.state, "bridge_reachable", None),
@@ -754,7 +754,7 @@ def create_room_override(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> RoomDetailOut:
-    """Wie `daily_views.create_override_view`, nur mit Protokolleintrag wie bei MCP."""
+    """Übersteuerung anlegen, mit Protokolleintrag wie bei MCP."""
     zone = _visible_zone(session, principal, zone_id)
     _require(principal, "override.create", zone)
     temperature = _temperature(body.temperature_c)
@@ -826,7 +826,7 @@ def step_room_setpoint(
     session: Annotated[Session, Depends(get_session)],
 ) -> RoomDetailOut:
     """Der Thermostat-Schritt (ein halbes Grad) auf den Sollwert des Modus, wie
-    `daily_views.adjust_thermostat`; kein Übersteuern."""
+    dem früheren `adjust_thermostat`; kein Übersteuern."""
     zone = _visible_zone(session, principal, zone_id)
     _require(principal, "setpoint.write", zone)
     now = utcnow()
@@ -858,7 +858,7 @@ def change_operating_mode(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> RoomDetailOut:
-    """Betriebsart wechseln (`domain.zones.set_operating_mode`). In den HTML-Views
+    """Betriebsart wechseln (`domain.zones.set_operating_mode`). In der früheren HTML-Oberfläche
     geht das nur im Raumformular (`zone.manage`, Anlagensicht); hier dieselben Bedingungen."""
     zone = _visible_zone(session, principal, zone_id)
     _require(principal, "zone.manage", zone)

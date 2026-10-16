@@ -10,7 +10,7 @@ der Verwaltung Ihrer Anlage erhalten.
 Rufen Sie die Ihnen genannte Adresse im Browser auf. Es erscheint eine Anmeldeseite mit
 Benutzername und Passwort.
 
-![Anmeldeseite mit den Feldern Benutzername und Passwort](bilder/oeffentlich-anmeldung.png)
+![Anmeldeseite von thermoctl mit den Feldern Benutzername und Passwort](bilder/oeffentlich-anmeldung.png)
 
 Nach der Anmeldung sehen Sie oben fünf Reiter: **Zuhause**, **Zeitplan**, **Heizzeit**,
 **Verlauf** und **Mehr**. Sie sehen darin ausschließlich die Räume, für die Sie freigeschaltet
@@ -23,11 +23,11 @@ Temperatur, seit wann sie gilt, der aktuelle Sollwert und eine kurze Erklärung,
 gerade dieser Wert gilt. Darunter ein Balken, der zeigt, wie warm es heute laufen soll —
 je dunkler, desto wärmer.
 
-![Zuhause am Seitenanfang: Status, laufende Abwesenheit und Beginn der ersten Raumkarte](bilder/wohnung-startseite-mobil.png)
+![Übersicht der Wohnungssicht am Telefon: Notbetriebs-Hinweis und Kennzahlen](bilder/wohnung-startseite-mobil.png)
 
 Weiter unten stehen die Raumkarten mit ihren Bedienknöpfen:
 
-![Zuhause weiter unten: Schlafzimmer mit Temperatur, Sollwert und Raumaktionen](bilder/wohnung-startseite-mobil-2.png)
+![Übersicht der Wohnungssicht weiter unten: Temperaturverlauf eines Raums](bilder/wohnung-startseite-mobil-2.png)
 
 Für jeden Raum gibt es mehrere Möglichkeiten, die Temperatur zu ändern:
 
@@ -60,11 +60,11 @@ abends kühler sein soll — für jeden Wochentag einzeln, oder auf einmal für 
 Woche bzw. für Montag bis Freitag übertragen. Eine Vorschau zeigt, wie die Temperatur
 dadurch in den nächsten 24 Stunden tatsächlich verläuft.
 
-![Zeitplan am Seitenanfang: Raumauswahl, Vorschau und Beginn der Woche](bilder/wohnung-wohnzimmer-wochenplan-mobil.png)
+![Wochenplan des Wohnzimmers am Telefon mit Raumauswahl und Wochenraster](bilder/wohnung-wohnzimmer-wochenplan-mobil.png)
 
 Weiter unten lassen sich die Uhrzeiten bearbeiten:
 
-![Zeitplan weiter unten: „Tag ab", „Nacht ab", Speichern und Übertragen](bilder/wohnung-wohnzimmer-wochenplan-mobil-2.png)
+![Wochenplan am Telefon weiter unten: Vorschau der nächsten 24 Stunden und „Neue Zeit anlegen“](bilder/wohnung-wohnzimmer-wochenplan-mobil-2.png)
 
 Eine kurzzeitige Änderung über „Für eine Weile wärmer" verändert diesen Wochenplan
 **nicht** — sobald sie endet, gilt der Plan unverändert weiter.
@@ -78,7 +78,7 @@ Gebäude und vom Lüften ab. Steht oben ein gelber Hinweis, dass die Anlage derz
 schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von
 dem abweichen, was Sie im Raum tatsächlich gespürt haben.
 
-![Heizzeit-Ansicht mit Balken je Raum über die letzten 7 Tage](bilder/wohnung-heizzeit-mobil.png)
+![Seite „Temperatur & Heizzeit“ am Telefon mit Hinweis zum Trockenlauf und Erläuterung des Diagramms](bilder/wohnung-verlauf-mobil.png)
 
 ## Verlauf: wie die Temperatur war
 
@@ -118,8 +118,6 @@ Ihr gewohnter Wochenplan bleibt dabei gespeichert und gilt automatisch wieder, s
 Abwesenheit endet — von selbst, ohne dass Sie danach etwas zurückstellen müssten. Eine
 laufende Abwesenheit lässt sich jederzeit vorzeitig beenden.
 
-![Zuhause-Ansicht mit einer laufenden Abwesenheit und der Schaltfläche „Abwesenheit beenden"](bilder/wohnung-abwesenheit-mobil.png)
-
 ## Mehr: Ihr Konto
 
 Unter **Mehr** finden Sie Ihren persönlichen Bereich:
@@ -138,11 +136,11 @@ Gesichtserkennung oder Sicherheitsschlüssel) als Anmeldeweg hinterlegen, als be
 und sicherere Alternative zum Passwort. Ist diese Möglichkeit bei Ihrer Anlage nicht
 eingerichtet, erscheint dieser Bereich schlicht nicht.
 
-![Konto am Seitenanfang: Passwort ändern und andere Sitzungen beenden](bilder/wohnung-konto-mobil.png)
+![Konto & Sicherheit am Telefon: Profil und Passwort ändern](bilder/wohnung-konto-mobil.png)
 
 Hilfe und Abmelden stehen weiter unten:
 
-![Konto weiter unten: Hilfe und Abmelden](bilder/wohnung-konto-mobil-2.png)
+![Konto & Sicherheit weiter unten: angemeldete Geräte und „Problem melden“](bilder/wohnung-konto-mobil-2.png)
 
 ## Wenn etwas nicht stimmt
 

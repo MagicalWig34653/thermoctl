@@ -2,7 +2,7 @@
 Zuordnung je Raum, Datenfluss, Bediengeräte, Schaltprotokoll.
 
 Dünner Adapter (Grundsatz 6): Die Antworten kommen aus denselben Domänenfunktionen und
-Lesemodellen wie die HTML-Views (`build_mapping_map`, `plant_diagram`, `build_data_flow`,
+Lesemodellen wie zuvor die HTML-Oberfläche (`build_mapping_map`, `plant_diagram`, `build_data_flow`,
 `build_device_survey`, `list_commands`, `seen_actions` ...); geschrieben wird mit denselben
 Funktionen (`connect_ports`, `assign_device`, `set_thermostat_mode`, `swap_device`,
 `set_binding`, `configure_channel` ...). Hier steht keine Fachregel.

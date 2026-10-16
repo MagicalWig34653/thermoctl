@@ -159,7 +159,7 @@ class DeviceCommandResponse(BaseModel):
     # over from `actuator_decision` without its own send attempt (`"entscheidung"`,
     # e.g. "bewusst nicht gesendet"/Übergabe/Rückstellung) -- see
     # `domain/device_commands.py::list_commands`. Clearly marked, same shape in
-    # the HTMX view (`device_commands.html`) and here.
+    # the Svelte UI (`/ui-api`) and here.
     entry_kind: str
     simulated: bool
 

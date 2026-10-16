@@ -44,7 +44,7 @@ Was in den ersten Minuten zu sehen sein sollte:
 
 1. **`/zonen`** — je Raum eine Zone anlegen.
 
-   ![Zonenliste mit mehreren Räumen, je mit Betriebsart und Schaltflächen für Geräte, Zeitplan und Bearbeiten](bilder/anlage-zonen.png)
+   ![Raumliste mit sechs Räumen, je mit Ist- und Sollwert sowie Verweisen auf Zeitplan, Geräte und Datenfluss](bilder/anlage-zonen.png)
 
 2. **`/zonen/<id>/geraete`** — die Messquelle wählen (der Temperatursensor des Raums), dazu
    Aktoren und, falls vorhanden, Fensterkontakte.
@@ -59,11 +59,11 @@ Was in den ersten Minuten zu sehen sein sollte:
 Auf der **Startseite** steht je Zone: Ist-Wert und wie alt er ist, Sollwert **mit
 Begründung**, Sensorzustand, und die letzte Schattenentscheidung.
 
-![Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen](bilder/anlage-startseite.png)
+![Übersicht der Verwaltungssicht mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“](bilder/anlage-startseite.png)
 
 Weiter unten:
 
-![Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band](bilder/anlage-startseite-2.png)
+![Übersicht weiter unten: Anlagenstatus, Temperaturverlauf eines Raums und die Liste „Heute relevant“](bilder/anlage-startseite-2.png)
 
 Über mehrere Tage sind drei Dinge zu prüfen — sie sind das Abnahmekriterium von
 Teilprojekt 2:

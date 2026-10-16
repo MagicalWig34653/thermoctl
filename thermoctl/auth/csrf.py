@@ -4,7 +4,7 @@ import hmac
 CSRF_HEADER = "X-CSRF-Token"
 CSRF_FIELD_NAME = "csrf_token"
 
-# Not httpOnly: the UI (HTMX) needs to be able to read the value to send it as a
+# Not httpOnly: the UI (Svelte app) needs to be able to read the value to send it as a
 # header. Harmless, because the token itself does not reveal anything that could be
 # used to take over the session — it is only bound to it.
 CSRF_COOKIE_NAME = "thermoctl_csrf"

@@ -11,7 +11,7 @@ Sicherheitsregeln, die in jedem Endpunkt gelten:
 
 * Nur die Cookie-Sitzung (`current_principal`): Bearer-Token und Kiosk-Cookie führen
   zu 401, ein Token kann hier nichts verwalten.
-* Reihenfolge wie bei den HTML-Views: erst Profil (Anlagensicht, `wrong_profile`), dann
+* Reihenfolge wie in der früheren HTML-Oberfläche: erst Profil (Anlagensicht, `wrong_profile`), dann
   Recht (`forbidden`), dann Existenz (404). Das Konto (`/ui-api/account`) gehört beiden
   Oberflächen und braucht kein Recht.
 * Der Klartext eines Tokens steht genau einmal in der Antwort auf das Ausstellen (mit
@@ -89,7 +89,7 @@ def _need(principal: Principal, code: str) -> None:
 
 
 def _admin(principal: Principal, code: str) -> None:
-    """Profil vor Recht -- wie `admin_ui_only` vor `require` in den HTML-Views."""
+    """Profil vor Recht -- die Reihenfolge der früheren Oberfläche."""
     _require_admin_ui(principal)
     _need(principal, code)
 
@@ -235,7 +235,7 @@ class KioskTokenOut(BaseModel):
 class KioskTokensOut(BaseModel):
     tokens: list[KioskTokenOut]
     # Zeitzone der Anlage: Ablauf und Benutzung der Zugänge werden darin angezeigt,
-    # nicht in der des Browsers (wie am Alt-Kiosk).
+    # nicht in der des Browsers (wie am früheren Kiosk).
     timezone: str
     zones: list[ZoneRefOut]
 

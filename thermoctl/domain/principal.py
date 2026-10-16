@@ -7,7 +7,7 @@ from thermoctl.domain.ui_profile import DEFAULT_PROFILE, WebUiProfile
 class Principal:
     """Who is acting — user or token — together with their effective permission scope.
 
-    The adapters (HTMX, REST, later MCP) only ever see this type and do not need to
+    The adapters (web UI, REST, MCP) only ever see this type and do not need to
     know what they are actually dealing with.
 
     `grants` holds pairs of (permission code, zone_id). `zone_id = None` means

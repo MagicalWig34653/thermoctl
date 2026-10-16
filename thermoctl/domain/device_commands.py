@@ -1,11 +1,9 @@
 """Reading the actuator command log -- the query REST and MCP share.
 
 `services/device_commands.record_command` is the write side, used only by the
-publication cycle. The web view (`web/device_commands_views.py`) runs its own read
-query, built before REST and MCP had any use for the same data -- rewriting it was
-out of scope for this change. `list_commands` is the read side for the two adapters
-added afterwards, so a filter added to one of them cannot silently behave differently
-from the other -- Grundsatz 6, applied to the two adapters this change actually owns.
+publication cycle. The web UI (`web/ui_api_devices.py`) reads through `list_commands` as well, so
+a filter added for one adapter cannot silently behave differently in another --
+Grundsatz 6.
 
 The table has no retention, deliberately: unlike a measurement, a command is rare
 (sent only on change) and any single row can be the one someone needs weeks later to

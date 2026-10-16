@@ -1,4 +1,4 @@
-"""Geraetezuordnung einer Zone: Kontext fuer Alt-View und /ui-api."""
+"""Geraetezuordnung einer Zone: Kontext fuer /ui-api."""
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

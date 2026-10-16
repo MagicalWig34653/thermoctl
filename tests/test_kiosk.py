@@ -130,23 +130,6 @@ def test_an_expired_token_is_rejected(client: TestClient, session: Session) -> N
 
 
 
-# --- Ansicht: panel vs. tafel ---------------------------------------------------------
-#
-# The panel/tafel split itself lives in the template and `kiosk_panel.js` -- what
-# belongs here is only the part `kiosk_views.py` owns: `ansicht` read from the query
-# string, normalized, handed to the template as `data-ansicht`, and written back to
-# its own cookie so a bookmarked `?ansicht=panel` address does not have to be typed
-# again on every visit.
-
-
-
-
-
-
-
-
-
-
 # --- Scope: exactly the assigned zones, nothing else -------------------------------
 
 

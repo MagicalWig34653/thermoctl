@@ -1,4 +1,4 @@
-"""Wochenplan: signierte Rueckgaengig-Marken -- geteilt von Alt-View und /ui-api."""
+"""Wochenplan: signierte Rueckgaengig-Marken -- geteilt von den /ui-api-Endpunkten."""
 import base64
 import hashlib
 import hmac

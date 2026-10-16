@@ -1,19 +1,19 @@
 """Regelung, Betrieb und Einstellungen für die Svelte-Oberfläche (`/ui-api`).
 
 Dünner Adapter (Grundsatz 6 und 7): Jeder Endpunkt ruft dieselben Domänen- und
-Servicefunktionen wie die HTML-Views (`daily_views` für die Raumtechnik,
-`control_views` für Betrieb, Einstellungen, Schnittstellen). Hier steht keine Fachregel.
+Servicefunktionen wie zuvor die HTML-Oberfläche (Raumtechnik, Betrieb, Einstellungen,
+Schnittstellen). Hier steht keine Fachregel.
 Geprüft wird ausschließlich in der Domäne; dieser Adapter übersetzt deren Fehler in
 `{detail, code[, field]}`.
 
-Rechte wie in den HTML-Views, in jedem Endpunkt neu geprüft:
+Rechte wie in der früheren HTML-Oberfläche, in jedem Endpunkt neu geprüft:
 
 - Raumtechnik: Zone sichtbar (`zone.read`, sonst dasselbe 404 wie unbekannt), dann
   `zone.manage` (403). Ausgleichswerte der Ersatzquelle zusätzlich `device.manage`.
 - Betrieb lesen und Einstellungen lesen: `zone.read` anlagenweit. Freigabe setzen:
   `control.arm`. Einstellungen schreiben, Schnittstellen, Benachrichtigungen:
   `setting.manage`.
-- Alle Seiten gehören in den HTML-Views zur Anlagensicht (`admin_ui_only`); hier prüft
+- Alle Seiten gehören zur Anlagensicht (früher `admin_ui_only`); hier prüft
   das jeder Endpunkt (`wrong_profile`).
 
 **Die drei Sperren bleiben getrennt**, wie auf der Betriebsseite: gespeicherte Freigabe
@@ -270,7 +270,7 @@ class BackupOffsetIn(BaseModel):
 class ParametersIn(BaseModel):
     """Nur gesendete Felder ändern etwas; ein fehlendes Feld bleibt unverändert.
 
-    Abweichung zum HTML-Formular, das immer alles sendet: Dort bedeutet ein leeres Feld
+    Abweichung zum früheren HTML-Formular, das immer alles sendete: Dort bedeutet ein leeres Feld
     "erben" und ein fehlender Haken "aus". Hier ist `null` bei einem erbbaren Feld
     "erben", ein fehlendes Feld "unverändert" -- ein Teil-Aufruf kann so nie still
     etwas ausschalten.
@@ -434,7 +434,7 @@ def _form_error(exc: FormError) -> RoomApiError:
 
 @router.get("/rooms/{zone_id}/parameters")
 def show_parameters(zone_id: int, principal: Prin, session: Sess) -> ParametersOut:
-    """Wie `daily_views.show_parameter`, mit Effektivwerten und Eigenwerten getrennt."""
+    """Parameter einer Zone, mit Effektivwerten und Eigenwerten getrennt."""
     zone = _need_zone_manage(session, principal, zone_id)
     return _parameters(session, principal, zone)
 
@@ -443,7 +443,7 @@ def show_parameters(zone_id: int, principal: Prin, session: Sess) -> ParametersO
 def save_parameters(
     zone_id: int, body: ParametersIn, principal: Prin, session: Sess
 ) -> ParametersOut:
-    """Wie `daily_views.save_parameter`: dieselben Prüfungen, dieselben Domänenrufe,
+    """Parameter speichern: dieselben Prüfungen, dieselben Domänenrufe,
     dieselbe verschachtelte Transaktion; Fehler als `{detail, code: validation, field}`."""
     zone = _need_zone_manage(session, principal, zone_id)
     sent = body.model_fields_set
@@ -606,7 +606,7 @@ def save_parameters(
         ) from exc
     except ParameterOutOfRange as exc:
         # Aus `save_control_parameters` (Festtakt des Notbetriebsprofils gegen die
-        # neuen Mindestzeiten); die HTML-View fängt das nicht und endet dort in einem 500.
+        # neuen Mindestzeiten); die frühere Oberfläche fing das nicht, 500.
         raise _parameter_error(exc) from exc
     return _parameters(session, principal, zone)
 
@@ -853,7 +853,7 @@ def _control_error(exc: ControlError) -> RoomApiError:
 
 @router.get("/operation")
 def show_operation(request: Request, principal: Prin, session: Sess) -> OperationOut:
-    """Wie `control_views.show_control`: wer die Anlage sehen darf, darf das lesen."""
+    """Betrieb lesen: wer die Anlage sehen darf, darf das lesen."""
     _need(principal, "zone.read")
     row = _settings_or_error(session)
     zones = visible_zones(session, principal, "zone.read")
@@ -867,7 +867,7 @@ def show_operation(request: Request, principal: Prin, session: Sess) -> Operatio
 
 @router.put("/operation/armed")
 def set_armed(request: Request, body: ArmedIn, principal: Prin, session: Sess) -> ArmedOut:
-    """Wie `control_views.arm_view`: gleiche Domänenfunktion, gleiche Prüfung (Grund Pflicht
+    """Freigabe setzen: gleiche Domänenfunktion, gleiche Prüfung (Grund Pflicht
     beim Scharfschalten), gleicher Protokolleintrag.
 
     Setzt ausschließlich die **gespeicherte** Freigabe. Der MQTT-Startriegel
@@ -1131,7 +1131,7 @@ def _known_fields(values: dict[str, str | int], allowed: dict[str, Any]) -> dict
 
 @router.get("/settings")
 def show_settings(principal: Prin, session: Sess) -> SettingsOut:
-    """Wie `control_views.show_settings`: `zone.read` anlagenweit; `may_edit` sagt, ob der
+    """Einstellungen lesen: `zone.read` anlagenweit; `may_edit` sagt, ob der
     Principal speichern darf."""
     _need(principal, "zone.read")
     _settings_or_error(session)
@@ -1329,7 +1329,7 @@ def save_notifications(body: NotificationsIn, principal: Prin, session: Sess) ->
 
 @router.post("/settings/notifications/test")
 async def send_test_notification(principal: Prin, session: Sess) -> NotificationTestOut:
-    """Wie `control_views.send_test_notification`: echter Versand über den Webhook-Weg, mit
+    """Testmeldung: echter Versand über den Webhook-Weg, mit
     derselben Sperrzeit. Ohne Webhook oder innerhalb der Sperrzeit wird nichts gesendet
     (409/429); ein fehlgeschlagener Versand ist eine Antwort (`ok: false`), kein Fehler."""
     _need(principal, "setting.manage")
@@ -1413,7 +1413,7 @@ def _masked(name: str | None, value: str) -> str:
 
 @router.get("/interfaces")
 def show_interfaces(request: Request, principal: Prin, session: Sess) -> InterfacesOut:
-    """Wie `control_views.show_interfaces`: `setting.manage`; Zonennamen nur für sichtbare Zonen."""
+    """Schnittstellen lesen: `setting.manage`; Zonennamen nur für sichtbare Zonen."""
     _need(principal, "setting.manage")
     env_settings = get_settings()
     items = overview(session, env_settings, getattr(request.app.state, "bridge_reachable", None))

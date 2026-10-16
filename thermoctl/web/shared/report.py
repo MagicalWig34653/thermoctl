@@ -1,4 +1,4 @@
-"""Problem melden: gemeinsamer Schreibweg von Alt-View und /ui-api."""
+"""Problem melden: gemeinsamer Schreibweg der /ui-api-Endpunkte."""
 from fastapi import Request
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ async def submit_report(
     kind: str,
     note: str,
 ) -> str:
-    """Der gemeinsame Schreibweg von HTML-View und `/ui-api` (Grundsatz 6).
+    """Der gemeinsame Schreibweg der `/ui-api`-Endpunkte (Grundsatz 6).
 
     Baut die Meldung, schreibt sie ins Audit und stellt sie zu; liefert den Satz, der dem
     Melder gesagt wird. Wirft `DomainError` bei einer ungültigen Eingabe, bevor etwas

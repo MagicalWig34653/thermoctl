@@ -16,7 +16,7 @@
 <meta property="og:description" content="thermoctl ist eine eigenständige, selbst gehostete Heizungssteuerung: sensorbasierte Raumregelung mit Zeitplänen, Weboberfläche, REST-API und MCP-Server. Läuft als Docker-Container oder als Home-Assistant-Add-on.">
 <meta property="og:url" content="https://magicalwig34653.github.io/thermoctl/">
 <meta property="og:image" content="https://magicalwig34653.github.io/thermoctl/bilder/anlage-startseite.png">
-<meta property="og:image:alt" content="Startseite der Anlagensicht: Freigabestatus, geplanter Urlaub und die ersten Zonen mit Ist-Wert, Sollwert und Zeitplan-Band. Demodaten.">
+<meta property="og:image:alt" content="Übersicht der Anlagensicht: Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, ein Notbetriebs-Hinweis und die Kennzahlen „Auf einen Blick“. Demodaten.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="stil.css">
 </head>
@@ -57,7 +57,7 @@ MCP-Server. Home Assistant lässt sich per MQTT anbinden, ist aber keine Vorauss
 </div>
 </div>
 <figure class="shot">
-<a href="bilder/anlage-startseite.png"><img src="bilder/anlage-startseite.png" width="1280" height="900" alt="Startseite der Anlagensicht: Freigabestatus, geplanter Urlaub und die ersten Zonen mit Ist-Wert, Sollwert und Zeitplan-Band. Demodaten." loading="eager"></a>
+<a href="bilder/anlage-startseite.png"><img src="bilder/anlage-startseite.png" width="1280" height="900" alt="Übersicht der Anlagensicht: Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, ein Notbetriebs-Hinweis und die Kennzahlen „Auf einen Blick“. Demodaten." loading="eager"></a>
 <figcaption><strong>Anlagensicht</strong>Alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.</figcaption>
 </figure>
 </div>
@@ -151,24 +151,24 @@ Klick öffnet das Bild in voller Größe.</p>
 </div>
 <div class="grid">
 <figure class="shot crop">
-<a href="bilder/anlage-bad-wochenplan.png"><img src="bilder/anlage-bad-wochenplan.png" width="1280" height="900" alt="Zeitplan der Zone Bad mit Vorschau für die nächsten 24 Stunden, Werkzeugen zum Zeitmalen und Wochenraster. Demodaten." loading="lazy"></a>
+<a href="bilder/anlage-bad-wochenplan.png"><img src="bilder/anlage-bad-wochenplan.png" width="1280" height="900" alt="Wochenplan der Zone Bad mit Modusauswahl und Wochenraster, in dem Zeiträume per Ziehen angelegt werden. Demodaten." loading="lazy"></a>
 <figcaption><strong>Zeitplan einer Zone</strong>Zeiträume im Raster malen oder Schaltpunkte ziehen. Die Vorschau zeigt, was gerade gilt, auch mit laufender Übersteuerung.</figcaption>
 </figure>
 <figure class="shot crop">
-<a href="bilder/anlage-schaltprotokoll.png"><img src="bilder/anlage-schaltprotokoll.png" width="1280" height="900" alt="Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert. Demodaten." loading="lazy"></a>
+<a href="bilder/anlage-schaltprotokoll.png"><img src="bilder/anlage-schaltprotokoll.png" width="1280" height="900" alt="Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert. Demodaten." loading="lazy"></a>
 <figcaption><strong>Schaltprotokoll</strong>Jeder Befehl mit Zeitpunkt, Zone, Gerät, Ergebnis und Begründung, auch im Trockenlauf.</figcaption>
 </figure>
 <figure class="shot crop">
-<a href="bilder/anlage-einstellungen-notbetrieb.png"><img src="bilder/anlage-einstellungen-notbetrieb.png" width="771" height="1323" alt="Karte „Notbetrieb bei Sensorausfall“ mit Festtakt, Rückkehrprüfung, Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen. Demodaten." loading="lazy"></a>
+<a href="bilder/anlage-einstellungen-notbetrieb.png"><img src="bilder/anlage-einstellungen-notbetrieb.png" width="1280" height="900" alt="Seite „Notbetrieb &amp; Sensorfehler“ mit Standardprofil, Festtakt und den Punkten der Außentemperaturkurve. Demodaten." loading="lazy"></a>
 <figcaption><strong>Notbetrieb bei Sensorausfall</strong>Festtakt, Rückkehrprüfung, Notsollwert und eine optionale Außenkennlinie sind anlagenweit einstellbar.</figcaption>
 </figure>
 <figure class="shot portrait">
-<a href="bilder/wohnung-startseite-mobil.png"><img src="bilder/wohnung-startseite-mobil.png" width="390" height="844" alt="Wohnungssicht am Seitenanfang: Hinweis zum Notbetrieb, laufende Abwesenheit und die erste Raumkarte. Demodaten." loading="lazy"></a>
+<a href="bilder/wohnung-startseite-mobil.png"><img src="bilder/wohnung-startseite-mobil.png" width="390" height="844" alt="Übersicht der Wohnungssicht am Telefon: Hinweis zum Notbetrieb und die Kennzahlen „Auf einen Blick“. Demodaten." loading="lazy"></a>
 <figcaption><strong>Wohnungssicht auf dem Telefon</strong>Bewohner sehen nur ihre eigenen Räume, in Alltagssprache.</figcaption>
 </figure>
 <figure class="shot portrait">
-<a href="bilder/wohnung-heizzeit-mobil.png"><img src="bilder/wohnung-heizzeit-mobil.png" width="390" height="844" alt="Seite Heizzeit der Wohnungssicht mit Auswahl 7, 30 oder 90 Tage und einem Balkendiagramm je Raum. Demodaten." loading="lazy"></a>
-<figcaption><strong>Heizzeit je Raum</strong>Die Heizdauer der letzten 7, 30 oder 90 Tage als Orientierung, kein Energie- oder Kostenmesser.</figcaption>
+<a href="bilder/wohnung-verlauf-mobil.png"><img src="bilder/wohnung-verlauf-mobil.png" width="390" height="844" alt="Seite „Temperatur &amp; Heizzeit“ der Wohnungssicht am Telefon mit Hinweis zum Trockenlauf und Erläuterung des Diagramms. Demodaten." loading="lazy"></a>
+<figcaption><strong>Temperatur und Heizzeit je Raum</strong>Der Verlauf der Raumtemperatur mit Sollwert und Heizanforderung, dazu die Heizzeit als Orientierung, kein Energie- oder Kostenmesser.</figcaption>
 </figure>
 <figure class="shot crop">
 <a href="bilder/kiosk-dashboard.png"><img src="bilder/kiosk-dashboard.png" width="1280" height="900" alt="Kiosk-Dashboard: sechs Zonen nebeneinander mit Ist-Wert und Reglern für den Sollwert. Demodaten." loading="lazy"></a>

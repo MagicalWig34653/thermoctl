@@ -1,8 +1,8 @@
 """Alle GET-Seiten der alten Jinja/HTMX-Oberfläche leiten auf die Svelte-Oberfläche um.
 
 Projektinhaber-Entscheidung 2026-10-16: Die Oberfläche unter `/app/` ersetzt die alte
-vollständig. Dieses Modul ist der erste Schritt (Umschalten); die alten Vorlagen, Ansichten
-und Schreib-POSTs bestehen noch und werden erst in einem späteren Schritt entfernt.
+vollständig. Die alten Vorlagen, Ansichten und Schreib-POSTs sind entfernt; dieses Modul
+bleibt, damit Lesezeichen und Verweise auf die alten Adressen weiter ans Ziel führen.
 
 Eigenschaften, auf die es ankommt:
 

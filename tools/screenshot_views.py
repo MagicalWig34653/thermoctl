@@ -1,6 +1,10 @@
-"""Screenshot inventory shared by documentation checks and browser tooling."""
+"""Screenshot inventory shared by documentation checks and browser tooling.
 
-from dataclasses import dataclass, replace
+Die Ansichten der Svelte-Oberfläche (`/app/...`). Alle Pfade sind Browserpfade ohne
+Präfix; Platzhalter in geschweiften Klammern füllt `tools/screenshot_seed.py`.
+"""
+
+from dataclasses import dataclass
 
 ZONE_SLUGS = ("wohnzimmer", "kueche", "bad", "schlafzimmer", "kinderzimmer", "buero")
 
@@ -11,10 +15,10 @@ class View:
     path: str
     profile: str = "anlage"
     mobile: bool = False
-    open_details: bool = False
-    route: str | None = None
     viewport: tuple[int, int] = (1280, 900)
+    # Kioskansicht: "auto", "panel" oder "tafel" (`?ansicht=` der Adresse).
     kiosk_mode: str | None = None
+    # Raum, dessen Kachel in der Panel-Ansicht angetippt wird, bevor aufgenommen wird.
     kiosk_detail_zone: str | None = None
     # Whether this view's primary capture, respectively its mobile (390px)
     # capture, is one of the images actually embedded in the documentation. Only
@@ -22,128 +26,82 @@ class View:
     # when `mobile` is also set, since otherwise there is no mobile capture at all.
     documented: bool = False
     documented_mobile: bool = False
-    # Optional second phone viewport, scrolled to this element below the header.
-    mobile_followup: str | None = None
-    # Optional second desktop viewport for relevant content below the fold.
-    desktop_followup: str | None = None
-    # Optional element selector: the primary capture is then cropped to this element
-    # (full page, so a section taller than the viewport is still complete) instead of
-    # showing the top of the page.
-    section: str | None = None
+    # Beschriftung einer Schaltfläche oder eines Reiters, der vor der Aufnahme angeklickt wird.
+    click: str | None = None
+    # Zweite Aufnahme derselben Seite, eine Bildschirmhöhe weiter unten.
+    mobile_followup: bool = False
+    desktop_followup: bool = False
 
     @property
     def stem(self) -> str:
         return f"{self.profile}-{self.name}"
 
 
-# The single inventory, including parameterized per-zone views and preparations.
-_VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
-    View("einrichtung", "/setup", "oeffentlich"),
-    View("anmeldung", "/login", "oeffentlich"),
-    View("startseite", "/", mobile=True),
-    View("wohnzimmer-verlauf", "/zones/{zone_wohnzimmer}", mobile=True, route="/zones/{zone_id}"),
-    View("zonenverlaeufe", "/zones/history", mobile=True),
-    *(
-        View(name, path)
-        for name, path in (
-            ("zonen", "/zones"),
-            ("zone-neu", "/zones/new"),
-            ("geraete", "/devices"),
-            ("anlage", "/plant"),
-            ("bediengeraete", "/controllers"),
-            ("schaltprotokoll", "/device-commands"),
-            ("passkeys", "/passkeys"),
-            ("kiosk-token", "/kiosk-tokens"),
-            ("urlaub", "/vacation"),
-            ("konto", "/account"),
-            ("hilfe", "/account/help"),
-            ("audit", "/audit"),
-            ("benutzer", "/users"),
-            ("gruppen", "/groups"),
-            ("api-token", "/tokens"),
-            ("sollwertmodi", "/modes"),
-            ("sollwertmodus-neu", "/modes/new"),
-            ("sollwertmodus", "/modes/{mode_id}"),
-            ("sollwertmodus-loeschen", "/modes/{mode_id}/delete"),
-            ("betrieb", "/control"),
-            ("einstellungen", "/settings"),
-            ("schnittstellen", "/interfaces"),
-            ("statistik", "/statistics"),
-            ("relaisverschleiss", "/relay-wear"),
-            ("glossar", "/glossar"),
-        )
-    ),
+VIEWS: tuple[View, ...] = (
+    View("einrichtung", "/app/setup", "oeffentlich", documented=True),
+    View("anmeldung", "/app/login", "oeffentlich", documented=True),
+    # Verwaltungssicht
+    View("startseite", "/app/", documented=True, desktop_followup=True),
+    View("zonen", "/app/uebersicht/raeume", documented=True),
+    View("bad-raum", "/app/raeume/{zone_bad}", documented=True),
+    View("bad-wochenplan", "/app/zeit/wochenplaene?zone={zone_bad}", documented=True),
+    View("verlauf", "/app/auswertung/verlauf", documented=True),
+    View("schaltprotokoll", "/app/auswertung/ereignisse", click="Schaltprotokoll", documented=True),
+    View("geraete", "/app/geraete/liste", documented=True),
+    View("geraetekarte", "/app/geraete/karte", documented=True),
+    View("betrieb", "/app/system/betrieb", documented=True, desktop_followup=True),
+    View("einstellungen-notbetrieb", "/app/heizung/notbetrieb", documented=True),
+    View("kiosk-token", "/app/personen/kiosk", documented=True),
+    View("benutzer", "/app/personen/rechte", documented=True),
+    View("einstellungen", "/app/heizung/regelvorgaben", documented=True),
+    View("meldungen", "/app/system/meldungen", documented=True),
+    View("relaisverschleiss", "/app/auswertung/verschleiss", documented=True),
+    View("urlaub", "/app/zeit/anlagenurlaub", documented=True),
+    # Wohnungssicht (Desktop und Telefon); Anlagenurlaub ist für Bewohner nicht sichtbar
     View(
-        "einstellungen-notbetrieb",
-        "/settings",
-        section="form[action$='/settings/sensor-failure']",
-        route="/settings",
-    ),
-    View(
-        "bad-parameter-notbetrieb",
-        "/zones/{zone_bad}/parameters",
-        section=".border-top:has(#sensor_failure_enabled)",
-        route="/zones/{zone_id}/parameters",
-    ),
-    *(
-        View(
-            f"{slug}-{name}",
-            path.replace("{zone_id}", "{zone_" + slug + "}").replace(
-                "{point_id}", "{point_" + slug + "}"
-            ),
-            route=path,
-        )
-        for slug in ZONE_SLUGS
-        for name, path in (
-            ("details", "/zones/{zone_id}"),
-            ("loeschen", "/zones/{zone_id}/delete"),
-            ("parameter", "/zones/{zone_id}/parameters"),
-            ("geraete", "/zones/{zone_id}/devices"),
-            ("wochenplan", "/zones/{zone_id}/schedule"),
-            ("schaltpunkt-loeschen", "/zones/{zone_id}/schedule/points/{point_id}/delete"),
-            ("wochenplan-uebernehmen", "/zones/{zone_id}/schedule/adopt"),
-            ("sollwerte", "/zones/{zone_id}/setpoints"),
-        )
-    ),
-    *(
-        View(name, path, "wohnung", mobile=True, open_details=details)
-        for name, path, details in (
-            ("startseite", "/", False),
-            ("abwesenheit", "/", True),
-            ("wochenplan", "/schedule", True),
-            ("heizzeit", "/heating-time", False),
-            ("konto", "/account", False),
-            ("hilfe", "/account/help", False),
-            ("glossar", "/glossar", False),
-            ("passkeys", "/passkeys", False),
-        )
-    ),
-    # Drei Tage statt der Vorgabe: die Demo-Daten umfassen 72 Stunden, das füllt das Bild.
-    View(
-        "verlauf",
-        "/temperature-history?period=3d",
+        "startseite",
+        "/app/",
         "wohnung",
         mobile=True,
-        route="/temperature-history",
+        documented_mobile=True,
+        mobile_followup=True,
     ),
-    *(
-        View(
-            f"{slug}-wochenplan",
-            "/schedule?zone={zone_" + slug + "}",
-            "wohnung",
-            mobile=True,
-            open_details=True,
-            route="/schedule",
-        )
-        for slug in ZONE_SLUGS[:4]
+    View(
+        "wohnzimmer-wochenplan",
+        "/app/zeit/wochenplaene?zone={zone_wohnzimmer}",
+        "wohnung",
+        mobile=True,
+        documented=True,
+        documented_mobile=True,
+        desktop_followup=True,
+        mobile_followup=True,
     ),
-    View("dashboard", "/kiosk/{plaintext}", "kiosk", mobile=True),
+    View(
+        "verlauf",
+        "/app/auswertung/verlauf",
+        "wohnung",
+        mobile=True,
+        documented=True,
+        documented_mobile=True,
+    ),
+    View(
+        "konto",
+        "/app/konto",
+        "wohnung",
+        mobile=True,
+        documented=True,
+        documented_mobile=True,
+        mobile_followup=True,
+    ),
+    # Kiosk
+    View("dashboard", "/kiosk/{plaintext}", "kiosk", documented=True),
     View(
         "panel-uebersicht",
         "/kiosk/{plaintext}",
         "kiosk",
         viewport=(480, 480),
         kiosk_mode="panel",
+        documented=True,
     ),
     View(
         "panel-detail",
@@ -152,98 +110,6 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
         viewport=(480, 480),
         kiosk_mode="panel",
         kiosk_detail_zone="zone_wohnzimmer",
-    ),
-    View(
-        "tafel",
-        "/kiosk/{plaintext}",
-        "kiosk",
-        viewport=(480, 480),
-        kiosk_mode="tafel",
+        documented=True,
     ),
 )
-
-# Which generated PNGs are actually embedded in the documentation, keyed by
-# `<profile>-<name>` (i.e. `View.stem`, not the on-disk file name -- the `-mobil`
-# suffix is expressed through `documented_mobile` instead, since one view can have a
-# documented desktop capture, a documented mobile capture, both, or neither).
-_DOCUMENTED: dict[str, tuple[bool, bool]] = {
-    "anlage-startseite": (True, False),
-    "anlage-zonen": (True, False),
-    "anlage-bad-wochenplan": (True, False),
-    "anlage-bad-sollwerte": (True, False),
-    "anlage-geraete": (True, False),
-    "anlage-betrieb": (True, False),
-    "anlage-schaltprotokoll": (True, False),
-    "anlage-benutzer": (True, False),
-    "anlage-gruppen": (True, False),
-    "anlage-kiosk-token": (True, False),
-    "anlage-einstellungen": (True, False),
-    "anlage-einstellungen-notbetrieb": (True, False),
-    "anlage-bad-parameter-notbetrieb": (True, False),
-    "anlage-relaisverschleiss": (True, False),
-    "anlage-urlaub": (True, False),
-    "wohnung-startseite": (False, True),
-    "wohnung-abwesenheit": (True, True),
-    "wohnung-wohnzimmer-wochenplan": (True, True),
-    "wohnung-heizzeit": (True, True),
-    "wohnung-konto": (True, True),
-    "kiosk-dashboard": (True, False),
-    "kiosk-panel-uebersicht": (True, False),
-    "kiosk-panel-detail": (True, False),
-    "oeffentlich-anmeldung": (True, False),
-    "oeffentlich-einrichtung": (True, False),
-}
-
-
-def _with_documentation_flags(view: View) -> View:
-    flags = _DOCUMENTED.get(view.stem)
-    if flags is None:
-        return view
-    documented, documented_mobile = flags
-    followups = {
-        "wohnung-startseite": ".tc-room:has(.tc-room-name:text-is('Schlafzimmer'))",
-        "wohnung-wohnzimmer-wochenplan": ".tc-panel:has(.tc-dayrow)",
-        "wohnung-konto": ".tc-panel:has(a[href$='/account/help'])",
-    }
-    desktop_followups = {
-        "anlage-bad-wochenplan": "h2:text-is('Schaltpunkt anlegen')",
-        "anlage-benutzer": "h2:text-is('Benutzer anlegen')",
-        "anlage-betrieb": ".tc-panel:has(.tc-zone-operation)",
-        "anlage-einstellungen": "form[action$='/settings/notifications']",
-        "anlage-geraete": "h2:text-is('Der Rest meldet sich')",
-        "anlage-startseite": ".tc-zone:has(.tc-zone-name:text-is('Kinderzimmer'))",
-        "anlage-gruppen": "article:has(h2:text-is('Gruppe anlegen'))",
-        "wohnung-abwesenheit": ".tc-room:has(.tc-room-name:text-is('Wohnzimmer'))",
-        "wohnung-wohnzimmer-wochenplan": ".tc-dayrow:last-child",
-        "wohnung-heizzeit": ".tc-panel:has(h2:text-is('Schlafzimmer'))",
-    }
-    return replace(
-        view,
-        documented=documented,
-        documented_mobile=documented_mobile,
-        mobile_followup=followups.get(view.stem),
-        desktop_followup=desktop_followups.get(view.stem),
-    )
-
-
-VIEWS = tuple(_with_documentation_flags(view) for view in _VIEWS_BEFORE_DOCUMENTATION_FLAGS)
-assert {stem for stem in _DOCUMENTED if stem not in {v.stem for v in VIEWS}} == set(), (
-    "documented-Kennzeichen für eine Ansicht vergeben, die es nicht (mehr) gibt"
-)
-
-EXCLUDED_ROUTES = {
-    "/devices/map": (
-        "Zeichenfläche, deren Bild von der Anordnung der Knoten im Browser abhängt (Zoom, "
-        "Lage, gemerkte Positionen); wird durch browser_tests/test_mapping_map.py geprüft, "
-        "nicht abgebildet."
-    ),
-    "/kiosk": "Ziel der Token-Weiterleitung; wird über /kiosk/{plaintext} aufgenommen.",
-    "/temperature-history/{zone_id}/tile": (
-        "Teilantwort (nur die Verlaufskarte eines eigenen Raums, ohne Seitenrahmen); erscheint als "
-        "Kachel auf /temperature-history (wohnung-verlauf)."
-    ),
-    "/zones/{zone_id}/history": (
-        "Teilantwort (nur die Verlaufskarte, ohne Seitenrahmen); erscheint auf "
-        "/zones/{zone_id} (wohnzimmer-verlauf) und als Kachel auf /zones/history."
-    ),
-}

@@ -89,7 +89,7 @@ def create_schedule_zone(
     session.add(
         ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=nacht.id, temperature_c=night_temperature)
     )
-    # Weekday 1 (Monday, WEEKDAYS in thermoctl/web/schedule_views.py) only -- every
+    # Weekday 1 (Monday, weekday 1 in `thermoctl/domain/schedule.py`) only -- every
     # other day of the grid stays empty on purpose, so the schedule-editor test has
     # a day column with nothing painted on it yet.
     session.add(

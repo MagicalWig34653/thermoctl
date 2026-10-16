@@ -1,4 +1,4 @@
-"""Befehlsprotokoll: Seitengroesse und Beschriftungen -- geteilt von Alt-View und /ui-api."""
+"""Befehlsprotokoll: Seitengroesse und Beschriftungen -- geteilt von den /ui-api-Endpunkten."""
 from thermoctl.domain.device_commands import SETBACK_OUTCOME_PREFIX
 from thermoctl.domain.solar_setback_log import KIND_BEGIN, KIND_CHANGE, KIND_END
 

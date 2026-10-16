@@ -1,4 +1,4 @@
-"""Geraeteueberblick samt Befunden -- Quelle fuer Alt-View und /ui-api."""
+"""Geraeteueberblick samt Befunden -- Quelle fuer /ui-api."""
 from collections import defaultdict
 from typing import Literal
 

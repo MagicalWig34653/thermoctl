@@ -1,4 +1,4 @@
-"""Betriebsseite: Anzeigetexte und Sperrfristen -- geteilt von Alt-View und /ui-api."""
+"""Betriebsseite: Anzeigetexte und Sperrfristen -- geteilt von den /ui-api-Endpunkten."""
 from datetime import timedelta
 
 from thermoctl.domain.pi_control import (

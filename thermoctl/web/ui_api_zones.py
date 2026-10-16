@@ -1,30 +1,31 @@
 """Räume anlegen, bearbeiten, löschen, Probleme melden, Glossar (`/ui-api`).
 
 Dünner Adapter (Grundsatz 6 und 7): geschrieben wird mit denselben Domänenfunktionen wie in
-den HTML-Views (`zone_views`, `report_views`, `glossary_views`) -- `create_zone`,
+der früheren HTML-Oberfläche -- `create_zone`,
 `update_zone`, `delete_zone`, `zone_dependencies`, `submit_report` (`build_report`) und
 `default_glossary`. Hier steht keine Fachregel. Fehler sind `{detail, code[, field]}`.
 
-Rechte wie in den HTML-Views, in jedem Endpunkt neu geprüft:
+Rechte wie in der früheren HTML-Oberfläche, in jedem Endpunkt neu geprüft:
 
 - Anlegen: `zone.manage` anlagenweit (403), Anlagensicht (`wrong_profile`).
 - Formulardaten, Bearbeiten, Löschfolgen, Löschen: `zone.manage` für diese Zone,
   Anlagensicht.
 - Problem melden: `report.create` für diese Zone, **beide** Oberflächen (kein Profil-Wächter,
-  wie `report_views`); ausdrücklich nicht `zone.read` -- etwas nach außen Auslösendes darf
-  nicht aus einem Leserecht folgen.
+  wie schon früher); ausdrücklich nicht `zone.read` -- etwas nach außen Auslösendes
+  darf nicht aus einem Leserecht folgen.
 - Glossar und Meldeoptionen: nur Anmeldung.
 
-Abweichungen von den HTML-Views (bewusst):
+Abweichungen von der früheren HTML-Oberfläche (bewusst):
 
-- Die HTML-Views antworten für eine Zone ohne `zone.manage` mit 404. Hier gilt wie überall in
-  `/ui-api`: nicht mit `zone.read` sichtbar -> 404 (kein Hinweis auf Existenz), sichtbar aber
-  ohne `zone.manage` -> 403. Der Unterschied verrät nichts, was `zone.read` nicht ohnehin zeigt.
+- Die frühere Oberfläche antwortete für eine Zone ohne `zone.manage` mit 404. Hier gilt
+  wie überall in `/ui-api`: nicht mit `zone.read` sichtbar -> 404 (kein Hinweis auf
+  Existenz), sichtbar aber ohne `zone.manage` -> 403. Der Unterschied verrät nichts, was
+  `zone.read` nicht ohnehin zeigt.
 - Meldet jemand ein Problem für eine Zone, die er weder lesen noch melden darf, kommt dasselbe
-  404; darf er sie sehen, aber nicht melden, ein 403 (die HTML-View antwortet immer 404).
+  404; darf er sie sehen, aber nicht melden, ein 403 (früher immer 404).
 - Längen (Name 64, Anzeigename 128) und der Wertebereich der Sortierung (32-Bit) werden hier
-  geprüft: die HTML-View ließ sie ungeprüft, auf MariaDB wäre das ein 500.
-- Löschen verlangt in der HTML-View eine eigene Bestätigungsseite; die Bestätigung ist hier
+  geprüft: die frühere HTML-Oberfläche ließ sie ungeprüft, auf MariaDB wäre das ein 500.
+- Löschen verlangte früher eine eigene Bestätigungsseite; die Bestätigung ist hier
   Sache der Oberfläche (`delete-impact` liefert vorher dieselben Zahlen). Das Löschen selbst
   prüft nichts weiter: Kacheln anderer fallen per FK-Cascade, Räume anderer bleiben.
 """
@@ -447,7 +448,7 @@ def report_options(principal: Prin, session: Sess) -> ReportOptionsOut:
 async def report_problem(
     zone_id: int, body: ReportIn, request: Request, principal: Prin, session: Sess
 ) -> ReportResultOut:
-    """Problem melden (`report_views.submit_report`, derselbe Weg wie die HTML-View).
+    """Problem melden (`web.shared.report.submit_report`, gemeinsamer Schreibweg).
 
     Audit-Eintrag und Zustellung wie dort; die Antwort sagt ehrlich, ob die Meldung nur
     aufgenommen oder auch weitergegeben wurde.

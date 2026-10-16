@@ -1,4 +1,4 @@
-"""Zuordnungskarte: Verbinden und Loesen von Anschluessen -- geteilt von Alt-View und /ui-api."""
+"""Zuordnungskarte: Verbinden und Loesen von Anschluessen -- für /ui-api."""
 from dataclasses import dataclass
 
 from sqlalchemy import select

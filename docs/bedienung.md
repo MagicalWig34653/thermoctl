@@ -33,11 +33,11 @@ hat. Darunter steht, ob eine Außentemperaturquelle gewählt ist, und — sobald
 Urlaub angesetzt oder geplant ist — der Chip „Urlaub geplant" (bzw. „Urlaub läuft"),
 verlinkt zur Urlaubsseite (siehe Abschnitt „Urlaub" unten).
 
-![Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen](bilder/anlage-startseite.png)
+![Übersicht der Verwaltungssicht mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“](bilder/anlage-startseite.png)
 
 Weiter unten:
 
-![Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band](bilder/anlage-startseite-2.png)
+![Übersicht weiter unten: Anlagenstatus, Temperaturverlauf eines Raums und die Liste „Heute relevant“](bilder/anlage-startseite-2.png)
 
 ### Zonen, Wochenplan und Sollwerte
 
@@ -45,7 +45,7 @@ Unter **Zonen** stehen alle Räume mit ihrer Betriebsart und Verweisen auf Gerä
 Zeitplan. Eine Zone anzulegen braucht nur einen Namen — Geräte, Sollwerte und Zeitplan
 kommen danach dazu.
 
-![Zonenliste mit sechs Räumen, je mit Betriebsart und Schaltflächen für Geräte, Zeitplan und Bearbeiten](bilder/anlage-zonen.png)
+![Raumliste mit sechs Räumen, je mit Ist- und Sollwert sowie Verweisen auf Zeitplan, Geräte und Datenfluss](bilder/anlage-zonen.png)
 
 Der **Wochenplan** einer Zone zeigt sieben Tage nebeneinander als Farbbalken — je Modus
 eine Farbe — und darüber eine Vorschau der nächsten 24 Stunden, die auch eine gerade
@@ -54,17 +54,13 @@ setzen, im Formular darunter eintragen oder mit „Zeit malen" über ein Zeitras
 Ein kompletter Plan lässt sich von einer anderen Zone übernehmen, statt ihn noch einmal
 einzutragen.
 
-![Zeitplan der Zone Bad mit Vorschau und Werkzeugen zum Zeitmalen](bilder/anlage-bad-wochenplan.png)
-
-Weiter unten:
-
-![Schaltpunkt anlegen und bestehende Schaltpunkte bearbeiten](bilder/anlage-bad-wochenplan-2.png)
+![Wochenplan des Bads mit Modusauswahl und dem Wochenraster, in dem Zeiträume per Ziehen angelegt werden](bilder/anlage-bad-wochenplan.png)
 
 Die **Sollwerte** einer Zone legen fest, welche Temperatur zu welchem Modus gehört
 (Komfort, Tag, Nacht, Frostschutz). Ein leeres Feld löscht den Sollwert für diesen
 Modus — die Zone erbt dann den anlagenweiten Vorgabewert.
 
-![Sollwertformular der Zone Bad mit den vier Modi Komfort, Tag, Nacht und Frostschutz](bilder/anlage-bad-sollwerte.png)
+![Raumseite des Bads mit Ist- und Sollwert, Sollwert-Regler, laufender Übersteuerung, Sensorstatus, Regelentscheidung und Temperaturen je Modus](bilder/anlage-bad-raum.png)
 
 ### Geräte
 
@@ -77,11 +73,11 @@ Temperaturmessung, Schaltausgang oder Thermostatventil. Zonen ohne Meldung stehe
 gesondert, damit sie auffallen. Ein Gerät wird per Ziehen und Ablegen einer Zone
 zugeordnet.
 
-![Geräteliste mit sieben auffälligen Geräten](bilder/anlage-geraete.png)
+![Geräteliste mit Suchfeld und Karten je Gerät, Auffälliges zuerst](bilder/anlage-geraete.png)
 
 Weiter unten:
 
-![Die sechs Raumfühler mit Meldungsalter, Batterie und Verbindungsqualität](bilder/anlage-geraete-2.png)
+![Gerätekarte mit Raumfühlern links, Räumen in der Mitte und Heizkreisen rechts, verbunden durch Linien](bilder/anlage-geraetekarte.png)
 
 ### Betrieb: Trockenlauf und Scharfschalten
 
@@ -92,11 +88,11 @@ Sollwert und die aktuelle Ein/Aus-Entscheidung. Die genaue Reihenfolge des
 Scharfschaltens (Begründung eintragen, danach neu starten) steht in
 [scharfschalten.md](scharfschalten.md).
 
-![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …“](bilder/anlage-betrieb.png)
+![Seite „Betrieb & Freigaben“ im Trockenlauf mit den vier Zustandskarten und der Schaltfläche „Freigabe erteilen …“](bilder/anlage-betrieb.png)
 
 Weiter unten:
 
-![Ist- und Sollwerte sowie Regelentscheidungen aller sechs Zonen](bilder/anlage-betrieb-2.png)
+![Betriebsseite weiter unten: Regelentscheidung je Raum mit Begründung, Sollwertquelle und Notbetrieb-Zustand](bilder/anlage-betrieb-2.png)
 
 Läuft eine Zone im **Notbetrieb** (siehe [Notbetrieb bei Sensorausfall](#notbetrieb-bei-sensorausfall)
 unten) oder gibt es einen Vergleich von Ersatzquelle und Wandfühler, steht unter ihrer
@@ -116,7 +112,7 @@ Befehl, Ergebnis und aufklappbarer Begründung. Filter nach Zeitraum, Zone und E
 grenzen lange Listen ein. Wie man ein unauffälliges Protokoll von einem mit echtem
 Problem unterscheidet, erklärt [scharfschalten.md](scharfschalten.md#4-wie-man-das-schaltprotokoll-liest).
 
-![Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
+![Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
 
 ### Benutzer, Gruppen und Rechte
 
@@ -125,11 +121,7 @@ Konto ohne Gruppe hat keinerlei Rechte. Von hier aus lässt sich auch das eigene
 ändern und jede andere angemeldete Sitzung dieses Kontos beenden — etwa nach einem
 verlorenen Gerät.
 
-![Benutzerliste mit drei Konten samt Status, Gruppe und letzter Anmeldung](bilder/anlage-benutzer.png)
-
-Weiter unten:
-
-![Formular zum Anlegen eines Benutzers und zum Ändern des eigenen Passworts](bilder/anlage-benutzer-2.png)
+![Benutzerliste mit drei Konten, je mit Gruppe, Passwort-setzen und Sperren](bilder/anlage-benutzer.png)
 
 **Rechte hängen an Gruppen, nicht an Personen.** Wer mehreren Gruppen angehört, darf
 alles, was mindestens eine davon erlaubt. Vier eingebaute Gruppen decken die üblichen
@@ -142,12 +134,6 @@ Oberflächen ihre Mitglieder überhaupt zu sehen bekommen. Beim Upgrade behält 
 bestehende Gruppe das Anlagenprofil; für eine Mietergruppe wird das Profil ausdrücklich
 auf Wohnung umgestellt.
 
-![Eingebaute Gruppen mit Oberflächen-Auswahl und Zusammenfassung ihrer Rechte](bilder/anlage-gruppen.png)
-
-Weiter unten:
-
-![Formular zum Anlegen einer Gruppe mit Auswahl der Oberfläche](bilder/anlage-gruppen-2.png)
-
 ### Kiosk-Token
 
 Für das Wandtablet gibt es unter **Einstellungen → Kiosk-Tokens** einen eigenen
@@ -157,13 +143,13 @@ Gültigkeit in Tagen. Die Adresse `/kiosk/<token>` erscheint danach genau einmal
 Klartext — sie gehört als Lesezeichen aufs Tablet, danach lebt das Token nur noch im
 Cookie. Ein Token lässt sich jederzeit widerrufen.
 
-![Formular für Kiosk-Tokens mit einem bereits ausgestellten Token „Demo-Wandtablet" und dem Formular für ein neues](bilder/anlage-kiosk-token.png)
+![Seite „Kiosk-Zugänge“ mit dem ausgestellten Zugang „Demo-Wandtablet“ und der Schaltfläche „Zugang ausstellen“](bilder/anlage-kiosk-token.png)
 
 Für kleine Wandpanels gibt es unter `/kiosk?ansicht=panel` eine eigene Ebene mit
 einem kompakten Zonenraster; Antippen einer Kachel öffnet ihre Details.
 Ohne JavaScript bleibt die scrollende Tafel.
 
-![Panel-Übersicht für ein kleines Wandtablet mit sechs Zonen auf 480×480 Pixeln](bilder/kiosk-panel-uebersicht.png)
+![Kiosk-Panel auf 480×480 Pixeln mit Raumkacheln, Ist- und Sollwert](bilder/kiosk-panel-uebersicht.png)
 
 ### Einstellungen und Störungsmeldungen
 
@@ -175,11 +161,11 @@ festhängender Messwert, Fenster vergessen offen, Problemmeldung aus einer Wohnu
 jede einzeln abschaltbar. Ein Testknopf prüft einen hinterlegten Webhook, ohne auf eine
 echte Störung zu warten.
 
-![Regelvorgaben mit Regelzyklus, Hysterese und weiteren anlagenweiten Werten](bilder/anlage-einstellungen.png)
+![Regelvorgaben mit Hysterese, Mindest-Ein- und -Ausschaltdauer und Sensor- und Fensterwerten](bilder/anlage-einstellungen.png)
 
 Weiter unten:
 
-![Die sechs abschaltbaren Meldungsarten und ihre Erläuterungen](bilder/anlage-einstellungen-2.png)
+![Meldungen mit den sechs ein- und ausschaltbaren Meldungsarten](bilder/anlage-meldungen.png)
 
 ### Notbetrieb bei Sensorausfall
 
@@ -242,7 +228,7 @@ Wohnungssicht und Kiosk steht ein kurzer Hinweis in Klartext; Details für die T
   So wechselt ein Wert, der um den oberen Punkt schwankt, nicht in jedem Takt zwischen Ein
   und Aus. Der Wert wird zu Beginn jedes Takt-Paares ausgewertet.
 
-  ![Karte „Notbetrieb bei Sensorausfall" unter Regelvorgaben mit Festtakt, Rückkehrprüfung, Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen](bilder/anlage-einstellungen-notbetrieb.png)
+  ![Seite „Notbetrieb & Sensorfehler“ mit Standardprofil, Festtakt und den Punkten der Außentemperaturkurve](bilder/anlage-einstellungen-notbetrieb.png)
 
 - **Zone → Regelparameter → Abschnitt „Notbetrieb bei Sensorausfall"** (je Zone): den
   Notbetrieb für diese Zone **ausschalten**, ein anderes vorhandenes Profil wählen oder
@@ -251,8 +237,6 @@ Wohnungssicht und Kiosk steht ein kurzer Hinweis in Klartext; Details für die T
   wirksamen Werte und woher sie stammen. Der Abschnitt gehört zum selben Formular wie die
   übrigen Regelparameter, mit einem gemeinsamen Speichern-Knopf. Mehrere Profile
   anzulegen ist nicht vorgesehen; es gibt das eine anlagenweite Profil.
-
-  ![Abschnitt „Notbetrieb bei Sensorausfall" in den Regelparametern der Zone Bad mit Schalter, Profilwahl, eigenem Notsollwert, Ausgleichswertfeld für das zugeordnete Thermostat und den wirksamen Werten samt Herkunft](bilder/anlage-bad-parameter-notbetrieb.png)
 
 **Wichtig zu wissen:** Im Notbetrieb takten Fußbodenkreise nach der Uhr, **unabhängig von der
 Raumtemperatur**. Das ist eine Notlösung für den Ausfall, keine Regelung; wer eine Zone
@@ -267,7 +251,7 @@ angenommenen Relais-Lebensdauer (Vorgabe 500.000 Schaltspiele — eine Annahme, 
 Herstellerangabe, einstellbar unter Regelvorgaben). Nützlich unabhängig davon, ob eine Zone
 die PI-Regelung nutzt: Auch die gewöhnliche Hysterese verschleißt ein Relais, nur langsamer.
 
-![Relaisverschleiß-Seite mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass in diesem Zeitraum noch keine Schaltaktoren protokolliert wurden](bilder/anlage-relaisverschleiss.png)
+![Relaisverschleiß mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass im Zeitraum keine geschalteten Geräte protokolliert wurden](bilder/anlage-relaisverschleiss.png)
 
 ### Urlaub
 
@@ -281,7 +265,7 @@ Beginn, Ende und Absenkwert, und lässt sich vorzeitig beenden; ein zweiter Urla
 den bestehenden erst beenden. Eine einzelne, von Hand gesetzte Übersteuerung einer Zone
 geht dabei nicht verloren — sie gilt weiter, bis sie selbst endet.
 
-![Urlaubsseite mit dem Zustand „Geplant", Beginn, Ende, Absenkwert und der Schaltfläche „Vorzeitig beenden"](bilder/anlage-urlaub.png)
+![Seite „Urlaub & Abwesenheit“ mit dem geplanten Anlagenurlaub, Absenkwert und der Schaltfläche „Urlaub beenden“](bilder/anlage-urlaub.png)
 
 **Zu unterscheiden von der Abwesenheit der Wohnungssicht** (siehe dort): Der Urlaub hier
 ist anlagenweit und wird von der Verwaltung gesetzt: er betrifft alle Zonen der Anlage,
@@ -323,12 +307,6 @@ Ein „Problem melden" je Raum schickt eine Meldung an die Verwaltung — Raum, 
 Messwert und Sollwert werden automatisch angehängt, es sind keine technischen Angaben
 nötig.
 
-![Zuhause-Ansicht mit aktivem Abwesenheitszeitraum und den ersten Raumkarten](bilder/wohnung-abwesenheit.png)
-
-Weiter unten:
-
-![Weitere Raumkarten mit laufender Übersteuerung und Knöpfen für vorübergehende Änderungen](bilder/wohnung-abwesenheit-2.png)
-
 ### Wochenplan
 
 Anders als in der Anlagensicht trägt die Wohnungssicht keine Modi und keine Uhrzeiten
@@ -338,11 +316,11 @@ Montag–Freitag zu übertragen. Eine Vorschau der nächsten 24 Stunden zeigt, w
 Sollwert dadurch verläuft — einschließlich einer gerade laufenden vorübergehenden
 Änderung. Ein kompletter Plan lässt sich auch hier auf einen anderen eigenen Raum übertragen.
 
-![Wochenplan für das Wohnzimmer mit Vorschau und geöffneten Feldern „Tag ab“ und „Nacht ab“](bilder/wohnung-wohnzimmer-wochenplan.png)
+![Wochenplan des Wohnzimmers mit Raumauswahl und Wochenraster](bilder/wohnung-wohnzimmer-wochenplan.png)
 
 Weiter unten:
 
-![Wochenende mit bearbeitbaren Schaltzeiten und Übernahme auf einen anderen Raum](bilder/wohnung-wohnzimmer-wochenplan-2.png)
+![Wochenplan weiter unten: Vorschau der nächsten 24 Stunden und „Neue Zeit anlegen“](bilder/wohnung-wohnzimmer-wochenplan-2.png)
 
 ### Heizzeit
 
@@ -353,11 +331,7 @@ tatsächlich wurde, hängt zusätzlich von Außentemperatur, Gebäudezustand und
 Läuft die Anlage im Trockenlauf, weist ein Hinweis darauf hin, dass die Balken zeigen,
 wann *geheizt worden wäre*, nicht was wirklich geschah.
 
-![Heizzeit für die ersten Räume über sieben Tage und Hinweis auf den Trockenlauf](bilder/wohnung-heizzeit.png)
-
-Weiter unten:
-
-![Heizzeit für Schlafzimmer und Wohnzimmer über sieben Tage](bilder/wohnung-heizzeit-2.png)
+![Seite „Temperatur & Heizzeit“ der Wohnungssicht mit Erläuterung und Raumauswahl](bilder/wohnung-verlauf.png)
 
 ### Verlauf
 
@@ -409,7 +383,7 @@ eine Passkey-Anmeldung eingerichtet, erscheint hier zusätzlich ein Verweis auf
 „Passkeys verwalten" — ohne diese Einrichtung bleibt der Abschnitt schlicht weg, statt
 eine Möglichkeit zu zeigen, die nicht funktioniert.
 
-![Konto und Sicherheit mit Passwortänderung, Sitzungsverwaltung, Hilfe und Abmelden](bilder/wohnung-konto.png)
+![Konto & Sicherheit der Wohnungssicht mit Profil und Passwortänderung](bilder/wohnung-konto.png)
 
 ### Temperaturverlauf einer Zone
 
@@ -532,4 +506,6 @@ vergrößert nur diese Kachel. Die Kacheln laden nacheinander nach, sobald sie i
 auf breiten Bildschirmen in zwei Spalten, auf dem Telefon untereinander. Gezeigt werden nur die
 Zonen, die man verwalten darf; ohne dieses Recht ist die Seite leer. Sie gehört zur
 Anlagensicht und steht in der Wohnungssicht nicht zur Verfügung.
+
+![Seite „Temperatur & Heizzeit“ mit Temperaturverlauf eines Raums über sieben Tage](bilder/anlage-verlauf.png)
 

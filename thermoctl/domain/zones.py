@@ -147,10 +147,10 @@ def latest_decisions_by_zone(
     zone's whole decision history to find it.
 
     Shared domain logic (principle 6), not a page-local helper: both the plant
-    overview (`web/start_views.py`) and the operations page (`web/control_views.py`)
+    overview (`web/ui_api_rooms.py`) and the operations page (`web/ui_api_operations.py`)
     need exactly this, and having each own its own copy is how the operations page
     ended up with the slow, un-`LIMIT`ed version after the overview was already
-    fixed. It started life in `web/start_views.py` alone -- moving it here means
+    fixed. It started life in the overview's module alone -- moving it here means
     neither web module has to import the other just to share one query.
 
     `shadow_decision_retention_days` defaults to 365 (`db/models/operations.py`),

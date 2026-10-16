@@ -1503,7 +1503,7 @@ def resolved_setpoint(
     at all, the same way they are unaware an override does.
 
     `ctx`, a `BulkSetpointContext`, lets a caller that resolves many zones at once
-    (`web/start_views.py::zone_status_context`) supply every query below's answer
+    (`web/shared/zone_status.py`) supply every query below's answer
     up front instead of one query per zone per helper -- the precedence and every
     branch here are unchanged, only where the data comes from.
     """

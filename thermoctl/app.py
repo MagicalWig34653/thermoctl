@@ -589,8 +589,9 @@ async def _shadow_loop(app: FastAPI) -> None:
     next_meross = started
     holder = cluster.instance_id()
     # Claims leadership before the loop's first sleep, not after it. Without this, a
-    # freshly started instance reports itself in Bereitschaft (`web/start_views.py`'s
-    # `cluster_standby`) for a full interval even when nothing stands in its way -- a
+    # freshly started instance reports itself in Bereitschaft (the room overview's
+    # `cluster_standby` in `web/ui_api_rooms.py`) for a full interval even when nothing
+    # stands in its way -- a
     # cleanly stopped predecessor already released the claim (`cluster.release`),
     # which makes it immediately claimable no matter who asks. This only helps that
     # one case, deliberately not more: a crashed and restarted instance is a

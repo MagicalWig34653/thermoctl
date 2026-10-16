@@ -153,7 +153,7 @@ def set_session_cookies(
         httponly=True, samesite="lax", secure=settings.secure_cookies,
         path=cookie_path(request),
     )
-    # Not httpOnly: the interface (HTMX) reads the value and sends it along as an
+    # Not httpOnly: the interface (Svelte app) reads the value and sends it along as an
     # `X-CSRF-Token` header.
     response.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(secret, settings.secret_key.get_secret_value()),

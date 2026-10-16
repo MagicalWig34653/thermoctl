@@ -1,1 +1,1 @@
-"""Von den JSON-Schnittstellen (/ui-api) und den Alt-Views gemeinsam genutzte Bausteine."""
+"""Von den JSON-Schnittstellen (/ui-api) gemeinsam genutzte Bausteine."""

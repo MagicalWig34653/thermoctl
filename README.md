@@ -19,16 +19,16 @@ zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
 
 **Anlagensicht** — alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.
 
-<img src="docs/bilder/anlage-startseite.png" alt="Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen" width="100%">
+<img src="docs/bilder/anlage-startseite.png" alt="Übersicht der Verwaltungssicht mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“" width="100%">
 
-<img src="docs/bilder/anlage-startseite-2.png" alt="Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band" width="100%">
+<img src="docs/bilder/anlage-startseite-2.png" alt="Übersicht weiter unten: Anlagenstatus, Temperaturverlauf eines Raums und die Liste „Heute relevant“" width="100%">
 
 </td>
 <td width="50%">
 
 **Wohnungssicht (mobil)** — nur die eigenen Räume, in Alltagssprache.
 
-<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Wohnungssicht am Seitenanfang: Status, Abwesenheit und erste Raumkarte" width="390">
+<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Übersicht der Wohnungssicht am Telefon: Notbetriebs-Hinweis und Kennzahlen" width="390">
 
 </td>
 </tr>
@@ -37,7 +37,7 @@ zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
 **Ein Wandtablet-Dashboard** rundet das ab — großformatig, ohne Anmeldung, hinter einem
 jederzeit widerrufbaren Kiosk-Token:
 
-<img src="docs/bilder/kiosk-dashboard.png" alt="Kiosk-Dashboard für ein Wandtablet: Zonen nebeneinander mit Ist-Wert, Sollwert-Reglern und Heizanforderung" width="70%">
+<img src="docs/bilder/kiosk-dashboard.png" alt="Kiosk-Ansicht für ein Wandtablet: Räume als Karten mit Ist-Wert, Sollwert-Reglern und Zustand" width="70%">
 
 Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
 ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
@@ -221,11 +221,12 @@ naiv an Leerzeichen, und ein absoluter Pfad zerbricht deshalb, sobald das Projek
 Verzeichnis mit Leerzeichen liegt — hier „Code Projekte".
 
 **Screenshots neu erzeugen.** Das Werkzeug startet einen eigenen Server mit frischer
-SQLite-Datenbank und erfundenen Demodaten; es liest keine `.env`. Es nimmt alle
-Ansichten einschließlich Einrichtung und Wohnungssicht auf, letztere sowie Startseite
-und Kiosk zusätzlich als Telefon-Sichtbereich mit 390 × 844 Pixeln (am Schreibtisch
-1280 Pixel breit, ganze Seite). Mobile Aufnahmen beginnen oben; ergänzende Bilder
-mit `-mobil-2` zeigen auf Startseite, Wochenplan und Konto einen Bereich weiter unten.
+SQLite-Datenbank und erfundenen Demodaten; es liest keine `.env`. Es nimmt ausgewählte
+Seiten der Svelte-Oberfläche (`/app/...`) auf: Einrichtung und Anmeldung, die
+Verwaltungssicht, die Wohnungssicht (zusätzlich als Telefon-Sichtbereich mit
+390 × 844 Pixeln) und den Kiosk. Aufnahmen sind der sichtbare Bildschirmausschnitt
+(1280 × 900 Pixel am Schreibtisch); Bilder mit `-2` bzw. `-mobil-2` zeigen eine
+Bildschirmhöhe weiter unten.
 
 ```bash
 .venv/bin/python -m tools.screenshots

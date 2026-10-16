@@ -20,7 +20,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.models.credential import ApiToken
 
 KIOSK_COOKIE_NAME = "thermoctl_kiosk"
-# Not httpOnly, for the same reason as `thermoctl_csrf`: htmx needs to read it to send
+# Not httpOnly, for the same reason as `thermoctl_csrf`: the kiosk app needs to read it to send
 # the header along, and the value itself hands out no more than the session's CSRF
 # cookie does -- it only proves the request came from whoever already holds the
 # kiosk cookie.

@@ -1,4 +1,4 @@
-"""Zonenparameter: Felderlisten und Pruefung der Eingaben -- geteilt von Alt-View und /ui-api."""
+"""Zonenparameter: Felderlisten und Pruefung der Eingaben -- geteilt von den /ui-api-Endpunkten."""
 from decimal import Decimal, InvalidOperation
 
 from thermoctl.web.forms import FormError

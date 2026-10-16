@@ -310,7 +310,7 @@ def test_consent_form_is_a_plain_form_and_carries_csrf_field(client_als, session
 
 
 def test_plain_form_post_with_field_token_redirects_with_303(client_als, session: Session) -> None:
-    """Ohne htmx kommt das Token nur als Formularfeld; die Antwort ist eine gewöhnliche 303."""
+    """Ein einfaches Formular sendet das Token als Feld; die Antwort ist eine 303."""
     c = client_als([("token.self", None), ("zone.read", None)])
     request_id = _request(session)
     response = c.post(

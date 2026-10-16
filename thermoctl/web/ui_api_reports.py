@@ -1,7 +1,7 @@
 """Auswertung für die Svelte-Oberfläche (`/ui-api`): Verlauf, Heizzeit, Verschleiß, Ereignisse.
 
-Dünner Adapter (Grundsatz 6): die Zahlen kommen aus denselben Domänenfunktionen wie in den
-HTML-Views (`domain/history_report`, `statistics`, `audit_query`, `change_log`); hier stehen
+Dünner Adapter (Grundsatz 6): die Zahlen kommen aus denselben Domänenfunktionen wie zuvor
+(`domain/history_report`, `statistics`, `audit_query`, `change_log`); hier stehen
 Rechteprüfung, Eingabeprüfung und Serialisierung. Der Verlauf liefert **Rohdaten statt SVG**
 (Regeln für Lücken, Verdichtung und Obergrenzen: `domain/history_report`).
 

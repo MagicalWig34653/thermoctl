@@ -71,7 +71,7 @@ Neustart erzeugt kein zweites. Behandeln Sie das Log entsprechend.
 Dann `http://127.0.0.1:8000/setup` im Browser öffnen, Token einsetzen, ersten Verwalter
 anlegen. Danach ist `/setup` dauerhaft geschlossen, nicht nur ausgeblendet.
 
-![Einrichtungsseite mit den Feldern Einrichtungs-Token, Benutzername, Anzeigename, Passwort und Zeitzone](bilder/oeffentlich-einrichtung.png)
+![Ersteinrichtung mit den Feldern Einrichtungs-Token, Benutzername, Anzeigename, Passwort und Zeitzone](bilder/oeffentlich-einrichtung.png)
 
 Von da an führt jeder Aufruf ohne gültige Sitzung auf dieselbe Anmeldeseite —
 Benutzername und Passwort des gerade angelegten Kontos.
@@ -450,11 +450,11 @@ Token ausgestellt:
    es nur an.
 4. Optional eine Gültigkeit in Tagen. Ein befristetes Token ist die sicherere Wahl.
 
-![Formular für Kiosk-Tokens mit einem bereits ausgestellten Token und den Feldern Name, Zonen, „Auch bedienen" und Gültigkeit](bilder/anlage-kiosk-token.png)
+![Seite „Kiosk-Zugänge“ mit dem ausgestellten Zugang „Demo-Wandtablet“ und der Schaltfläche „Zugang ausstellen“](bilder/anlage-kiosk-token.png)
 
 Das Ergebnis auf dem Tablet: eine große, für den Abstand zur Wand lesbare Kachel je Zone.
 
-![Kiosk-Dashboard mit sechs Zonen nebeneinander, je mit Ist-Temperatur, Sollwert-Reglern und Heizanforderungsanzeige](bilder/kiosk-dashboard.png)
+![Kiosk-Ansicht für ein Wandtablet: Räume als Karten mit Ist-Wert, Sollwert-Reglern und Zustand](bilder/kiosk-dashboard.png)
 
 Für kleine Wandpanels gibt es eine eigene Panel-Ebene: Bei 480×480 Pixeln passen
 sechs Zonen als Raster ohne Scrollen auf den Bildschirm. Die Zustandspunkte zeigen
@@ -465,9 +465,9 @@ das Panel, `/kiosk?ansicht=tafel` die große Tafel und `/kiosk?ansicht=auto`
 automatisch das Panel unter 600 Pixeln Breite, sonst die Tafel. Die Auswahl wird
 in einem eigenen Cookie gemerkt. Ohne JavaScript bleibt die scrollende Tafel.
 
-![Panel-Übersicht auf 480×480 Pixeln mit sechs Zonen, Ist- und Sollwerten sowie Zustandspunkten](bilder/kiosk-panel-uebersicht.png)
+![Kiosk-Panel auf 480×480 Pixeln mit Raumkacheln, Ist- und Sollwert](bilder/kiosk-panel-uebersicht.png)
 
-![Panel-Details des Wohnzimmers nach Antippen der Kachel, mit Sollwert-Reglern und Zurück-Knopf](bilder/kiosk-panel-detail.png)
+![Kiosk-Panel, Raum Bad nach Antippen der Kachel, mit Sollwert-Reglern und „Zurück zur Übersicht“](bilder/kiosk-panel-detail.png)
 
 Die Adresse erscheint **einmal** im Klartext, in der Form `/kiosk/<token>`. Diese Adresse
 als Lesezeichen auf dem Tablet ablegen; danach lebt das Token nur noch in einem Cookie, und

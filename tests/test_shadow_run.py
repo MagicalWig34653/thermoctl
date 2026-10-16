@@ -1208,12 +1208,12 @@ async def test_the_shadow_loop_leads_before_its_first_sleep(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ursache B. A freshly started instance must not sit out a whole interval
-    in Bereitschaft (`web/start_views.py`'s `cluster_standby`) when nothing
+    in Bereitschaft (`cluster_standby` in `web/ui_api_rooms.py`) when nothing
     stands in its way: the claim is unheld, exactly as a real installation's
     migration seeds it (`bb4a0ff63b2d`, `holder_id=""`). Before the fix, the
     loop only ever called `try_become_leader` *after* its first
     `asyncio.sleep(interval)` -- so the claim stayed unheld, and `is_leader`
-    (what `web/start_views.py` and every actuator's `switching_allowed` check
+    (what `web/ui_api_rooms.py` and every actuator's `switching_allowed` check
     actually ask) read `False`, for the whole first interval. This test proves
     the claim is already held by this instance by the time the loop's very
     first `asyncio.sleep` call happens -- inspected from inside the

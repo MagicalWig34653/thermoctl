@@ -1,7 +1,7 @@
 """Regelung, Betrieb und Einstellungen unter `/ui-api`: Rechte, Fehlerform, Wirkung, Protokoll.
 
-Die Endpunkte sind dünne Adapter über denselben Domänenfunktionen wie die HTML-Views; hier
-wird geprüft, dass (a) dieselben Rechte gelten, (b) die Domäne die Eingabe prüft und ihr
+Die Endpunkte sind dünne Adapter über denselben Domänenfunktionen wie die frühere HTML-Oberfläche;
+hier wird geprüft, dass (a) dieselben Rechte gelten, (b) die Domäne die Eingabe prüft und ihr
 Fehler als `{detail, code, field}` ankommt, (c) die Datenbank und das Protokoll danach
 stimmen und (d) die drei Sperren getrennt bleiben und Geheimnisse nie ausgegeben werden.
 """
@@ -614,7 +614,7 @@ def test_operation_shows_decisions_with_reasons_and_emergency_per_zone(
     session.flush()
     hidden = create_zone(session, "versteckt")
     client = client_als([("zone.read", zone.id), ("zone.read", other.id)])
-    # Zonen-bezogenes zone.read allein genügt für die Seite nicht (wie control_views).
+    # Zonen-bezogenes zone.read allein genügt für die Seite nicht (wie früher).
     _fehler(client.get("/ui-api/operation"), 403, "forbidden")
     body = client_als(LESEN).get("/ui-api/operation").json()
     assert {room["id"] for room in body["rooms"]} == {zone.id, other.id, hidden.id}

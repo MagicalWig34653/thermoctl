@@ -1,7 +1,7 @@
 """The one read of the Notbetrieb runtime state, shared by every adapter.
 
-Auftrag 8b of `lokal/plaene/0.11.0-notbetrieb.md`. Grundsatz 6: HTMX
-(`web/control_views.py`, the start/tenant/kiosk banners), REST
+Auftrag 8b of `lokal/plaene/0.11.0-notbetrieb.md`. Grundsatz 6: the
+web UI (`web/ui_api_operations.py`, the start/tenant/kiosk banners), REST
 (`GET /api/v1/zones/{id}/emergency-state`) and MCP (`read_emergency_state`)
 must describe the exact same persisted state the exact same way -- this
 module is where that single reading lives. Everything it returns is either a

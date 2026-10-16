@@ -1,4 +1,4 @@
-"""Generate the complete UI gallery against an isolated, disposable server."""
+"""Generate the UI gallery of the Svelte app against an isolated, disposable server."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
-from playwright.sync_api import Browser, Page, sync_playwright
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Browser, ConsoleMessage, Page, Response, sync_playwright
 
 from browser_tests.live_server import LiveServer, _live_server
 from tools.screenshot_seed import seed_demo
@@ -32,27 +31,45 @@ def selected_views(pattern: str | None, *, documented_only: bool = False) -> lis
 
 
 def _login(page: Page, username: str, password: str) -> None:
-    page.goto("/login", wait_until="networkidle")
+    page.goto("/app/login", wait_until="networkidle")
     page.get_by_label("Benutzername").fill(username)
     page.get_by_label("Passwort", exact=True).fill(password)
-    page.get_by_role("button", name="Anmelden").click()
-    page.locator(".tc-topbar, .tc-theader").wait_for()
+    page.get_by_role("button", name="Anmelden", exact=True).click()
+    page.wait_for_url(lambda url: not urlsplit(url).path.endswith("/login"))
+    page.wait_for_load_state("networkidle")
+
+
+def _settle(page: Page) -> None:
+    """Warten, bis die Oberfläche fertig geladen und gezeichnet ist."""
+    page.wait_for_load_state("networkidle")
+    page.evaluate("document.fonts.ready")
+    # Ladeanzeigen (Platzhalter mit `animate-pulse`) und Meldungen "wird geladen" sind weg.
+    page.wait_for_function(
+        "document.querySelectorAll('.animate-pulse, [aria-busy=\"true\"]').length === 0",
+        timeout=15_000,
+    )
+    page.wait_for_timeout(400)
+
+
+# Erwartete Antworten der Oberfläche beim Anmelden: Ohne Sitzung fragt sie den Bootstrap an
+# (401) und, ob eine Einrichtung offen ist (404, sobald es einen Benutzer gibt).
+_EXPECTED_ANONYMOUS = {(401, "/ui-api/bootstrap"), (404, "/ui-api/setup")}
 
 
 def _listen_for_errors(page: Page, errors: list[str]) -> None:
-    page.on(
-        "console",
-        lambda msg: errors.append(msg.text) if msg.type == "error" else None,
-    )
+    def on_response(response: Response) -> None:
+        path = urlsplit(response.url).path
+        if response.status >= 400 and (response.status, path) not in _EXPECTED_ANONYMOUS:
+            errors.append(f"HTTP {response.status}: {path}")
+
+    def on_console(message: ConsoleMessage) -> None:
+        # Fehlgeschlagene Ladevorgänge meldet `on_response` mit Status und Pfad.
+        if message.type == "error" and not message.text.startswith("Failed to load resource"):
+            errors.append(message.text)
+
+    page.on("console", on_console)
     page.on("pageerror", lambda exc: errors.append(str(exc)))
-    page.on(
-        "response",
-        lambda response: (
-            errors.append(f"HTTP {response.status}: {urlsplit(response.url).path}")
-            if response.status >= 400
-            else None
-        ),
-    )
+    page.on("response", on_response)
     page.on(
         "requestfailed",
         lambda request: errors.append(
@@ -86,7 +103,7 @@ def _capture(
             storage_state=auth_file if auth_file.exists() else None,
             base_url=server.base_url,
             viewport={"width": width, "height": height},
-            has_touch=view.kiosk_mode is not None,
+            has_touch=view.profile == "kiosk" or is_mobile_capture,
             device_scale_factor=1,
             color_scheme="light",
             locale="de-DE",
@@ -106,74 +123,30 @@ def _capture(
                 response = page.goto(view.path.format_map(paths), wait_until="networkidle")
                 if response is None or response.status >= 400:
                     raise RuntimeError(f"HTTP {response.status if response else 'ohne Antwort'}")
-                if urlsplit(page.url).path == "/login" and view.path != "/login":
-                    raise RuntimeError("Unerwartete Weiterleitung auf /login")
+                if urlsplit(page.url).path.endswith("/login") and not view.path.endswith("/login"):
+                    raise RuntimeError("Unerwartete Weiterleitung auf die Anmeldung")
                 if view.kiosk_mode:
-                    # The token entry redirects to bare /kiosk and drops query parameters.
+                    # Die Einlösung des Tokens leitet auf /app/kiosk um und verwirft die Abfrage.
                     response = page.goto(
-                        f"/kiosk?ansicht={view.kiosk_mode}", wait_until="networkidle"
+                        f"/app/kiosk?ansicht={view.kiosk_mode}", wait_until="networkidle"
                     )
                     if response is None or response.status >= 400:
                         raise RuntimeError("Kiosk-Ansicht konnte nicht geladen werden")
-                    try:
-                        page.locator(
-                            f'body[data-ansicht-aktiv="{view.kiosk_mode}"]'
-                        ).wait_for(timeout=10_000)
-                    except PlaywrightTimeoutError as exc:
-                        raise RuntimeError(
-                            f"Kiosk-{view.kiosk_mode}: data-ansicht-aktiv fehlt oder ist falsch; "
-                            "kiosk_panel.js hat die angeforderte Ansicht nicht aktiviert"
-                        ) from exc
-                if view.open_details:
-                    for detail in page.locator("details").all():
-                        if detail.get_attribute("open") is None:
-                            detail.locator("summary").click()
-                # Opening details scrolls the page; sticky headers must start at the top.
+                    page.get_by_role("button", name="Panel", exact=True).wait_for(timeout=10_000)
+                _settle(page)
+                if view.click:
+                    page.get_by_role("button", name=view.click, exact=True).click()
+                    _settle(page)
                 page.evaluate("window.scrollTo(0, 0)")
-                page.wait_for_function("window.scrollY === 0")
-                page.evaluate("document.fonts.ready")
-                page.wait_for_load_state("networkidle")
-                page.locator(".htmx-request").wait_for(state="detached")
-                if not page.evaluate(
-                    "Array.from(document.styleSheets).some(s => "
-                    "s.href && s.href.includes('thermoctl.css'))"
-                ):
-                    raise RuntimeError("thermoctl.css fehlt")
                 if errors:
                     raise RuntimeError("; ".join(errors))
                 if view.kiosk_detail_zone:
-                    # Real touch interaction immediately before capture: no URL shortcut
-                    # and no waits that could run into the 45-second return timer.
-                    zone_id = paths[view.kiosk_detail_zone]
-                    page.locator(f'[data-kiosk-tile="{zone_id}"]').tap()
-                    page.locator(
-                        f'[data-kiosk-detail="{zone_id}"].kiosk-detail-open'
-                    ).wait_for(state="visible", timeout=5_000)
+                    # Echte Antippen-Interaktion unmittelbar vor der Aufnahme.
+                    page.locator('[data-testid="kiosk-tiles"] button').first.tap()
+                    page.get_by_role("dialog").wait_for(state="visible", timeout=5_000)
+                    page.wait_for_timeout(300)
                 target = output / name
-                if view.section:
-                    box = page.locator(view.section).bounding_box()
-                    if box is None:
-                        raise RuntimeError(f"Abschnitt nicht gefunden: {view.section}")
-                    pad = 8
-                    left = max(box["x"] - pad, 0)
-                    top = max(box["y"] - pad, 0)
-                    page.screenshot(
-                        path=str(target),
-                        full_page=True,
-                        clip={
-                            "x": left,
-                            "y": top,
-                            "width": min(box["width"] + 2 * pad, width - left),
-                            "height": box["height"] + pad,
-                        },
-                        animations="disabled",
-                    )
-                else:
-                    page.screenshot(
-                        path=str(target),
-                        full_page=view.kiosk_mode == "tafel" and not is_mobile_capture,
-                        animations="disabled",
-                    )
+                page.screenshot(path=str(target), full_page=False, animations="disabled")
                 if errors:
                     target.unlink(missing_ok=True)
                     raise RuntimeError("; ".join(errors))
@@ -181,15 +154,8 @@ def _capture(
                 print(name, flush=True)
                 followup = view.mobile_followup if is_mobile_capture else view.desktop_followup
                 if followup:
-                    page.locator(followup).evaluate("""el => {
-                        const header = document.querySelector('.tc-theader, .tc-topbar');
-                        const offset = (header ? header.getBoundingClientRect().height : 0) + 16;
-                        const top = window.scrollY + el.getBoundingClientRect().top - offset;
-                        window.scrollTo(0, top);
-                    }""")
-                    page.evaluate("document.fonts.ready")
-                    page.wait_for_load_state("networkidle")
-                    page.locator(".htmx-request").wait_for(state="detached")
+                    page.evaluate(f"window.scrollBy(0, {height - 120})")
+                    page.wait_for_timeout(300)
                     target = output / f"{Path(name).stem}-2.png"
                     page.screenshot(path=str(target), full_page=False, animations="disabled")
                     if errors:
@@ -221,7 +187,7 @@ def generate(
 
             def before_setup(server: LiveServer) -> None:
                 for view in views:
-                    if view.path == "/setup":
+                    if view.path == "/app/setup":
                         result.extend(
                             _capture(
                                 browser,
@@ -245,7 +211,7 @@ def generate(
                 with server.session() as session:
                     paths = seed_demo(session, server.admin_password)
                 for view in views:
-                    if view.path != "/setup":
+                    if view.path != "/app/setup":
                         result.extend(
                             _capture(
                                 browser,

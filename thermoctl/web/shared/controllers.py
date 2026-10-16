@@ -1,5 +1,5 @@
 # ruff: noqa: E501
-"""Steuergeraete-Seite: Zonen-/Geraeteauswahl und Rechtepruefung -- geteilt von Alt-View und /ui-api."""
+"""Steuergeraete-Seite: Zonen-/Geraeteauswahl und Rechtepruefung -- geteilt von den /ui-api-Endpunkten."""
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session

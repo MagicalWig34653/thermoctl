@@ -3,7 +3,7 @@
 Geprüft wird je Endpunkt: ohne Sitzung 401, ohne CSRF-Wert 403, ohne Recht 403, fremde und
 unbekannte Zone dasselbe 404, die Wirkung in der Datenbank und der Audit-Eintrag. Die
 Endpunkte sind dünne Adapter; die Fachprüfung (Namensdopplung, Betriebsart) liegt in der
-Domäne bzw. denselben Funktionen wie in den HTML-Views.
+Domäne bzw. denselben Funktionen wie zuvor in der HTML-Oberfläche.
 """
 
 from collections.abc import Callable

@@ -3,7 +3,7 @@
 Zwei Dinge gehören hierher, beide vor der Anmeldung:
 
 * die Ersteinrichtung (`/ui-api/setup`) -- dieselbe Domänenfunktion `run_setup` und
-  dieselbe Sperre wie das HTML-Formular in `setup_views.py`;
+  dieselbe Sperre wie zuvor das HTML-Formular;
 * die Angaben, die die Anmeldeseite braucht, bevor jemand angemeldet ist
   (`/ui-api/login-options`).
 
