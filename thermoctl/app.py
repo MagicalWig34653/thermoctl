@@ -139,6 +139,7 @@ from thermoctl.web.tenant_views import router as tenant_router
 from thermoctl.web.ui_api import router as ui_api_router
 from thermoctl.web.ui_api_reports import router as ui_api_reports_router
 from thermoctl.web.ui_api_rooms import router as ui_api_rooms_router
+from thermoctl.web.ui_api_schedule import router as ui_api_schedule_router
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
@@ -1318,6 +1319,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_api_router)
     app.include_router(ui_api_rooms_router)
     app.include_router(ui_api_reports_router)
+    app.include_router(ui_api_schedule_router)
     app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
     app.include_router(audit_router)

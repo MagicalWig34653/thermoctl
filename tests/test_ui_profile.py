@@ -399,6 +399,35 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("GET", "/ui-api/changes"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
     ("GET", "/ui-api/changes/{change_id}"): "Profilprüfung im Endpunkt, audit.read",
     ("POST", "/ui-api/changes/{change_id}/revert"): "Profilprüfung im Endpunkt, audit.read",
+    # Zeitplan, Urlaub, Abwesenheit, Modi (`ui_api_schedule`): die Profilprüfung steht im
+    # Endpunkt (`_need_profile`), nicht als Router-Wächter -- Lesen und Tag/Plan kopieren
+    # gehören beiden Oberflächen, Editor/Urlaub/Modi der Anlagensicht, Abwesenheit der Wohnung.
+    ("GET", "/ui-api/schedule/{zone_id}"): "zone.read je Zone, beide Profile",
+    ("GET", "/ui-api/schedule/{zone_id}/preview"): "zone.read je Zone, beide Profile",
+    ("POST", "/ui-api/schedule/{zone_id}/paint"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("POST", "/ui-api/schedule/{zone_id}/points"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("PUT", "/ui-api/schedule/{zone_id}/points/{point_id}"):
+        "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("PUT", "/ui-api/schedule/{zone_id}/points/{point_id}/mode"):
+        "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("DELETE", "/ui-api/schedule/{zone_id}/points/{point_id}"):
+        "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("POST", "/ui-api/schedule/{zone_id}/copy-day"):
+        "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
+    ("POST", "/ui-api/schedule/{zone_id}/copy-week"):
+        "wie die Mieter-Übernahme: beide Profile, Ziele mit schedule.manage",
+    ("POST", "/ui-api/schedule/{zone_id}/undo"):
+        "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
+    ("GET", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("POST", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("DELETE", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("GET", "/ui-api/absence"): "Profilprüfung im Endpunkt (Wohnungssicht)",
+    ("POST", "/ui-api/absence"): "Profilprüfung im Endpunkt (Wohnungssicht)",
+    ("POST", "/ui-api/absence/end"): "Profilprüfung im Endpunkt (Wohnungssicht)",
+    ("GET", "/ui-api/modes"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("POST", "/ui-api/modes"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("PUT", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("DELETE", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
