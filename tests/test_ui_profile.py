@@ -436,6 +436,33 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("GET", "/ui-api/dashboard"): "eigenes Layout; Kacheln werden je Abruf gegen Rechte gefiltert",
     ("PUT", "/ui-api/dashboard"): "eigenes Layout; Rechte- und Profilprüfung je Kachel im Endpunkt",
     ("DELETE", "/ui-api/dashboard"): "eigenes Layout",
+    # Geräte (`ui_api_devices`): Anlagensicht; die Profilprüfung (`_require_admin_ui`) steht
+    # als erste Anweisung im Endpunkt, danach die Rechte.
+    **{
+        (method, path): "Profilprüfung im Endpunkt (Anlagensicht), device.read bzw. device.manage"
+        for method, path in (
+            ("GET", "/ui-api/devices"),
+            ("GET", "/ui-api/plant"),
+            ("GET", "/ui-api/devices/map"),
+            ("GET", "/ui-api/devices/map/check"),
+            ("POST", "/ui-api/devices/map/connect"),
+            ("POST", "/ui-api/devices/map/disconnect"),
+            ("GET", "/ui-api/zones/{zone_id}/devices"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/assign"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/detach"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/regulation"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/source"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/swap"),
+            ("POST", "/ui-api/zones/{zone_id}/devices/button"),
+            ("GET", "/ui-api/controllers"),
+            ("POST", "/ui-api/controllers/channel"),
+            ("POST", "/ui-api/controllers/button"),
+        )
+    },
+    ("GET", "/ui-api/zones/data-flow"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("GET", "/ui-api/zones/{zone_id}/data-flow"):
+        "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
+    ("GET", "/ui-api/device-commands"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",

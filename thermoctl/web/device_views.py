@@ -45,13 +45,8 @@ router = APIRouter(
 SILENT_WITHOUT_DEFAULTS_SECONDS = 900
 
 
-@router.get("/devices")
-async def device_overview(
-    request: Request,
-    principal: Annotated[Principal, Depends(current_principal)],
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    require(principal, "device.read")
+def build_device_survey(session: Session) -> tuple[list[DeviceSurvey], Setting | None]:
+    """Der Geräteüberblick samt Befunden, dringendste zuerst -- Quelle für HTML und `/ui-api`."""
     rows = session.execute(
         select(Device, Integration, DeviceHealth)
         .join(Integration, Integration.id == Device.integration_id)
@@ -146,6 +141,17 @@ async def device_overview(
     # something wrong?" -- and the answer shouldn't be buried under twenty healthy
     # devices.
     survey.sort(key=lambda g: (g.severity, g.name))
+    return survey, defaults
+
+
+@router.get("/devices")
+async def device_overview(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    require(principal, "device.read")
+    survey, defaults = build_device_survey(session)
 
     return templates.TemplateResponse(
         request,
