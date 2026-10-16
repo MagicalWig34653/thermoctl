@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Annotated, cast
 
@@ -215,17 +216,20 @@ def _schedule_page(
 def _undo_token(
     zone_id: int,
     gesture: ScheduleGesture,
+    history: Sequence[ScheduleSnapshot] = (),
 ) -> str:
+    """`history` lists the plans before `before`, most recent first (multi-step undo of
+    the JSON interface); the HTML views never pass it."""
     before, after, revision = gesture
-    payload = json.dumps(
-        {
-            "zone_id": zone_id,
-            "before": before,
-            "after": after,
-            "revision": revision,
-        },
-        separators=(",", ":"),
-    ).encode()
+    content: dict[str, object] = {
+        "zone_id": zone_id,
+        "before": before,
+        "after": after,
+        "revision": revision,
+    }
+    if history:
+        content["history"] = list(history)
+    payload = json.dumps(content, separators=(",", ":")).encode()
     encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
     signature = hmac.new(
         get_settings().secret_key.get_secret_value().encode(),

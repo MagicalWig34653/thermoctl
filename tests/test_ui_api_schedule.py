@@ -155,6 +155,22 @@ ENDPUNKTE: Tabelle = [
         True,
     ),
     ("POST", "/ui-api/schedule/{z}/undo", {"undo_token": "x"}, "beide", "schedule.manage", True),
+    *[
+        (
+            "POST",
+            f"/ui-api/schedule/{{z}}/block/{name}",
+            {"version": "0", "weekday": 1, "start_minute": 420, "end_minute": 1320, **extra},
+            "admin",
+            "schedule.manage",
+            True,
+        )
+        for name, extra in (
+            ("move", {"to_weekday": 2, "to_start_minute": 0}),
+            ("duplicate", {"to_weekday": 2, "to_start_minute": 0}),
+            ("resize", {"new_start_minute": 420, "new_end_minute": 1200}),
+            ("delete", {}),
+        )
+    ],
     ("GET", "/ui-api/vacation", None, "admin", "zone.read", False),
     (
         "POST",
@@ -673,7 +689,7 @@ def test_create_point_audits_and_overlap_is_409(client_als: Als, session: Sessio
     assert created.status_code == 200, created.text
     assert (1, 600, nacht) in _points(session, zone)
     assert _audit(session, "schedule_point") == 1
-    assert created.json()["changed"] is True and created.json()["undo_token"] is None
+    assert created.json()["changed"] is True and created.json()["undo_token"]
     version = created.json()["version"]
     count = len(_points(session, zone))
     error = _fehler(

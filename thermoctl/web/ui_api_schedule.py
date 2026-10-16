@@ -21,9 +21,24 @@ HTML-Views: der vollständige Editor (Bereich/Punkte), Urlaub und Modi nur in de
 Anlagensicht, die Abwesenheit nur in der Wohnungssicht; Tag kopieren, Plan kopieren und
 Rücknahme stehen beiden Profilen offen (die Mieteransicht hat sie auch).
 
+Block-Operationen (`/block/move|duplicate|resize|delete`): ein Block ist der Lauf von
+einem Schaltpunkt bis zum nächsten (er darf über Mitternacht und die Wochennaht reichen,
+`end_minute` zählt dann über 1440 hinaus, höchstens eine Woche). Der Plan ist ein Ring ohne
+Lücken -- „frei" heißt deshalb: im Zielbereich beginnt kein anderer Block (er liegt im
+Inneren eines einzelnen Blocks, den er teilt), sonst `409 overlap`. Was ein Block
+hinterlässt, erbt den Modus davor (der vorherige Block läuft weiter; ohne anderen Block
+gilt der Frostschutzmodus). Alles in einer Transaktion: jeder Fehler lässt den Plan
+unverändert.
+
+Mehrstufige Rücknahme: Die Rücknahme-Marke trägt optional die Vorgänger-Stände
+(`history`). Schreibaufrufe nehmen die zuletzt erhaltene Marke als `previous_undo_token`
+entgegen und verlängern damit die Kette (passt sie nicht zum aktuellen Stand, beginnt eine
+neue); `undo` antwortet mit der Marke für den nächsten Schritt zurück.
+
 Fehler sind immer `{"detail": ..., "code": ...}` (optional `"field"`).
 """
 
+from collections.abc import Callable, Sequence
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -65,9 +80,14 @@ from thermoctl.domain.schedule import (
     copy_schedule_day,
     create_schedule_point,
     current_or_upcoming_vacation,
+    delete_schedule_block,
     delete_schedule_point,
+    duplicate_schedule_block,
+    move_schedule_block,
     paint_schedule_interval,
+    resize_schedule_block,
     schedule_forecast,
+    schedule_snapshot,
     undo_schedule_gesture,
     week_segments,
 )
@@ -237,6 +257,7 @@ class PaintIn(BaseModel):
     start_minute: int
     end_minute: int
     mode_id: int
+    previous_undo_token: str | None = None
 
 
 class PointIn(BaseModel):
@@ -244,23 +265,27 @@ class PointIn(BaseModel):
     weekday: int
     minute_of_day: int
     mode_id: int
+    previous_undo_token: str | None = None
 
 
 class PointMoveIn(BaseModel):
     version: str
     weekday: int
     minute_of_day: int
+    previous_undo_token: str | None = None
 
 
 class PointModeIn(BaseModel):
     version: str
     mode_id: int
+    previous_undo_token: str | None = None
 
 
 class CopyDayIn(BaseModel):
     version: str
     weekday: int
     scope: Literal["workdays", "all"]
+    previous_undo_token: str | None = None
 
 
 class CopyTargetIn(BaseModel):
@@ -275,6 +300,28 @@ class CopyWeekIn(BaseModel):
 
 class UndoIn(BaseModel):
     undo_token: str
+
+
+class BlockIn(BaseModel):
+    """Der Block, wie ihn der Plan zeigt: Wochentag, Beginn und Ende in Minuten ab dessen
+    Mitternacht (`end_minute` > 1440 über Mitternacht hinaus)."""
+
+    version: str
+    weekday: int
+    start_minute: int
+    end_minute: int
+    previous_undo_token: str | None = None
+
+
+class BlockTargetIn(BlockIn):
+    to_weekday: int
+    to_start_minute: int
+
+
+class BlockResizeIn(BlockIn):
+    new_start_minute: int
+    new_end_minute: int
+    adjacent: bool = False
 
 
 class VacationIn(BaseModel):
@@ -478,11 +525,69 @@ def _change(
     *,
     changed: bool,
     gesture: ScheduleGesture | None = None,
+    history: Sequence[ScheduleSnapshot] = (),
 ) -> ScheduleChangeOut:
     return ScheduleChangeOut(
         **_schedule(session, principal, zone).model_dump(),
         changed=changed,
-        undo_token=_undo_token(zone.id, gesture) if gesture else None,
+        undo_token=_undo_token(zone.id, gesture, history) if gesture else None,
+    )
+
+
+MAX_UNDO_STEPS = 20
+
+
+def _history(
+    previous: str | None, zone: Zone, version: str, gesture: ScheduleGesture | None
+) -> list[ScheduleSnapshot]:
+    """Die Vorgänger-Stände für die neue Marke: nur wenn die frühere Marke genau zu dem
+    Stand gehört, aus dem diese Geste hervorging (gleiche Zone, gleiche Version, ihr
+    `after` ist unser `before`); sonst beginnt eine neue Kette."""
+    if previous is None or gesture is None:
+        return []
+    try:
+        payload = _undo_payload(previous)
+        if payload["zone_id"] != zone.id or str(payload["revision"]) != version:
+            return []
+        if _snapshot(payload["after"]) != gesture[0]:
+            return []
+        raw: Any = payload.get("history", [])
+        earlier = [_snapshot(snapshot) for snapshot in raw]
+        return [_snapshot(payload["before"]), *earlier][:MAX_UNDO_STEPS]
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
+def _point_gesture(session: Session, zone: Zone, before: ScheduleSnapshot) -> ScheduleGesture:
+    """Rücknahme-Geste einer Punkt-Operation (sie liefert selbst keine); nur aufrufen, wenn
+    sie den Plan verändert hat."""
+    session.flush()
+    after = schedule_snapshot(_points(session, zone.id))
+    return before, after, int(_version(session, zone.id))
+
+
+def _before(session: Session, zone: Zone) -> ScheduleSnapshot:
+    return schedule_snapshot(_points(session, zone.id))
+
+
+def _point_change(
+    session: Session,
+    principal: Principal,
+    zone: Zone,
+    before: ScheduleSnapshot,
+    version: str,
+    previous: str | None,
+    *,
+    changed: bool,
+) -> ScheduleChangeOut:
+    gesture = _point_gesture(session, zone, before) if changed else None
+    return _change(
+        session,
+        principal,
+        zone,
+        changed=changed,
+        gesture=gesture,
+        history=_history(previous, zone, version, gesture),
     )
 
 
@@ -547,7 +652,14 @@ def paint(zone_id: int, body: PaintIn, principal: Who, session: Sess) -> Schedul
         )
     except ScheduleError as exc:
         raise _schedule_error(exc) from exc
-    return _change(session, principal, zone, changed=gesture is not None, gesture=gesture)
+    return _change(
+        session,
+        principal,
+        zone,
+        changed=gesture is not None,
+        gesture=gesture,
+        history=_history(body.previous_undo_token, zone, body.version, gesture),
+    )
 
 
 @router.post("/schedule/{zone_id}/points")
@@ -555,6 +667,7 @@ def add_point(zone_id: int, body: PointIn, principal: Who, session: Sess) -> Sch
     zone = _editable_zone(session, principal, zone_id)
     _need_profile(principal, WebUiProfile.ADMIN)
     _check_version(session, zone, body.version)
+    before = _before(session, zone)
     try:
         create_schedule_point(
             session,
@@ -567,7 +680,9 @@ def add_point(zone_id: int, body: PointIn, principal: Who, session: Sess) -> Sch
         )
     except ScheduleError as exc:
         raise _point_error(session, zone, exc, body.weekday, body.minute_of_day) from exc
-    return _change(session, principal, zone, changed=True)
+    return _point_change(
+        session, principal, zone, before, body.version, body.previous_undo_token, changed=True
+    )
 
 
 @router.put("/schedule/{zone_id}/points/{point_id}")
@@ -579,6 +694,7 @@ def move_point(
     _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, body.version)
+    before = _before(session, zone)
     try:
         recorded = change_log.move_point(
             session,
@@ -590,7 +706,15 @@ def move_point(
         )
     except ScheduleError as exc:
         raise _point_error(session, zone, exc, body.weekday, body.minute_of_day) from exc
-    return _change(session, principal, zone, changed=recorded.change_id is not None)
+    return _point_change(
+        session,
+        principal,
+        zone,
+        before,
+        body.version,
+        body.previous_undo_token,
+        changed=recorded.change_id is not None,
+    )
 
 
 @router.put("/schedule/{zone_id}/points/{point_id}/mode")
@@ -601,7 +725,8 @@ def set_point_mode(
     _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, body.version)
-    before = point.setpoint_mode_id
+    before_mode = point.setpoint_mode_id
+    before = _before(session, zone)
     try:
         change_schedule_point_mode(
             session,
@@ -613,22 +738,168 @@ def set_point_mode(
         )
     except ScheduleError as exc:
         raise _schedule_error(exc) from exc
-    return _change(session, principal, zone, changed=before != body.mode_id)
+    return _point_change(
+        session,
+        principal,
+        zone,
+        before,
+        body.version,
+        body.previous_undo_token,
+        changed=before_mode != body.mode_id,
+    )
 
 
 @router.delete("/schedule/{zone_id}/points/{point_id}")
 def remove_point(
-    zone_id: int, point_id: int, version: str, principal: Who, session: Sess
+    zone_id: int,
+    point_id: int,
+    version: str,
+    principal: Who,
+    session: Sess,
+    previous_undo_token: str | None = None,
 ) -> ScheduleChangeOut:
-    """Die Version kommt als Abfrageparameter (`?version=`), ein DELETE hat keinen Körper."""
+    """Die Version kommt als Abfrageparameter (`?version=`), ein DELETE hat keinen Körper
+    (ebenso `previous_undo_token`)."""
     zone = _editable_zone(session, principal, zone_id)
     _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, version)
+    before = _before(session, zone)
     delete_schedule_point(
         session, zone, point, user_id=principal.user_id, token_id=principal.token_id
     )
-    return _change(session, principal, zone, changed=True)
+    return _point_change(
+        session, principal, zone, before, version, previous_undo_token, changed=True
+    )
+
+
+# -- Blöcke (Anlagensicht, atomar) ------------------------------------------------------
+
+
+def _block_error(exc: ScheduleError) -> RoomApiError:
+    if exc.field == "block":
+        return RoomApiError(404, exc.notice, "block_not_found", exc.field)
+    if exc.field == "overlap":
+        return RoomApiError(409, exc.notice, "overlap", "time_range")
+    return _schedule_error(exc)
+
+
+def _block_operation(
+    zone_id: int,
+    body: BlockIn,
+    principal: Principal,
+    session: Session,
+    operation: Callable[[Zone], ScheduleGesture | None],
+) -> ScheduleChangeOut:
+    zone = _editable_zone(session, principal, zone_id)
+    _need_profile(principal, WebUiProfile.ADMIN)
+    _check_version(session, zone, body.version)
+    try:
+        gesture = operation(zone)
+    except ScheduleError as exc:
+        raise _block_error(exc) from exc
+    return _change(
+        session,
+        principal,
+        zone,
+        changed=gesture is not None,
+        gesture=gesture,
+        history=_history(body.previous_undo_token, zone, body.version, gesture),
+    )
+
+
+@router.post("/schedule/{zone_id}/block/move")
+def move_block(
+    zone_id: int, body: BlockTargetIn, principal: Who, session: Sess
+) -> ScheduleChangeOut:
+    """Block an eine freie Stelle verschieben; sein alter Bereich erbt den Modus davor."""
+    return _block_operation(
+        zone_id,
+        body,
+        principal,
+        session,
+        lambda zone: move_schedule_block(
+            session,
+            zone,
+            weekday=body.weekday,
+            start_minute=body.start_minute,
+            end_minute=body.end_minute,
+            to_weekday=body.to_weekday,
+            to_start_minute=body.to_start_minute,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        ),
+    )
+
+
+@router.post("/schedule/{zone_id}/block/duplicate")
+def duplicate_block(
+    zone_id: int, body: BlockTargetIn, principal: Who, session: Sess
+) -> ScheduleChangeOut:
+    """Block an eine freie Stelle kopieren; die Quelle bleibt."""
+    return _block_operation(
+        zone_id,
+        body,
+        principal,
+        session,
+        lambda zone: duplicate_schedule_block(
+            session,
+            zone,
+            weekday=body.weekday,
+            start_minute=body.start_minute,
+            end_minute=body.end_minute,
+            to_weekday=body.to_weekday,
+            to_start_minute=body.to_start_minute,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        ),
+    )
+
+
+@router.post("/schedule/{zone_id}/block/resize")
+def resize_block(
+    zone_id: int, body: BlockResizeIn, principal: Who, session: Sess
+) -> ScheduleChangeOut:
+    """Genau eine Kante eines Blocks verschieben; mit `adjacent` wandert die gemeinsame
+    Kante des angrenzenden Blocks mit (Voraussetzung fürs Verlängern)."""
+    return _block_operation(
+        zone_id,
+        body,
+        principal,
+        session,
+        lambda zone: resize_schedule_block(
+            session,
+            zone,
+            weekday=body.weekday,
+            start_minute=body.start_minute,
+            end_minute=body.end_minute,
+            new_start_minute=body.new_start_minute,
+            new_end_minute=body.new_end_minute,
+            adjacent=body.adjacent,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        ),
+    )
+
+
+@router.post("/schedule/{zone_id}/block/delete")
+def delete_block(zone_id: int, body: BlockIn, principal: Who, session: Sess) -> ScheduleChangeOut:
+    """Block entfernen; der vorherige läuft über seinen Bereich weiter."""
+    return _block_operation(
+        zone_id,
+        body,
+        principal,
+        session,
+        lambda zone: delete_schedule_block(
+            session,
+            zone,
+            weekday=body.weekday,
+            start_minute=body.start_minute,
+            end_minute=body.end_minute,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        ),
+    )
 
 
 # -- Zeitplan schreiben (beide Profile) -------------------------------------------------
@@ -650,7 +921,14 @@ def copy_day(zone_id: int, body: CopyDayIn, principal: Who, session: Sess) -> Sc
         )
     except ScheduleError as exc:
         raise _schedule_error(exc) from exc
-    return _change(session, principal, zone, changed=gesture is not None, gesture=gesture)
+    return _change(
+        session,
+        principal,
+        zone,
+        changed=gesture is not None,
+        gesture=gesture,
+        history=_history(body.previous_undo_token, zone, body.version, gesture),
+    )
 
 
 @router.post("/schedule/{zone_id}/copy-week")
@@ -698,6 +976,8 @@ def undo(zone_id: int, body: UndoIn, principal: Who, session: Sess) -> ScheduleC
         before = _snapshot(payload["before"])
         after = _snapshot(payload["after"])
         revision = int(str(payload["revision"]))
+        raw_history: Any = payload.get("history", [])
+        history = [_snapshot(snapshot) for snapshot in raw_history]
     except (KeyError, TypeError, ValueError) as exc:
         raise RoomApiError(
             422, "Die Rücknahme-Marke ist ungültig.", "validation", "undo_token"
@@ -714,7 +994,13 @@ def undo(zone_id: int, body: UndoIn, principal: Who, session: Sess) -> ScheduleC
         )
     except ScheduleError as exc:
         raise RoomApiError(409, exc.notice, "undo_stale", exc.field) from exc
-    return _change(session, principal, zone, changed=True)
+    # Der Stand ist jetzt `before`; die Marke für einen weiteren Schritt führt zu dessen Vorgänger.
+    session.flush()
+    revision_now = _current_schedule_revision(session, zone.id)
+    gesture: ScheduleGesture | None = None
+    if history and revision_now is not None:
+        gesture = (history[0], before, revision_now)
+    return _change(session, principal, zone, changed=True, gesture=gesture, history=history[1:])
 
 
 def _snapshot(raw: Any) -> ScheduleSnapshot:
