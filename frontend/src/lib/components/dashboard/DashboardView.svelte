@@ -4,9 +4,10 @@
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { createResource } from '$lib/rooms/resource.svelte';
-  import { actuationHeadline, formatInstant } from '$lib/rooms/logic';
+  import { formatInstant } from '$lib/rooms/logic';
   import type { Rooms } from '$lib/rooms/types';
   import Notice from '$lib/components/rooms/Notice.svelte';
+  import PlantStatus from '$lib/components/rooms/PlantStatus.svelte';
   import { historyKey } from '$lib/schedule/keyboard';
   import { createDashboard } from '$lib/dashboard/editor.svelte';
   import { createDrag } from '$lib/dashboard/drag.svelte';
@@ -319,9 +320,7 @@
       </Notice>
     {/if}
 
-    {#if data.actuation.state !== 'live'}
-      <Notice tone="info">{actuationHeadline(data.actuation).text}</Notice>
-    {/if}
+    <PlantStatus {data} />
 
     {#if dash.editing}
       <div class="dash-bar p-2" bind:this={barEl} tabindex="-1" role="toolbar" aria-label="Dashboard anpassen" data-testid="edit-bar">

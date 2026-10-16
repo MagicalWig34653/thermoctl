@@ -96,11 +96,50 @@ export interface Outdoor {
   measured_at: string | null;
 }
 
+export interface RoomRef {
+  id: number;
+  name: string;
+}
+
+export interface VacationStatus {
+  starts_at: string;
+  ends_at: string;
+  setback_temperature_c: string;
+  running: boolean;
+}
+
+/** Dauerhafte Anlagenhinweise; `null` in der Wohnungssicht. Räume sind nur die sichtbaren. */
+export interface Plant {
+  /** `null`: noch nie geprüft – weder erreichbar noch ausgefallen. */
+  bridge_reachable: boolean | null;
+  silent_sensor_rooms: RoomRef[];
+  stuck_sensor_rooms: RoomRef[];
+  window_alarm_rooms: RoomRef[];
+  vacation: VacationStatus | null;
+  may_create_zone: boolean;
+}
+
+export interface HomeNotice {
+  kind: 'sensor' | 'notbetrieb' | 'window';
+  zone_name: string;
+  stage_label: string | null;
+  detail: string | null;
+  measured_age_seconds: number | null;
+}
+
+/** Wohnungssicht; `null` in der Anlagensicht. `calm`: nichts liegt an. */
+export interface Home {
+  calm: boolean;
+  notice: HomeNotice | null;
+}
+
 export interface Rooms {
   timezone: string;
   poll_interval_seconds: number;
   now_fraction: number;
   actuation: Actuation;
+  plant: Plant | null;
+  home: Home | null;
   outdoor: Outdoor | null;
   rooms: Room[];
 }

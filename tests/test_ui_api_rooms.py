@@ -31,8 +31,10 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.sensor_failure import ZoneSensorFailureState
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain import emergency_operation
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
 
@@ -165,6 +167,163 @@ def test_list_actuation_states(
         http.app.state.sending_allowed = False  # type: ignore[attr-defined]
     assert body["state"] == "live"
     assert body["control_armed"] and body["sending_allowed"]
+
+
+def _plant(client: TestClient) -> dict[str, Any]:
+    body = client.get("/ui-api/rooms").json()
+    assert body["home"] is None
+    return body["plant"]  # type: ignore[no-any-return]
+
+
+def test_plant_notes_are_plant_view_only_and_need_a_session(
+    client: TestClient, client_als: Als, tenant_client: Als, session: Session
+) -> None:
+    assert client.get("/ui-api/rooms").status_code == 401
+    _raum(session)
+    body = tenant_client([("zone.read", None)]).get("/ui-api/rooms").json()
+    assert body["plant"] is None
+    assert body["home"] == {"calm": True, "notice": None}
+    plant = _plant(client_als([("zone.read", None)]))
+    assert plant["bridge_reachable"] is None
+    assert plant["silent_sensor_rooms"] == plant["stuck_sensor_rooms"] == []
+    assert plant["window_alarm_rooms"] == []
+    assert plant["vacation"] is None
+    assert plant["may_create_zone"] is False
+
+
+def test_plant_bridge_state_is_read_from_the_app_state(
+    client_als: Als, session: Session
+) -> None:
+    _raum(session)
+    http = client_als([("zone.read", None)])
+    try:
+        for value in (True, False):
+            http.app.state.bridge_reachable = value  # type: ignore[attr-defined]
+            assert _plant(http)["bridge_reachable"] is value
+    finally:
+        http.app.state.bridge_reachable = None  # type: ignore[attr-defined]
+
+
+def test_plant_collects_problem_rooms_separately_and_only_visible_ones(
+    client_als: Als, session: Session
+) -> None:
+    mine, other = _raum(session), create_zone(session, "fremd")
+    for zone in (mine, other):
+        state = create_zone_state(session, zone)
+        state.window_alarm = True
+        state.sensor_stuck = True
+        state.sensor_status_id = sensor_status_of(session, "veraltet").id
+    session.flush()
+    plant = _plant(client_als([("zone.read", mine.id)]))
+    ref = {"id": mine.id, "name": mine.display_name}
+    assert plant["window_alarm_rooms"] == [ref]
+    assert plant["stuck_sensor_rooms"] == [ref]
+    assert plant["silent_sensor_rooms"] == [ref]
+    assert "Fremd" not in str(plant)
+
+
+def test_plant_vacation_running_and_planned(client_als: Als, session: Session) -> None:
+    _raum(session)
+    web = source(session, "web")
+    http = client_als([("zone.read", None)])
+    assert _plant(http)["vacation"] is None
+    session.add(
+        Vacation(
+            starts_at=datetime(2099, 1, 1),
+            ends_at=datetime(2099, 1, 9),
+            setback_temperature_c=Decimal("15.0"),
+            source_id=web.id,
+        )
+    )
+    session.flush()
+    assert _plant(http)["vacation"] == {
+        "starts_at": "2099-01-01T00:00:00+00:00",
+        "ends_at": "2099-01-09T00:00:00+00:00",
+        "setback_temperature_c": "15.0",
+        "running": False,
+    }
+    vacation = session.scalars(select(Vacation)).one()
+    vacation.starts_at = utcnow() - timedelta(days=1)
+    vacation.ends_at = utcnow() + timedelta(days=1)
+    session.flush()
+    assert _plant(http)["vacation"]["running"] is True
+
+
+def test_plant_empty_state_button_needs_installation_wide_zone_manage(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    assert _plant(client_als([("zone.read", None), ("zone.manage", None)]))[
+        "may_create_zone"
+    ] is True
+    assert _plant(client_als([("zone.read", zone.id), ("zone.manage", zone.id)]))[
+        "may_create_zone"
+    ] is False
+
+
+def test_plant_before_setup_is_still_a_plant_view(
+    client_als: Als, tenant_client: Als
+) -> None:
+    plant = _plant(client_als([("zone.read", None)]))
+    assert plant["may_create_zone"] is False and plant["vacation"] is None
+    assert tenant_client([("zone.read", None)]).get("/ui-api/rooms").json()["home"] == {
+        "calm": True,
+        "notice": None,
+    }
+
+
+def test_home_is_calm_only_when_nothing_is_pending(
+    tenant_client: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    state = create_zone_state(session, zone)
+    client = tenant_client([("zone.read", None)])
+    assert client.get("/ui-api/rooms").json()["home"] == {"calm": True, "notice": None}
+    state.window_open = True
+    session.flush()
+    home = client.get("/ui-api/rooms").json()["home"]
+    assert home["calm"] is False
+    assert home["notice"]["kind"] == "window"
+    assert home["notice"]["zone_name"] == zone.display_name
+    state.sensor_status_id = sensor_status_of(session, "veraltet").id
+    state.measured_at = utcnow() - timedelta(hours=2)
+    session.flush()
+    notice = client.get("/ui-api/rooms").json()["home"]["notice"]
+    assert notice["kind"] == "sensor"
+    assert notice["measured_age_seconds"] >= 7000
+    assert notice["stage_label"] is None
+
+
+def test_home_puts_emergency_operation_before_everything_else(
+    tenant_client: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    state = create_zone_state(session, zone)
+    state.window_open = True
+    device = create_device(session, "ersatz")
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=zone.id,
+            stage=emergency_operation.STAGE_ERSATZQUELLE,
+            active_source_device_id=device.id,
+        )
+    )
+    session.flush()
+    home = tenant_client([("zone.read", None)]).get("/ui-api/rooms").json()["home"]
+    assert home["calm"] is False
+    assert home["notice"]["kind"] == "notbetrieb"
+    assert home["notice"]["stage_label"] and home["notice"]["detail"]
+    assert home["notice"]["measured_age_seconds"] is None
+
+
+def test_home_never_names_a_foreign_room(tenant_client: Als, session: Session) -> None:
+    mine, other = _raum(session), create_zone(session, "fremd")
+    create_zone_state(session, mine)
+    create_zone_state(session, other).window_open = True
+    session.flush()
+    body = tenant_client([("zone.read", mine.id)]).get("/ui-api/rooms").json()
+    assert body["home"] == {"calm": True, "notice": None}
+    assert "Fremd" not in str(body)
 
 
 def test_list_shows_only_visible_zones(client_als: Als, session: Session) -> None:

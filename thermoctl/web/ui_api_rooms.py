@@ -53,6 +53,7 @@ from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.services import cluster
 from thermoctl.web.shared.zone_status import MINUTES_PER_DAY, zone_status_context
+from thermoctl.web.tenant_views import _home_notice
 
 
 class RoomApiError(Exception):
@@ -224,11 +225,63 @@ class ActuationOut(BaseModel):
     state: Literal["dry_run", "armed_restart_missing", "live"]
 
 
+class RoomRefOut(BaseModel):
+    id: int
+    name: str
+
+
+class VacationStatusOut(BaseModel):
+    """Urlaub laufend oder geplant (Domäne `current_or_upcoming_vacation`)."""
+
+    starts_at: str
+    ends_at: str
+    setback_temperature_c: str
+    running: bool
+
+
+class PlantOut(BaseModel):
+    """Dauerhafte Anlagenhinweise der Startseite -- nur die Anlagensicht (Alt: `start.html`).
+
+    Nur Lesewerte: `bridge_reachable` ist der zuletzt vom Dienst geprüfte Stand
+    (`null`: noch nie geprüft, also weder erreichbar noch ausgefallen), die Räume sind
+    ausschließlich die, die der Principal mit `zone.read` sieht.
+    """
+
+    bridge_reachable: bool | None
+    silent_sensor_rooms: list[RoomRefOut]
+    stuck_sensor_rooms: list[RoomRefOut]
+    window_alarm_rooms: list[RoomRefOut]
+    vacation: VacationStatusOut | None
+    #: Leerzustand „Erste Zone anlegen“ nur mit anlagenweitem `zone.manage` (wie die Alt-Seite).
+    may_create_zone: bool
+
+
+class HomeNoticeOut(BaseModel):
+    """Der Effekt eines Problems für die Wohnung, nicht die Ursache (`_home_notice`)."""
+
+    kind: Literal["sensor", "notbetrieb", "window"]
+    zone_name: str
+    stage_label: str | None
+    detail: str | None
+    measured_age_seconds: int | None
+
+
+class HomeOut(BaseModel):
+    """Wohnungssicht: `calm` genau dann, wenn kein Hinweis anliegt (Alt: „Heizung läuft normal“)."""
+
+    calm: bool
+    notice: HomeNoticeOut | None
+
+
 class RoomsOut(BaseModel):
     timezone: str
     poll_interval_seconds: int
     now_fraction: float
     actuation: ActuationOut
+    #: `null` in der Wohnungssicht: Anlagentechnik gehört nicht dorthin.
+    plant: PlantOut | None
+    #: `null` in der Anlagensicht.
+    home: HomeOut | None
     #: `null` in der Wohnungssicht (zeigt keine Anlagentechnik) und vor der Einrichtung.
     outdoor: OutdoorOut | None
     rooms: list[RoomOut]
@@ -553,6 +606,71 @@ def _domain_error(exc: DomainError) -> RoomApiError:
     return RoomApiError(422, exc.notice, "validation", exc.field)
 
 
+def _refs(zones: list[Zone], include: Callable[[Zone], bool]) -> list[RoomRefOut]:
+    return [RoomRefOut(id=zone.id, name=zone.display_name) for zone in zones if include(zone)]
+
+
+def _plant(
+    request: Request,
+    session: Session,
+    principal: Principal,
+    zones: list[Zone],
+    states: dict[int, tuple[ZoneState, SensorStatus]],
+    now: datetime,
+) -> PlantOut:
+    """Dieselben Quellen wie `start_views.start`, nur lesend: `app.state`, Zustände, Urlaub."""
+    vacation = current_or_upcoming_vacation(session, now)
+    return PlantOut(
+        bridge_reachable=getattr(request.app.state, "bridge_reachable", None),
+        silent_sensor_rooms=_refs(
+            zones, lambda z: z.id in states and states[z.id][1].code != "ok"
+        ),
+        stuck_sensor_rooms=_refs(
+            zones, lambda z: z.id in states and bool(states[z.id][0].sensor_stuck)
+        ),
+        window_alarm_rooms=_refs(
+            zones, lambda z: z.id in states and bool(states[z.id][0].window_alarm)
+        ),
+        vacation=(
+            VacationStatusOut(
+                starts_at=cast("str", _iso(vacation.starts_at)),
+                ends_at=cast("str", _iso(vacation.ends_at)),
+                setback_temperature_c=format(vacation.setback_temperature_c, "f"),
+                running=vacation.starts_at <= now,
+            )
+            if vacation is not None
+            else None
+        ),
+        may_create_zone=has_permission(principal, "zone.manage"),
+    )
+
+
+def _home(
+    zones: list[Zone], context: dict[str, object], now: datetime
+) -> HomeOut:
+    """Dieselbe Entscheidung wie die Wohnungs-Startseite (`tenant_views._home_notice`)."""
+    notice = _home_notice(
+        zones,
+        cast("dict[int, tuple[ZoneState, SensorStatus]]", context["states"]),
+        cast("dict[int, Any]", context["emergency_banners"]),
+    )
+    if notice is None:
+        return HomeOut(calm=True, notice=None)
+    measured = cast("datetime | None", notice.get("measured_at"))
+    return HomeOut(
+        calm=False,
+        notice=HomeNoticeOut(
+            kind=cast("Literal['sensor', 'notbetrieb', 'window']", notice["kind"]),
+            zone_name=cast("str", notice["zone_name"]),
+            stage_label=cast("str | None", notice.get("stage_label")),
+            detail=cast("str | None", notice.get("detail")),
+            measured_age_seconds=(
+                max(0, int((now - measured).total_seconds())) if measured is not None else None
+            ),
+        ),
+    )
+
+
 # -- Lesen ------------------------------------------------------------------------------
 
 
@@ -577,16 +695,41 @@ def list_rooms(
                 cluster_standby=False,
                 state="dry_run",
             ),
+            plant=(
+                _plant(request, session, principal, [], {}, utcnow())
+                if principal.ui_profile is WebUiProfile.ADMIN
+                else None
+            ),
+            home=(
+                HomeOut(calm=True, notice=None)
+                if principal.ui_profile is WebUiProfile.TENANT
+                else None
+            ),
             outdoor=None,
             rooms=[],
         )
-    rooms, context = _rooms(session, principal, zones, utcnow(), settings)
+    now = utcnow()
+    rooms, context = _rooms(session, principal, zones, now, settings)
+    admin_ui = principal.ui_profile is WebUiProfile.ADMIN
     return RoomsOut(
         timezone=cast("str", context["timezone"]),
         poll_interval_seconds=cast("int", context["poll_interval_seconds"]),
         now_fraction=cast("float", context["now_fraction"]),
         actuation=_actuation(request, session, settings),
-        outdoor=_outdoor(session, principal, settings, utcnow()),
+        plant=(
+            _plant(
+                request,
+                session,
+                principal,
+                zones,
+                cast("dict[int, tuple[ZoneState, SensorStatus]]", context["states"]),
+                now,
+            )
+            if admin_ui
+            else None
+        ),
+        home=_home(zones, context, now) if not admin_ui else None,
+        outdoor=_outdoor(session, principal, settings, now),
         rooms=rooms,
     )
 

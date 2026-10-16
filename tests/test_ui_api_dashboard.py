@@ -112,6 +112,21 @@ def test_default_layout_is_built_from_the_visible_rooms(
     assert [t["zone_id"] for t in rooms] == [first.id, second.id]
 
 
+def test_default_layout_carries_the_system_tile_only_for_who_may_see_it(
+    client: TestClient, session: Session
+) -> None:
+    create_zone(session, "erster")
+    _login(client, session, "ohne-recht", ZONE_READ)
+    assert "system" not in [t["kind"] for t in _tiles(_get(client))]
+    _login(client, session, "mit-recht", [*ZONE_READ, ("control.arm", None)])
+    body = _get(client)
+    assert body["customized"] is False
+    summary = body["sections"][0]["tiles"]
+    assert [t["kind"] for t in summary][-1] == "system"
+    _login(client, session, "mieter-hat-recht", EVERYTHING, WebUiProfile.TENANT)
+    assert "system" not in [t["kind"] for t in _tiles(_get(client))]
+
+
 def test_default_layout_shows_only_what_the_user_may_see(
     client: TestClient, session: Session
 ) -> None:
