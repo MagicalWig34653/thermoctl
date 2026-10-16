@@ -510,6 +510,12 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/kiosk/zones/{zone_id}/boost"): "eigener Zugangsweg",
     ("POST", "/kiosk/zones/{zone_id}/override/cancel"): "eigener Zugangsweg",
     ("POST", "/kiosk/zones/{zone_id}/setpoint"): "eigener Zugangsweg",
+    # Die Kioskansicht der Svelte-Oberfläche: eigener Router, eigener Principal (Kiosk-Cookie),
+    # eigene CSRF-Prüfung; Rechte und Umfang prüft jeder Endpunkt über den Token-Principal.
+    ("GET", "/kiosk-api/state"): "eigener Zugangsweg, eigener Principal",
+    ("POST", "/kiosk-api/rooms/{zone_id}/setpoint-step"): "eigener Zugangsweg, eigener Principal",
+    ("POST", "/kiosk-api/rooms/{zone_id}/boost"): "eigener Zugangsweg, eigener Principal",
+    ("POST", "/kiosk-api/rooms/{zone_id}/override/cancel"): "eigener Zugangsweg, eigener Principal",
     # Die Alltagsaktionen an einer Zone. Beide Oberflächen brauchen sie, und sie
     # sind vollständig über zonenbezogene Rechte abgesichert; ein Profil-Wächter
     # davor würde nichts absichern, was die Rechteprüfung nicht schon absichert.

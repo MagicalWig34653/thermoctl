@@ -17,7 +17,7 @@ export default defineConfig({
     // Entwicklungsserver: API, Assets und die alten HTML-Seiten kommen vom lokal laufenden
     // Backend. Adresse über THERMOCTL_DEV_BACKEND änderbar (nicht fest verdrahtet).
     proxy: Object.fromEntries(
-      ['/ui-api', '/static', '/login'].map((path) => [
+      ['/ui-api', '/kiosk-api', '/static', '/login'].map((path) => [
         path,
         { target: process.env.THERMOCTL_DEV_BACKEND ?? 'http://127.0.0.1:8000', changeOrigin: false },
       ]),

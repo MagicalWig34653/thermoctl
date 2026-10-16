@@ -15,6 +15,15 @@ export function relativePath(pathname: string, prefix: string): string {
   return pathname.slice(base.length) || '/';
 }
 
+/** Die eigenständige Kioskansicht (`{prefix}/app/kiosk`) ist keine Seite der Hauptanwendung:
+ *  Sie wird in `main.ts` VOR Bootstrap und Anmeldung gewählt und hat einen eigenen
+ *  Principal. Darum zeigt kein Verweis der Hauptanwendung ohne Neuladen dorthin
+ *  (`internalTarget`). */
+export function isKioskPath(pathname: string, prefix: string): boolean {
+  const { path } = splitTarget(relativePath(pathname, prefix));
+  return path === '/kiosk';
+}
+
 /** Vollständige Browseradresse einer Ansicht der Oberfläche. */
 export function appHref(prefix: string, to: string): string {
   const target = to.startsWith('/') ? to : `/${to}`;
@@ -46,6 +55,7 @@ export function internalTarget(href: string, prefix: string, origin: string): st
   if (url.origin !== origin) return null;
   const base = `${prefix}${APP_SEGMENT}`;
   if (url.pathname !== base && !url.pathname.startsWith(`${base}/`)) return null;
+  if (isKioskPath(url.pathname, prefix)) return null;
   return `${relativePath(url.pathname, prefix)}${url.search}${url.hash}`;
 }
 
