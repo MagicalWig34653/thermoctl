@@ -9,12 +9,18 @@
   import { createDevicesClient } from '$lib/devices/client';
   import { createMapActions } from '$lib/devices/map-actions.svelte';
   import { createQuery } from '$lib/history/query.svelte';
+  import { choiceFromSearch } from '$lib/preselect';
 
-  const { api } = useApp();
+  const { api, router } = useApp();
   const client = createDevicesClient(api);
   const query = createQuery(() => client.map());
   type Tab = 'karte' | 'liste' | 'datenfluss';
-  let tab = $state<Tab>('karte');
+  const TABS = ['karte', 'liste', 'datenfluss'] as const;
+  let tab = $state<Tab>(choiceFromSearch(router.search, 'tab', TABS) ?? 'karte');
+  $effect(() => {
+    const next = choiceFromSearch(router.search, 'tab', TABS);
+    if (next !== null) tab = next;
+  });
 
   const actions = createMapActions({
     client,

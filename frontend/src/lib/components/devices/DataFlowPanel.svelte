@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/rooms/Notice.svelte';
@@ -8,9 +8,10 @@
   import { FLOW_NOTE, flowDiagram } from '$lib/devices/diagram';
   import type { FlowZone } from '$lib/devices/types';
   import { createQuery } from '$lib/history/query.svelte';
+  import { zoneFromSearch } from '$lib/preselect';
   import FlowDiagram from './FlowDiagram.svelte';
 
-  const { api } = useApp();
+  const { api, router } = useApp();
   const client = createDevicesClient(api);
   const flow = createQuery(() => client.dataFlow());
   // Ein einzelner Raum kommt vom eigenen Endpunkt (`/zones/{id}/data-flow`), nicht aus der Gesamtliste.
@@ -29,6 +30,16 @@
     if (chosen !== null) single.load();
     else single.cancel();
   }
+  // Raumvorwahl (`?zone=`): erst wenn die Liste der Räume da ist und den Raum enthält.
+  let preselected = $state<number | null>(null);
+  $effect(() => {
+    const zones = flow.data?.zones.map((z) => z.zone) ?? [];
+    const wanted = zoneFromSearch(router.search, zones);
+    if (wanted !== null && wanted !== preselected) {
+      preselected = wanted;
+      untrack(() => choose(String(wanted)));
+    }
+  });
   const failure = $derived(flow.failure ? deviceFailure(flow.failure) : null);
   const shown = $derived.by((): FlowZone[] => {
     if (chosen === null) return flow.data?.zones ?? [];

@@ -84,11 +84,13 @@ from thermoctl.domain.schedule import (
     delete_schedule_block,
     delete_schedule_point,
     duplicate_schedule_block,
+    empty_day_modes,
     move_schedule_block,
     paint_schedule_interval,
     resize_schedule_block,
     schedule_forecast,
     schedule_snapshot,
+    set_schedule_day_times,
     undo_schedule_gesture,
     week_segments,
 )
@@ -161,6 +163,11 @@ class CopyTargetOut(BaseModel):
     has_plan: bool
 
 
+class DayModeOut(BaseModel):
+    id: int
+    name: str
+
+
 class ScheduleOut(BaseModel):
     zone_id: int
     zone_name: str
@@ -171,6 +178,10 @@ class ScheduleOut(BaseModel):
     modes: list[PlanModeOut]
     can_edit: bool
     copy_targets: list[CopyTargetOut]
+    # Die zwei Modi, mit denen ein leerer Tag eingerichtet würde (wärmster zuerst); `null`,
+    # wenn der Raum keine zwei brauchbaren Sollwerte hat. Der Server entscheidet das
+    # (`domain.schedule.empty_day_modes`), der Browser schickt nur Zeiten.
+    empty_day_modes: list[DayModeOut] | None
 
 
 class ScheduleChangeOut(ScheduleOut):
@@ -278,6 +289,17 @@ class PointMoveIn(BaseModel):
 class PointModeIn(BaseModel):
     version: str
     mode_id: int
+    previous_undo_token: str | None = None
+
+
+class DayTimesIn(BaseModel):
+    """Die zwei Schaltzeiten eines Tages in Minuten ab Mitternacht: in der Reihenfolge der
+    vorhandenen Punkte des Tages (früher, später), bei einem leeren Tag wärmer, dann kühler."""
+
+    version: str
+    weekday: int
+    first_minute: int
+    second_minute: int
     previous_undo_token: str | None = None
 
 
@@ -509,6 +531,11 @@ def _copy_targets(session: Session, principal: Principal, zone: Zone) -> list[Co
     ]
 
 
+def _empty_day_modes(session: Session, zone: Zone) -> list[DayModeOut] | None:
+    modes = empty_day_modes(session, zone)
+    return None if modes is None else [DayModeOut(id=m, name=n) for m, n in modes]
+
+
 def _schedule(session: Session, principal: Principal, zone: Zone) -> ScheduleOut:
     settings = _settings(session)
     session.flush()
@@ -565,6 +592,7 @@ def _schedule(session: Session, principal: Principal, zone: Zone) -> ScheduleOut
         # Auch vom nur lesbaren Raum aus: Die Übernahme braucht an der Quelle nur `zone.read`;
         # welche Ziele beschreibbar sind, entscheidet allein `schedule.manage` je Ziel.
         copy_targets=_copy_targets(session, principal, zone),
+        empty_day_modes=_empty_day_modes(session, zone),
     )
 
 
@@ -696,6 +724,36 @@ def paint(zone_id: int, body: PaintIn, principal: Who, session: Sess) -> Schedul
             start_minute=body.start_minute,
             end_minute=body.end_minute,
             mode_id=body.mode_id,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+    except ScheduleError as exc:
+        raise _schedule_error(exc) from exc
+    return _change(
+        session,
+        principal,
+        zone,
+        changed=gesture is not None,
+        gesture=gesture,
+        history=_history(body.previous_undo_token, zone, body.version, gesture),
+    )
+
+
+@router.post("/schedule/{zone_id}/day-times")
+def set_day_times(
+    zone_id: int, body: DayTimesIn, principal: Who, session: Sess
+) -> ScheduleChangeOut:
+    """Die zwei Schaltzeiten eines Tages setzen oder einen leeren Tag einrichten (vereinfachte
+    Tagesbearbeitung der Wohnungssicht); eine Geste, mit Rücknahme."""
+    zone = _editable_zone(session, principal, zone_id)
+    _check_version(session, zone, body.version)
+    try:
+        gesture = set_schedule_day_times(
+            session,
+            zone,
+            weekday=body.weekday,
+            first_minute=body.first_minute,
+            second_minute=body.second_minute,
             user_id=principal.user_id,
             token_id=principal.token_id,
         )

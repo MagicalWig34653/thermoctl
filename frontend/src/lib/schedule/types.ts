@@ -46,6 +46,8 @@ export interface Plan {
   modes: PlanMode[];
   can_edit: boolean;
   copy_targets: CopyTarget[];
+  /** Die zwei Modi, mit denen ein leerer Tag eingerichtet würde (wärmster zuerst); `null`, wenn der Raum keine zwei hat. */
+  empty_day_modes: { id: number; name: string }[] | null;
 }
 
 /** Antwort auf eine Schreibabsicht: der neue Stand und die Rücknahme-Marke(n). */

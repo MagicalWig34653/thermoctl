@@ -2,13 +2,19 @@
   import { CalendarClock } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { scheduleZoneId } from '$lib/schedule/choice';
+  import { zoneFromSearch } from '$lib/preselect';
   import AbsencePanel from './AbsencePanel.svelte';
   import ScheduleEditor from './ScheduleEditor.svelte';
 
-  const { session } = useApp();
+  const { router, session } = useApp();
   // Nur Räume, die der Server für dieses Konto sichtbar gemacht hat.
   const zones = $derived(session.bootstrap?.zones ?? []);
-  let chosen = $state<number | null>(null);
+  // Raumvorwahl aus der Adresse (`?zone=`): nur ein sichtbarer Raum, sonst still verworfen.
+  let chosen = $state<number | null>(zoneFromSearch(router.search, session.bootstrap?.zones ?? []));
+  $effect(() => {
+    const wanted = zoneFromSearch(router.search, zones);
+    if (wanted !== null) chosen = wanted;
+  });
   const zoneId = $derived(scheduleZoneId(zones, chosen));
   const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
 </script>

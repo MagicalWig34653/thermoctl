@@ -18,7 +18,7 @@ Fehler sind immer `{"detail": <deutscher Satz>, "code": <maschinenlesbar>}`, opt
 """
 
 from dataclasses import asdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, cast
 
@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome, DeviceCapability, DeviceRole
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
@@ -807,6 +807,7 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
     kinds = context["kinds"]
     out: list[Json] = []
     hidden = _hidden_device_ids(session, principal)
+    now = utcnow()
     for device in context["controllers"]:  # type: ignore[attr-defined]
         out.append(
             {
@@ -830,6 +831,12 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
                         "readable": prop.is_readable,
                         "writable": prop.is_writable,
                         "values": values.get(prop.id, []),  # type: ignore[attr-defined]
+                        # Letzter vom Gerät gemeldeter Wert samt Zeitpunkt (UTC mit Zone) und
+                        # Alter; die Geräte stammen aus `controllers_context`, also nur aus
+                        # lesbaren Zonen. Die Anzeige rechnet in der Anlagenzeit (`timezone`).
+                        "last_value": _last_value(prop),
+                        "last_value_at": _iso(prop.last_value_at),
+                        "last_value_age_seconds": _age_seconds(prop.last_value_at, now),
                     }
                     for prop in properties.get(device.id, [])  # type: ignore[attr-defined]
                 ],
@@ -851,6 +858,7 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
         )
     return {
         "controllers": out,
+        "timezone": _timezone(session)[0],
         "zones": [
             {"id": z.id, "name": z.display_name, "manageable": z.id in manageable}
             for z in readable.values()
@@ -867,6 +875,20 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
 
 def _num(value: Decimal | None) -> str | None:
     return format(value, "f") if value is not None else None
+
+
+def _last_value(prop: DeviceProperty) -> str | None:
+    """Der zuletzt gemeldete Wert als Text: die Zahl ohne überzählige Nullen, sonst der Text."""
+    if prop.last_value_number is not None:
+        return format(prop.last_value_number.normalize(), "f")
+    return prop.last_value_text
+
+
+def _age_seconds(moment: datetime | None, now: datetime) -> int | None:
+    """Alter in ganzen Sekunden (nie negativ, auch bei leicht vorgehender Gerätezeit)."""
+    if moment is None:
+        return None
+    return max(0, int((now - moment).total_seconds()))
 
 
 @router.get("/controllers")

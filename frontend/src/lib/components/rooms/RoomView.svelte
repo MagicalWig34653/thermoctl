@@ -25,6 +25,7 @@
   import DayTrack from './DayTrack.svelte';
   import HelpTip from './HelpTip.svelte';
   import Notice from './Notice.svelte';
+  import RoomJumps from './RoomJumps.svelte';
   import RoomTechnik from '$lib/components/operations/RoomTechnik.svelte';
   import ReportCard from '$lib/components/zones/ReportCard.svelte';
   import RoomDeleteDialog from '$lib/components/zones/RoomDeleteDialog.svelte';
@@ -215,6 +216,8 @@
       </span>
     {/if}
   </header>
+
+  <RoomJumps roomId={id} />
 
   {#if roomNotice}<div class="mb-4"><Notice tone="success">{roomNotice}</Notice></div>{/if}
 
