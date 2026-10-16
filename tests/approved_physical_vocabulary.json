@@ -951,6 +951,11 @@
       "heating",
       "heating"
     ],
+    "thermoctl/web/ui_api_devices.py": [
+      "actuator",
+      "actuators",
+      "actuators"
+    ],
     "thermoctl/web/ui_api_reports.py": [
       "/heating-time"
     ],

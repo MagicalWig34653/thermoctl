@@ -10,9 +10,10 @@ from thermoctl.auth.dependencies import csrf_protection, current_principal, get_
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.controller import (
     ControllerError,
+    controller_zones,
     seen_actions,
     set_binding,
 )
@@ -348,6 +349,11 @@ async def bind_button(
     if not action:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Keine Aktion angegeben")
     command = str(form.get("command", "")).strip() or None
+    # A binding fires in every zone the controller hangs in, so the right is needed for
+    # each of them -- not just for the zone the caller came in through. Same rule as the
+    # controller page (`controller_views`) and the JSON interface.
+    for controller_zone in controller_zones(session, device):
+        require(principal, "device.manage", controller_zone.id)
 
     step: Decimal | None = None
     raw_step = str(form.get("step_k", "")).strip().replace(",", ".")

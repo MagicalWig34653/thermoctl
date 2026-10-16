@@ -1211,3 +1211,30 @@ def test_the_regulation_switch_is_rendered_with_its_own_id_and_a_fallback(
     assert "nie einen Sollwert" in page.text
     assert "data-submit-on-change" in page.text
     assert "<noscript>" in page.text
+
+
+def test_a_button_of_a_foreign_controller_cannot_be_bound(
+    client_als, session: Session
+) -> None:
+    """`device.manage` for one zone must not reach a controller of other zones: a binding
+    fires in every zone the controller hangs in (`controller_zones`)."""
+    from thermoctl.db.models.device import ControllerBinding
+
+    source(session)
+    _controller_commands(session)
+    mine = create_zone(session, "meine")
+    foreign = create_zone(session, "fremde")
+    device = create_device(session, "fremdschalter")
+    _assign(session, foreign.id, device.id, "controller")
+    client = client_als([("device.manage", mine.id), ("device.read", mine.id)])
+    client.get(f"/zones/{mine.id}/devices")
+
+    response = client.post(
+        f"/zones/{mine.id}/devices/button",
+        headers=_csrf(client),
+        data={"device_id": str(device.id), "action_code": "single_plus", "command": "setpoint_up"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert session.scalars(select(ControllerBinding)).all() == []
