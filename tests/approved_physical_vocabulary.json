@@ -753,6 +753,9 @@
     "thermoctl/web/start_views.py": [
       "warmth"
     ],
+    "thermoctl/web/ui_api_reports.py": [
+      "/heating-time"
+    ],
     "thermoctl/web/ui_api_rooms.py": [
       "warmth"
     ],
