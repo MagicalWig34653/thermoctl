@@ -10,6 +10,15 @@
   import ModesAdmin from '$lib/components/schedule/ModesAdmin.svelte';
   import ScheduleView from '$lib/components/schedule/ScheduleView.svelte';
   import VacationPanel from '$lib/components/schedule/VacationPanel.svelte';
+  import BetriebPage from '$lib/components/operations/BetriebPage.svelte';
+  import ClusterPage from '$lib/components/operations/ClusterPage.svelte';
+  import ConnectionsPage from '$lib/components/operations/ConnectionsPage.svelte';
+  import EmergencyPage from '$lib/components/operations/EmergencyPage.svelte';
+  import NotificationsPage from '$lib/components/operations/NotificationsPage.svelte';
+  import OutdoorPage from '$lib/components/operations/OutdoorPage.svelte';
+  import RegelvorgabenPage from '$lib/components/operations/RegelvorgabenPage.svelte';
+  import SolarPage from '$lib/components/operations/SolarPage.svelte';
+  import WindowPage from '$lib/components/operations/WindowPage.svelte';
 
   let { area, page }: { area: VisibleArea; page: VisiblePage } = $props();
   // Die Seiten der Auswertung sind migriert; die Sichtbarkeit kommt unverändert aus dem Server
@@ -29,6 +38,24 @@
   <ControllersPage />
 {:else if key === 'geraete/karte'}
   <MapPage />
+{:else if key === 'heizung/regelvorgaben'}
+  <RegelvorgabenPage />
+{:else if key === 'heizung/fenster'}
+  <WindowPage />
+{:else if key === 'heizung/notbetrieb'}
+  <EmergencyPage />
+{:else if key === 'heizung/sonne'}
+  <SolarPage />
+{:else if key === 'heizung/aussenfuehler'}
+  <OutdoorPage />
+{:else if key === 'system/betrieb'}
+  <BetriebPage />
+{:else if key === 'system/verbindungen'}
+  <ConnectionsPage />
+{:else if key === 'system/meldungen'}
+  <NotificationsPage />
+{:else if key === 'system/verbund'}
+  <ClusterPage />
 {:else if area.id === 'zeit' && page.id === 'wochenplaene'}
   <ScheduleView />
 {:else if area.id === 'zeit' && page.id === 'anlagenurlaub'}

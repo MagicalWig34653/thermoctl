@@ -22,6 +22,7 @@
   import DayTrack from './DayTrack.svelte';
   import HelpTip from './HelpTip.svelte';
   import Notice from './Notice.svelte';
+  import RoomTechnik from '$lib/components/operations/RoomTechnik.svelte';
 
   let { id }: { id: number } = $props();
   const { api, prefix } = useApp();
@@ -451,6 +452,8 @@
           {/each}
         </ul>
       </details>
+
+      <RoomTechnik zoneId={room.id} />
 
       {#if room.vacation}
         <details class={card}>
