@@ -1,0 +1,65 @@
+/* Verlauf: Farben der Reihen (hell/dunkel) und die wenigen Stile, die Tailwind-Klassen nicht abdecken. */
+:root {
+  --h-temp: #2563eb;
+  --h-eff: #c2410c;
+  --h-sched: #7c3aed;
+  --h-heat: #dc2626;
+  --h-solar: #a16207;
+  --h-grid: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --h-axis: color-mix(in oklch, var(--foreground) 62%, transparent);
+}
+.dark {
+  --h-temp: #60a5fa;
+  --h-eff: #fb923c;
+  --h-sched: #a78bfa;
+  --h-heat: #f87171;
+  --h-solar: #facc15;
+}
+.hist-svg text {
+  font-family: inherit;
+  font-size: 11px;
+  fill: var(--h-axis);
+}
+.hist-tip {
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .hist-tip {
+    background: var(--background);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.hist-surface {
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.hist-full {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: auto;
+  background: var(--background);
+  padding: 16px;
+}
+.hist-sw {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 3px solid currentColor;
+  border-radius: 2px;
+  flex: none;
+}
+.hist-sw-box {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}

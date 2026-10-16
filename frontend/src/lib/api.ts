@@ -23,6 +23,8 @@ export class ApiError extends Error {
     readonly code: string | null = null,
     /** Betroffenes Eingabefeld (`field`), falls der Server es nennt. */
     readonly field: string | null = null,
+    /** Restliche Felder des Fehlerkörpers (z. B. `conflicts`, `force_token` bei 409), sonst null. */
+    readonly body: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -66,6 +68,7 @@ interface ErrorBody {
   stale: boolean;
   code: string | null;
   field: string | null;
+  body: Record<string, unknown> | null;
 }
 
 async function errorBody(response: Response): Promise<ErrorBody> {
@@ -76,10 +79,11 @@ async function errorBody(response: Response): Promise<ErrorBody> {
       stale: body?.stale === true,
       code: typeof body?.code === 'string' ? body.code : null,
       field: typeof body?.field === 'string' ? body.field : null,
+      body: body !== null && typeof body === 'object' && !Array.isArray(body) ? body : null,
     };
   } catch {
     // Kein JSON im Fehlerfall: Statuszeile genügt.
-    return { detail: fallbackDetail(response), stale: false, code: null, field: null };
+    return { detail: fallbackDetail(response), stale: false, code: null, field: null, body: null };
   }
 }
 
@@ -119,13 +123,13 @@ export function createApi(deps: ApiDeps) {
       throw new ApiError('unauthorized', 401, (await errorBody(response)).detail);
     }
     if (response.status === 403) {
-      const { detail, stale, code, field } = await errorBody(response);
+      const { detail, stale, code, field, body: extra } = await errorBody(response);
       if (stale) deps.onUnauthorized?.('stale');
-      throw new ApiError('forbidden', 403, detail, stale, code, field);
+      throw new ApiError('forbidden', 403, detail, stale, code, field, extra);
     }
     if (!response.ok) {
-      const { detail, code, field } = await errorBody(response);
-      throw new ApiError('http', response.status, detail, false, code, field);
+      const { detail, code, field, body: extra } = await errorBody(response);
+      throw new ApiError('http', response.status, detail, false, code, field, extra);
     }
     if (response.status === 204) return undefined as T;
     try {
