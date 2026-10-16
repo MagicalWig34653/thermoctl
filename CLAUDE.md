@@ -44,10 +44,20 @@ nachgezogen, die sie beschreibt — nicht hinterher, sonst verfällt sie.
 | Backend | Python, FastAPI |
 | Persistenz | SQLAlchemy + Alembic |
 | Datenbank | Nutzerwahl beim Setup: SQLite (Standard) oder MariaDB |
-| Frontend | Jinja-Templates, HTMX, Bootstrap — server-gerendert, kein Build-Schritt, kein npm |
-| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: HTMX-Views, REST-API, MCP-Server |
+| Frontend | Svelte 5 + TypeScript, shadcn-svelte/Bits UI, Tailwind; gebaut mit Vite (Node/npm nur zur Build-Zeit), Quelle `frontend/`, Ausgabe als statische Dateien nach `thermoctl/web/static/app/`, ausgeliefert vom Python-Container (siehe Änderung 2026-10-15 unten) |
+| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: Weboberfläche (Svelte-Frontend gegen REST-API; bis zur Ablösung noch HTMX-Views), REST-API, MCP-Server |
 | Betrieb | Eigener Docker-Container |
 | Home Assistant | Optionale Integration per MQTT, **keine** Voraussetzung |
+
+**Geändert am 2026-10-15 (Entscheidung des Projektinhabers):** Die Festlegung „Jinja-Templates,
+HTMX, Bootstrap — server-gerendert, kein Build-Schritt, kein npm" ist überholt. Die komplette
+Weboberfläche wird mit Svelte 5 + TypeScript, shadcn-svelte/Bits UI und Tailwind (Vite) neu
+gebaut. Es bleibt bei einem Container: Node läuft nur in einer Build-Stufe von
+`docker/Dockerfile` und in der CI (`npm ci`, `npm run check`, `npm test`, `npm run build`); das
+Endabbild enthält kein Node. Die Jinja/HTMX/Bootstrap-Oberfläche bleibt bis zur Ablösung
+bestehen und wird seitenweise ersetzt. Folgen: Das „kein npm" gilt nicht mehr; die
+Abhängigkeiten stehen mit Version und Lizenz in `frontend/HERKUNFT.md`. Alles andere in der
+Tabelle bleibt unverändert.
 
 Begründungen und verworfene Alternativen zu diesen Entscheidungen sind nicht Teil dieses
 Repositories. Wenn eine dieser Entscheidungen im Weg steht, das ansprechen — nicht

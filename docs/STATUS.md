@@ -2,6 +2,23 @@
 
 Letzte Aktualisierung: 2026-10-15.
 
+## UI-Migration auf Svelte (laufend)
+
+Entscheidung des Projektinhabers, 2026-10-15: Die komplette Weboberfläche wird mit Svelte 5 + TypeScript,
+shadcn-svelte/Bits UI und Tailwind (Vite) neu gebaut; das ersetzt „Jinja/HTMX/Bootstrap, kein npm" (`CLAUDE.md`).
+
+- Quelle `frontend/`, Ausgabe `thermoctl/web/static/app/` (nicht eingecheckt), ausgeliefert vom Python-Container.
+  Node nur zur Build-Zeit: Build-Stufe in `docker/Dockerfile`; Endabbild ohne Node.
+- Die bisherige Jinja/HTMX/Bootstrap-Oberfläche läuft unverändert weiter, bis sie seitenweise abgelöst ist.
+- CI: Job `frontend` (`npm ci`, `npm run check`, `npm test`, `npm run build`) vor dem Python-Lauf; die gebaute
+  Oberfläche geht als Artefakt an die Python-Jobs. `docker.yml` unverändert (Dockerfile baut selbst).
+- Ingress: Asset-Pfade relativ gebaut, der Server setzt den Präfix zur Laufzeit ein (`docs/self-hosting.md`, 6c).
+- Abhängigkeiten mit Version und Lizenz: `frontend/HERKUNFT.md`; 24 Pakete (lightningcss) stehen unter MPL-2.0.
+- Entwicklung: README, Abschnitt „Oberfläche bauen und entwickeln". Der Dev-Proxy von `npm run dev` auf das
+  Backend ist im Gerüst noch nicht in `vite.config.ts` eingetragen.
+- Nicht geprüft: CI-Lauf der neuen Schritte (Workflow nicht ausgeführt); Python-Jobs setzen voraus, dass
+  `frontend/` im selben Stand vorhanden ist (Merge von `ui/durchstich-frontend`).
+
 ## Offene Entscheidungen (Projektinhaber)
 
 - **Impressum der öffentlichen Seite** (`site/`, GitHub Pages): bewusst **offen gelassen** (Projektinhaber,

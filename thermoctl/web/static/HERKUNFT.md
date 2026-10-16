@@ -6,6 +6,11 @@ ausgeliefert (über `StaticFiles` in `thermoctl/app.py`), nicht über ein CDN --
 CDN-Aufruf würde jedem Betreiber-Netzwerk gegenüber Dritten verraten, wann jemand
 die Heizungssteuerung öffnet.
 
+Die npm-Abhängigkeiten der neuen Svelte-Oberfläche (Quelle `frontend/`, Ausgabe
+`static/app/`) stehen mit Version und Lizenz in `frontend/HERKUNFT.md`. Die untenstehenden
+Dateien (Bootstrap, HTMX, Swagger UI, Mermaid) gehören zur bisherigen Oberfläche und bleiben bis
+zu deren Ablösung.
+
 ## Bootstrap 5.3.3
 
 Quelle: https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/

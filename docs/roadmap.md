@@ -45,7 +45,7 @@ Container und CI gegen beide Datenbanken.
 Aus dem Abschlussreview und dem ersten Ausprobieren im Browser. Klein, aber vor Phase 2 zu
 erledigen.
 
-- [x] Bootstrap und HTMX lokal einbinden; Templates auf ein gemeinsames Grundgerüst bringen
+- [x] Bootstrap und HTMX lokal einbinden; Templates auf ein gemeinsames Grundgerüst bringen (überholt ab 2026-10-15: die Oberfläche wird auf Svelte umgestellt, siehe `docs/STATUS.md`)
       *(der Rahmenentwurf setzt beides voraus, keine Aufgabe hatte es verlangt)*
 - [x] Eingabefehler führen zum Formular zurück statt zu `500`
 - [x] Globaler `Forbidden`-Handler statt Übersetzung in jeder Route
