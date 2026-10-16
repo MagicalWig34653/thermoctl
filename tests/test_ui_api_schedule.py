@@ -111,7 +111,7 @@ ENDPUNKTE: Tabelle = [
         "POST",
         "/ui-api/schedule/{z}/paint",
         {"version": "0", "weekday": 1, "start_minute": 60, "end_minute": 120, "mode_id": 0},
-        "admin",
+        "beide",
         "schedule.manage",
         True,
     ),
@@ -119,7 +119,7 @@ ENDPUNKTE: Tabelle = [
         "POST",
         "/ui-api/schedule/{z}/points",
         {"version": "0", "weekday": 1, "minute_of_day": 60, "mode_id": 0},
-        "admin",
+        "beide",
         "schedule.manage",
         True,
     ),
@@ -127,7 +127,7 @@ ENDPUNKTE: Tabelle = [
         "PUT",
         "/ui-api/schedule/{z}/points/{p}",
         {"version": "0", "weekday": 1, "minute_of_day": 61},
-        "admin",
+        "beide",
         "schedule.manage",
         True,
     ),
@@ -135,11 +135,11 @@ ENDPUNKTE: Tabelle = [
         "PUT",
         "/ui-api/schedule/{z}/points/{p}/mode",
         {"version": "0", "mode_id": 0},
-        "admin",
+        "beide",
         "schedule.manage",
         True,
     ),
-    ("DELETE", "/ui-api/schedule/{z}/points/{p}?version=0", None, "admin", "schedule.manage", True),
+    ("DELETE", "/ui-api/schedule/{z}/points/{p}?version=0", None, "beide", "schedule.manage", True),
     (
         "POST",
         "/ui-api/schedule/{z}/copy-day",
@@ -162,7 +162,7 @@ ENDPUNKTE: Tabelle = [
             "POST",
             f"/ui-api/schedule/{{z}}/block/{name}",
             {"version": "0", "weekday": 1, "start_minute": 420, "end_minute": 1320, **extra},
-            "admin",
+            "beide",
             "schedule.manage",
             True,
         )
@@ -332,7 +332,7 @@ def test_show_schedule_delivers_points_segments_modes_version(
     assert monday[1]["temperature_c"] == "21.0"
     assert monday[1]["warmth"] > monday[0]["warmth"]
     assert {m["code"] for m in body["modes"]} >= {"tag", "nacht"}
-    assert body["can_edit"] is True and body["full_editor"] is True
+    assert body["can_edit"] is True
     assert body["copy_targets"] == [
         {"id": other.id, "name": other.display_name, "version": "0", "has_plan": False}
     ]
@@ -343,10 +343,10 @@ def test_read_only_and_tenant_views_flags(
 ) -> None:
     zone = _raum(session)
     read_only = client_als([("zone.read", None)]).get(f"/ui-api/schedule/{zone.id}").json()
-    assert read_only["can_edit"] is False and read_only["full_editor"] is False
+    assert read_only["can_edit"] is False
     assert read_only["copy_targets"] == []
     tenant = tenant_client(PLAN).get(f"/ui-api/schedule/{zone.id}").json()
-    assert tenant["can_edit"] is True and tenant["full_editor"] is False
+    assert tenant["can_edit"] is True
 
 
 def test_empty_plan_has_no_segments(client_als: Als, session: Session) -> None:
@@ -1355,3 +1355,94 @@ def test_undo_is_stale_when_the_plan_moved_before_the_lock(
         409,
         "undo_stale",
     )
+
+
+# -- Mieter-Profil: allein `schedule.manage` je Raum entscheidet --------------------------
+
+# Schreibende Zeitplan-Endpunkte mit Recht `schedule.manage` (ohne Plan kopieren: zone.read).
+_SCHREIBEND = [
+    i
+    for i, e in enumerate(ENDPUNKTE)
+    if e[5] and e[1].startswith("/ui-api/schedule/") and e[4] == "schedule.manage"
+]
+
+
+def _mit_modus(body: dict[str, Any] | None, mode_id: int) -> dict[str, Any] | None:
+    if body is None:
+        return None
+    return {k: (mode_id if k == "mode_id" else v) for k, v in body.items()}
+
+
+def test_tenant_with_zone_permission_edits_that_zone_only(
+    tenant_client: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    other = create_zone(session, "bad")
+    tag = _mode(session, "tag").id
+    client = tenant_client(
+        [("zone.read", zone.id), ("schedule.manage", zone.id), ("zone.read", other.id)]
+    )
+    plan = client.get(f"/ui-api/schedule/{zone.id}").json()
+    assert plan["can_edit"] is True
+    response = _call(
+        client,
+        "POST",
+        f"/ui-api/schedule/{zone.id}/points",
+        {"version": plan["version"], "weekday": 1, "minute_of_day": 60, "mode_id": tag},
+    )
+    assert response.status_code == 200, response.text
+    assert (1, 60, tag) in _points(session, zone)
+    # Sichtbar, aber ohne Recht auf dieser Zone: 403, nichts geschrieben.
+    before = _points(session, other)
+    _fehler(
+        _call(
+            client,
+            "POST",
+            f"/ui-api/schedule/{other.id}/points",
+            {"version": "0", "weekday": 1, "minute_of_day": 60, "mode_id": tag},
+        ),
+        403,
+        "forbidden",
+    )
+    assert _points(session, other) == before
+
+
+@pytest.mark.parametrize("index", _SCHREIBEND)
+def test_tenant_hidden_zone_is_404_identical_to_unknown(
+    tenant_client: Als, session: Session, index: int
+) -> None:
+    zone = _raum(session)
+    hidden = create_zone(session, "unsichtbar")
+    method, template, body, *_ = ENDPUNKTE[index]
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    got = _call(client, method, _url(session, hidden, template), body)
+    unknown = _call(client, method, template.format(z=999999, p=1, m=1), body)
+    assert got.status_code == unknown.status_code == 404
+    assert got.json() == unknown.json()
+    assert got.json()["code"] == "not_found"
+
+
+@pytest.mark.parametrize("index", _SCHREIBEND)
+def test_tenant_without_permission_is_403_forbidden_not_wrong_profile(
+    tenant_client: Als, session: Session, index: int
+) -> None:
+    zone = _raum(session)
+    method, template, body, *_ = ENDPUNKTE[index]
+    before = (_points(session, zone), session.query(AuditEvent).count())
+    client = tenant_client([("zone.read", zone.id)])
+    _fehler(_call(client, method, _url(session, zone, template), body), 403, "forbidden")
+    assert (_points(session, zone), session.query(AuditEvent).count()) == before
+
+
+@pytest.mark.parametrize("index", _SCHREIBEND)
+def test_tenant_with_permission_passes_the_profile_gate(
+    tenant_client: Als, session: Session, index: int
+) -> None:
+    zone = _raum(session)
+    method, template, body, *_ = ENDPUNKTE[index]
+    tag = _mode(session, "tag").id
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    response = _call(
+        client, method, _url(session, zone, template), _mit_modus(body, tag)
+    )
+    assert response.json().get("code") != "wrong_profile", response.text
