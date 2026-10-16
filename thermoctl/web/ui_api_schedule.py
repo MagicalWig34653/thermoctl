@@ -46,6 +46,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
@@ -405,8 +406,57 @@ def _version(session: Session, zone_id: int) -> str:
     return str(_current_schedule_revision(session, zone_id) or 0)
 
 
+_RECORD_CHANGED = 1020  # MariaDB/MySQL: "Record has changed since last read in table ..."
+
+
+def _lock_zone(session: Session, zone_id: int) -> bool:
+    """Sperrt die Zonenzeile und prüft, dass der Plan seit dem Anfang der Transaktion
+    unverändert blieb; `False`, wenn eine gleichzeitige Geste dazwischen festgeschrieben hat.
+
+    Unter MariaDB (REPEATABLE READ) liest eine gewöhnliche Abfrage den Stand vom Beginn der
+    Transaktion; Versionsprüfung und Schreiben allein wären nicht atomar, zwei Gesten mit
+    derselben Version liefen beide durch. Deshalb: erst den Plan gewöhnlich lesen (hält den
+    Transaktionsstand fest), dann die Zonenzeile mit `FOR UPDATE` sperren (die zweite Geste
+    wartet, bis die erste festgeschrieben hat) und die Punkte der Zone gesperrt -- also aktuell
+    -- erneut lesen. Weicht das vom ersten Stand ab, hat die andere Geste geschrieben, und die
+    Version des Aufrufers ist überholt. SQLite kennt `FOR UPDATE` nicht und lässt es weg; dort
+    serialisiert die Datenbank Schreiber ohnehin."""
+    columns = (
+        SchedulePoint.id,
+        SchedulePoint.weekday,
+        SchedulePoint.minute_of_day,
+        SchedulePoint.setpoint_mode_id,
+    )
+    ordering = (SchedulePoint.weekday, SchedulePoint.minute_of_day)
+    seen = [
+        tuple(row)
+        for row in session.execute(
+            select(*columns).where(SchedulePoint.zone_id == zone_id).order_by(*ordering)
+        )
+    ]
+    session.execute(select(Zone.id).where(Zone.id == zone_id).with_for_update()).all()
+    try:
+        current = [
+            tuple(row)
+            for row in session.execute(
+                select(*columns)
+                .where(SchedulePoint.zone_id == zone_id)
+                .order_by(*ordering)
+                .with_for_update()
+            )
+        ]
+    except OperationalError as exc:
+        # MariaDB mit `innodb_snapshot_isolation` (Standard seit 11.6) meldet die überholte
+        # Zeile selbst: 1020 "Record has changed since last read". Dasselbe wie ein
+        # abweichender Stand -- eine Geste hat dazwischen festgeschrieben.
+        if exc.orig is not None and exc.orig.args[:1] == (_RECORD_CHANGED,):
+            return False
+        raise
+    return seen == current
+
+
 def _check_version(session: Session, zone: Zone, version: str) -> None:
-    if _version(session, zone.id) != version:
+    if not _lock_zone(session, zone.id) or _version(session, zone.id) != version:
         raise RoomApiError(
             409,
             "Der Zeitplan wurde inzwischen geändert. Bitte neu laden.",
@@ -941,9 +991,13 @@ def copy_week(zone_id: int, body: CopyWeekIn, principal: Who, session: Sess) -> 
     Hinweis, welches von beidem zutrifft. Die Quelle braucht nur `zone.read`, wie bei der
     HTML-Übernahme (dort in umgekehrter Richtung: das Ziel holt sich den Plan)."""
     source = _visible(session, principal, zone_id)
-    _check_version(session, source, body.version)
     writable = {z.id: z for z in visible_zones(session, principal, "schedule.manage")}
     ids = [t.zone_id for t in body.targets]
+    # Quelle und alle schreibbaren Ziele in fester Reihenfolge sperren (kein Deadlock zweier
+    # gegenläufiger Übernahmen); erst danach die Prüfungen in ihrer gewohnten Reihenfolge.
+    for locked_id in sorted({source.id, *(i for i in ids if i in writable)}):
+        _lock_zone(session, locked_id)
+    _check_version(session, source, body.version)
     if not ids or len(set(ids)) != len(ids) or source.id in ids:
         raise RoomApiError(
             422, "Bitte mindestens einen anderen Raum, jeden nur einmal.", "validation", "targets"
@@ -982,6 +1036,10 @@ def undo(zone_id: int, body: UndoIn, principal: Who, session: Sess) -> ScheduleC
         raise RoomApiError(
             422, "Die Rücknahme-Marke ist ungültig.", "validation", "undo_token"
         ) from exc
+    if not _lock_zone(session, zone.id):
+        raise RoomApiError(
+            409, "Der Zeitplan wurde inzwischen geändert.", "undo_stale", "undo"
+        )
     try:
         undo_schedule_gesture(
             session,

@@ -396,11 +396,17 @@ def reset_dashboard(
     _clear_sections(session, principal.user_id)
     row = session.get(DashboardLayout, principal.user_id)
     if row is None:
-        session.add(
-            DashboardLayout(
-                user_id=principal.user_id, version=1, customized=False, updated_at=utcnow()
-            )
-        )
+        try:
+            with session.begin_nested():
+                session.add(
+                    DashboardLayout(
+                        user_id=principal.user_id, version=1, customized=False, updated_at=utcnow()
+                    )
+                )
+        except IntegrityError:
+            # Ein gleichzeitiges Zurücksetzen (oder Erstspeichern) hat die Zeile soeben
+            # angelegt: Das Ziel -- Standard, Zeile vorhanden -- ist erreicht, also kein Fehler.
+            pass
     else:
         row.version += 1
         row.customized = False

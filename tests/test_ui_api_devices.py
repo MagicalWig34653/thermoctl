@@ -396,11 +396,57 @@ def test_map_marks_zones_without_manage_as_read_only(client_als: Als, world: Wor
 
 def test_map_hides_the_names_of_invisible_zones_for_exclusive_actuators(client_als: Als, world: World, session: Session) -> None:
     _assign(session, world.b, world.plug, "actuator")
+    _assign(session, world.a, world.plug, "window_contact")  # sichtbar nur, weil auch in A
     client = client_als([("device.read", world.a.id), ("zone.read", world.a.id)])
     body = _call(client, "GET", "/ui-api/devices/map").json()
     assert "Bad" not in str(body)
     plug_ports = next(n for n in body["nodes"] if n["id"] == f"dev-{world.plug.id}")["ports"]
     assert plug_ports[0]["actuator_elsewhere"] == ["einer anderen Zone"]
+
+
+def _only_in_b(session: Session, world: World) -> Device:
+    """Geräte, die nur in Raum B hängen: Steckdose (Aktor), Fenster, ein Bediengerät, dazu
+    eine Messquelle für B. Raum A bekommt nichts davon."""
+    _assign(session, world.b, world.plug, "actuator")
+    _assign(session, world.b, world.contact, "window_contact")
+    world.b.temperature_source_device_id = world.sensor2.id
+    ctrl_b = _with(session, create_device(session, "schalter-bad"), "action")
+    _prop(session, ctrl_b, "external_temperature", readable=True)
+    _assign(session, world.b, ctrl_b, "controller")
+    session.flush()
+    return ctrl_b
+
+
+SECRETS_OF_B = ("steckdose", "fenster", "fuehler-b", "schalter-bad", "Bad")
+
+
+def test_a_room_a_reader_finds_no_device_of_room_b_anywhere(client_als: Als, world: World, session: Session) -> None:
+    ctrl_b = _only_in_b(session, world)
+    client = _manage(client_als, world.a)
+    for url in ("/ui-api/devices/map", f"/ui-api/zones/{world.a.id}/devices", "/ui-api/controllers"):
+        text = str(_call(client, "GET", url).json())
+        for secret in SECRETS_OF_B:
+            assert secret not in text, (url, secret)
+    # Was in Raum A hängt oder nirgends, bleibt sichtbar.
+    body = _call(client, "GET", "/ui-api/devices/map").json()
+    ids = {n["id"] for n in body["nodes"]}
+    assert f"dev-{world.ctrl.id}" in ids and f"dev-{world.sensor.id}" in ids
+    assert f"dev-{ctrl_b.id}" not in ids
+    kept = {p["id"] for n in body["nodes"] for p in n["ports"]}
+    assert set(body["rejections"]) <= kept
+    assert all(set(rejected) <= kept for rejected in body["rejections"].values())
+    assert all(0 <= i < len(body["reasons"]) for r in body["rejections"].values() for i in r.values())
+    # Ein verborgener Anschluss lässt sich auch nicht über die Prüfung erfragen.
+    hidden = _call(client, "GET", "/ui-api/devices/map/check", params={"from_id": f"dev-{world.sensor2.id}-temperature", "to_id": zone_port_id(world.a.id, "temperature_source")})
+    _fehler(hidden, 404, "not_found")
+
+
+def test_plant_wide_device_read_still_sees_everything(client_als: Als, world: World, session: Session) -> None:
+    _only_in_b(session, world)
+    text = str(_call(client_als(ALLES), "GET", "/ui-api/devices/map").json())
+    for secret in SECRETS_OF_B:
+        assert secret in text
+    assert "schalter-bad" in str(_call(client_als(ALLES), "GET", "/ui-api/controllers").json())
 
 
 def test_check_returns_the_reason_of_the_domain(client_als: Als, world: World, session: Session) -> None:

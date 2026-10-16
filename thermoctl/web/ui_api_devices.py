@@ -163,6 +163,27 @@ def _fail(outcome: MapOutcome) -> RoomApiError:
     return RoomApiError(status, outcome.reason or "", code)
 
 
+def _hidden_device_ids(session: Session, principal: Principal) -> set[int]:
+    """Geräte, die der Betrachter nicht sehen darf: solche, die nur in Zonen hängen, für die
+    er kein `device.read` hat. Mit anlagenweitem `device.read` ist nichts verborgen; ein Gerät
+    ohne jede Zone (noch nirgends zugeordnet) verrät nichts über einen fremden Raum und
+    bleibt sichtbar -- sonst ließe es sich in der Karte nie erstmals zuordnen."""
+    if has_permission(principal, "device.read"):
+        return set()
+    visible = {z.id for z in visible_zones(session, principal, "device.read")}
+    mine: set[int] = set()
+    elsewhere: set[int] = set()
+    for zone_id, device_id in session.execute(select(ZoneDevice.zone_id, ZoneDevice.device_id)):
+        (mine if zone_id in visible else elsewhere).add(device_id)
+    for zone_id, device_id in session.execute(
+        select(Zone.id, Zone.temperature_source_device_id).where(
+            Zone.temperature_source_device_id.is_not(None)
+        )
+    ):
+        (mine if zone_id in visible else elsewhere).add(device_id)
+    return elsewhere - mine
+
+
 def _actuator_conflict(
     session: Session, principal: Principal, device: Device, exc: ActuatorInAnotherZone
 ) -> RoomApiError:
@@ -367,6 +388,37 @@ def _map_json(session: Session, graph: MappingMap, zones: list[Zone], editable: 
     }
 
 
+def _without_hidden(model: Json, hidden: set[int]) -> Json:
+    """Knoten, Linien, Namen und Ablehnungstabelle ohne die verborgenen Geräte."""
+    if not hidden:
+        return model
+    hidden_nodes = {f"dev-{device_id}" for device_id in hidden}
+    nodes = [n for n in model["nodes"] if n["id"] not in hidden_nodes]
+    port_ids = {p["id"] for n in nodes for p in n["ports"]}
+    connections = [c for c in model["connections"] if c["device_id"] not in hidden]
+    old_reasons: list[str] = model["reasons"]
+    kept: dict[int, int] = {}
+    rejections: dict[str, dict[str, int]] = {}
+    for first, rejected in model["rejections"].items():
+        if first not in port_ids:
+            continue
+        rejections[first] = {
+            second: kept.setdefault(index, len(kept))
+            for second, index in rejected.items()
+            if second in port_ids
+        }
+    return {
+        **model,
+        "nodes": nodes,
+        "connections": connections,
+        "rejections": rejections,
+        "reasons": [old_reasons[index] for index in sorted(kept, key=lambda i: kept[i])],
+        "valve_assignments": [
+            a for a in model["valve_assignments"] if a["device_id"] not in hidden
+        ],
+    }
+
+
 @router.get("/devices/map")
 def show_map(
     principal: Annotated[Principal, Depends(current_principal)],
@@ -376,7 +428,10 @@ def show_map(
     _require_admin_ui(principal)
     zones = _need_zones(session, principal, "device.read")
     editable = {z.id for z in zones if has_permission(principal, "device.manage", z.id)}
-    return _map_json(session, build_mapping_map(session, zones, editable), zones, editable)
+    graph = build_mapping_map(session, zones, editable)
+    return _without_hidden(
+        _map_json(session, graph, zones, editable), _hidden_device_ids(session, principal)
+    )
 
 
 @router.get("/devices/map/check")
@@ -390,7 +445,8 @@ def check_connection(
     _require_admin_ui(principal)
     zones = _need_zones(session, principal, "device.read")
     graph = build_mapping_map(session, zones, set())
-    ports = {p.id: p for p in graph.ports()}
+    hidden = _hidden_device_ids(session, principal)
+    ports = {p.id: p for p in graph.ports() if p.device_id not in hidden}
     first, second = ports.get(from_id), ports.get(to_id)
     if first is None or second is None:
         raise _not_found("Anschluss")
@@ -458,6 +514,7 @@ def _zone_devices(session: Session, principal: Principal, zone: Zone) -> Json:
     capabilities: dict[int, list[str]] = context["capabilities"]  # type: ignore[assignment]
     picture = cast("ZonePicture", context["picture"])
     source = context["temperature_source"]
+    hidden = _hidden_device_ids(session, principal)
     return {
         "zone": {"id": zone.id, "name": zone.display_name},
         "may_edit": has_permission(principal, "device.manage", zone.id),
@@ -483,6 +540,7 @@ def _zone_devices(session: Session, principal: Principal, zone: Zone) -> Json:
                 "capabilities": capabilities.get(device.id, []),
             }
             for device in context["devices"]  # type: ignore[attr-defined]
+            if device.id not in hidden
         ],
         "roles": [_named(role) for role in context["roles"]],  # type: ignore[attr-defined]
         "required_capabilities": {
@@ -753,6 +811,7 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
     channels = context["channels"]
     kinds = context["kinds"]
     out: list[Json] = []
+    hidden = _hidden_device_ids(session, principal)
     for device in context["controllers"]:  # type: ignore[attr-defined]
         out.append(
             {
@@ -804,6 +863,7 @@ def _controllers_json(session: Session, principal: Principal) -> Json:
         "source_devices": [
             {"id": d.id, "name": d.display_name}
             for d in context["devices"]  # type: ignore[attr-defined]
+            if d.id not in hidden
         ],
         "kinds": [_named(kind) for kind in kinds.values()],  # type: ignore[attr-defined]
         "commands": [_named(c) for c in context["commands"]],  # type: ignore[attr-defined]
