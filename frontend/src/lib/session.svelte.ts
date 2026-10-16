@@ -12,7 +12,7 @@ export interface Bootstrap {
   user_id: number;
   ui_profile: string;
   navigation: ServerNavItem[];
-  zones: { id: number; name: string }[];
+  zones: { id: number; name: string; can_edit_schedule?: boolean }[];
 }
 
 export type SessionStatus = 'loading' | 'anonymous' | 'ready' | 'error';

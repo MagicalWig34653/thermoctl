@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CalendarClock } from '@lucide/svelte';
   import { useApp } from '$lib/context';
+  import { scheduleZoneId } from '$lib/schedule/choice';
   import AbsencePanel from './AbsencePanel.svelte';
   import ScheduleEditor from './ScheduleEditor.svelte';
 
@@ -8,7 +9,7 @@
   // Nur Räume, die der Server für dieses Konto sichtbar gemacht hat.
   const zones = $derived(session.bootstrap?.zones ?? []);
   let chosen = $state<number | null>(null);
-  const zoneId = $derived(zones.find((z) => z.id === chosen)?.id ?? zones[0]?.id ?? null);
+  const zoneId = $derived(scheduleZoneId(zones, chosen));
   const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
 </script>
 

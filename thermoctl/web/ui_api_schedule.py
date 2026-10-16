@@ -1150,6 +1150,9 @@ def _absence_state(session: Session, principal: Principal) -> AbsenceStateOut:
     settings = _settings(session)
     eligible = visible_zones(session, principal, "override.create")
     entry = running_absence(session, principal.user_id, utcnow())
+    # Ein inzwischen entzogenes zone.read darf den Raumnamen im laufenden Banner nicht
+    # mehr preisgeben: nur noch lesbare Räume der Abwesenheit werden genannt.
+    readable = {z.id for z in visible_zones(session, principal, "zone.read")}
     return AbsenceStateOut(
         timezone=settings.timezone,
         can_start=bool(eligible) and entry is None,
@@ -1163,6 +1166,7 @@ def _absence_state(session: Session, principal: Principal) -> AbsenceStateOut:
                 zones=[
                     CopyTargetOut(id=z.id, name=z.display_name, version="", has_plan=False)
                     for z in absence_zones(session, entry)
+                    if z.id in readable
                 ],
             )
             if entry is not None

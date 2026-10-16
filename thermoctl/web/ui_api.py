@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_session
-from thermoctl.domain.authz import visible_zones
+from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web.navigation import visible_navigation
 from thermoctl.web.shared.login import ERROR_MESSAGE, attempt_login, set_session_cookies
@@ -40,6 +40,11 @@ class NavItemOut(BaseModel):
 class ZoneOut(BaseModel):
     id: int
     name: str
+    # Darstellung, kein Riegel: ob dieses Konto den Wochenplan der Zone ändern darf
+    # (`schedule.manage` je Zone). Die Wochenplan-Ansicht wählt damit zuerst einen Raum,
+    # den man auch bearbeiten kann, statt blind den ersten lesbaren. Entscheiden tut
+    # weiterhin der Endpunkt.
+    can_edit_schedule: bool
 
 
 class BootstrapOut(BaseModel):
@@ -70,7 +75,11 @@ def bootstrap(
             for i in visible_navigation(principal)
         ],
         zones=[
-            ZoneOut(id=z.id, name=z.display_name)
+            ZoneOut(
+                id=z.id,
+                name=z.display_name,
+                can_edit_schedule=has_permission(principal, "schedule.manage", z.id),
+            )
             for z in visible_zones(session, principal, "zone.read")
         ],
     )
