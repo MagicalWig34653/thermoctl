@@ -497,6 +497,56 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/zones/{zone_id}/override/cancel"): "zonenbezogenes override.cancel",
     ("POST", "/zones/{zone_id}/jump-next"): "zonenbezogenes override.create",
     ("POST", "/zones/{zone_id}/report"): "zonenbezogenes report.create",
+    # Personen, Zugänge (`ui_api_access`): Profilprüfung vor der Rechteprüfung im Endpunkt.
+    ("GET", "/ui-api/access/users"):
+        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
+    ("POST", "/ui-api/access/users"):
+        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
+    ("PUT", "/ui-api/access/users/{user_id}/active"):
+        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
+    ("PUT", "/ui-api/access/users/{user_id}/group"):
+        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
+    ("PUT", "/ui-api/access/users/{user_id}/password"):
+        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
+    ("GET", "/ui-api/access/groups"):
+        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
+    ("POST", "/ui-api/access/groups"):
+        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
+    ("PUT", "/ui-api/access/groups/{group_id}/ui-profile"):
+        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
+    ("DELETE", "/ui-api/access/groups/{group_id}"):
+        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
+    ("PUT", "/ui-api/access/groups/{group_id}/permissions"):
+        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
+    ("GET", "/ui-api/access/tokens"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
+    ("POST", "/ui-api/access/tokens"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
+    ("PUT", "/ui-api/access/tokens/{token_id}/permissions"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
+    ("POST", "/ui-api/access/tokens/{token_id}/revoke"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
+    ("GET", "/ui-api/access/kiosk-tokens"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
+    ("POST", "/ui-api/access/kiosk-tokens"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
+    ("POST", "/ui-api/access/kiosk-tokens/{token_id}/revoke"):
+        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
+    # Konto: gehört beiden Oberflächen und braucht kein Recht, nur die eigene Sitzung.
+    ("GET", "/ui-api/account"):
+        "eigenes Konto, beide Profile",
+    ("PUT", "/ui-api/account/password"):
+        "eigenes Konto, beide Profile",
+    ("GET", "/ui-api/account/sessions"):
+        "eigenes Konto, beide Profile",
+    ("POST", "/ui-api/account/sessions/revoke-others"):
+        "eigenes Konto, beide Profile",
+    ("POST", "/ui-api/account/sessions/{session_id}/revoke"):
+        "eigenes Konto, beide Profile",
+    ("GET", "/ui-api/account/passkeys"):
+        "eigenes Konto, beide Profile",
+    ("DELETE", "/ui-api/account/passkeys/{passkey_id}"):
+        "eigenes Konto, beide Profile",
 }
 
 
