@@ -26,6 +26,7 @@ from tests.helpers import (
     create_settings,
     create_zone,
     role,
+    sensor_status_of,
     source,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
@@ -45,7 +46,9 @@ from thermoctl.db.models.lookup import (
     ChannelKind,
     ControllerCommand,
 )
+from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.mapping_map import property_port_id, zone_port_id
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY
@@ -54,6 +57,7 @@ from thermoctl.domain.thermostat_mode import (
     MODE_READING_ONLY,
     MODE_SELF_REGULATING,
 )
+from thermoctl.services.ingest import advance_zone_state
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
 ACTUAL = "remote_temperature"
@@ -913,3 +917,68 @@ def test_device_commands_validate_the_filters_and_need_audit_read(client_als: Al
     assert _fehler(_call(client, "GET", url, params={"page": "x"}), 422, "validation")["field"] == "page"
     no_audit = client_als([("device.read", None), ("zone.read", None)])
     _fehler(_call(no_audit, "GET", url), 403, "forbidden")
+
+
+# -- Mehrfachzuordnung: ein Fühler, zwei Zonen; Gerät-zu-Gerät (Lücken der Altprüfung) ----------
+
+
+def test_one_sensor_is_the_temperature_source_of_two_zones_and_both_zones_read_it(
+    client_als: Als, world: World, session: Session
+) -> None:
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    shared = _with(session, create_device(session, "gemeinsamer-fuehler"), "temperature")
+    world.a.temperature_source_device_id = None  # beide Zonen beginnen ohne Messquelle
+    session.flush()
+    client = _manage(client_als, world.a, world.b)
+    out = f"dev-{shared.id}-temperature"
+    for zone in (world.a, world.b):
+        done = _call(client, "POST", "/ui-api/devices/map/connect", {"from_id": out, "to_id": zone_port_id(zone.id, "temperature_source")})
+        assert done.status_code == 200 and done.json() == {"ok": True, "mode": None}
+    session.expire_all()
+    assert session.get(Zone, world.a.id).temperature_source_device_id == shared.id  # type: ignore[union-attr]
+    assert session.get(Zone, world.b.id).temperature_source_device_id == shared.id  # type: ignore[union-attr]
+
+    # Zwei Linien vom selben Ausgang, jede einzeln geführt und lösbar.
+    graph = _call(client, "GET", "/ui-api/devices/map").json()
+    lines = [c for c in graph["connections"] if c["out_port"] == out]
+    assert sorted(c["zone_id"] for c in lines) == sorted([world.a.id, world.b.id])
+    assert len({c["id"] for c in lines}) == 2
+
+    # Die Regelkette liest den Messwert für beide Zonen.
+    moment = datetime(2026, 8, 29, 7, 0)
+    session.add(Measurement(device_id=shared.id, capability_id=capability(session, "temperature").id, value_numeric=Decimal("21.50"), measured_at=moment, received_at=moment))
+    session.flush()
+    advance_zone_state(session, moment)
+    for zone in (world.a, world.b):
+        state = session.get(ZoneState, zone.id)
+        assert state is not None and state.temperature_c == Decimal("21.50")
+
+
+def test_device_to_device_fan_out_is_judged_fit_but_never_stored(
+    client_als: Als, world: World, session: Session
+) -> None:
+    displays = []
+    for index in range(2):
+        display = create_device(session, f"anzeige-{index}")
+        _prop(session, display, "ext")
+        _assign(session, world.a, display, "controller")
+        displays.append(display)
+    client = _manage(client_als, world.a)
+    out = f"dev-{world.sensor.id}-temperature"
+    body = _call(client, "GET", "/ui-api/devices/map").json()
+    ports = {p["id"]: p for n in body["nodes"] for p in n["ports"]}
+    for display in displays:
+        target = property_port_id(display.id, "ext")
+        # Ein Ausgang, mehrere Eingänge gleicher Wertart: nicht abgelehnt ...
+        assert target not in body["rejections"].get(out, {})
+        # ... aber jeder Geräteeingang nimmt nur eine Verbindung an.
+        assert ports[target]["single"] is True
+    assert body["single_reason"] == "Dieser Eingang nimmt nur eine Verbindung an."
+    before = session.query(ZoneDevice).count()
+    refused = _fehler(
+        _call(client, "POST", "/ui-api/devices/map/connect", {"from_id": out, "to_id": property_port_id(displays[0].id, "ext")}),
+        422, "connection_rejected",
+    )
+    assert "nicht gespeichert" in refused["detail"]
+    assert session.query(ZoneDevice).count() == before
