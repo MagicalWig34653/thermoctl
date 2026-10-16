@@ -6,7 +6,6 @@ der Grund, warum sie hier stehen und nicht bloß bestätigen, was der Code ohneh
 tut. Die Durchsicht selbst steht in `docs/sicherheitsdurchsicht-2026-09-02.md`.
 """
 
-from datetime import datetime
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request
 
@@ -17,7 +16,6 @@ from sqlalchemy.orm import Session
 from tests.helpers import (
     create_device,
     create_zone,
-    operating_mode,
     role,
     source,
     user_with_permissions,
@@ -26,13 +24,11 @@ from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import (
-    ControllerBinding,
     ControllerChannel,
     DeviceProperty,
     ZoneDevice,
 )
-from thermoctl.db.models.lookup import ChannelKind, ControllerCommand
-from thermoctl.domain.controller_channels import apply_read_channels
+from thermoctl.db.models.lookup import ChannelKind
 from thermoctl.domain.kiosk import issue_kiosk_token
 from thermoctl.integrations.notification import _NoRedirectHandler
 from thermoctl.mcp import server as mcp_server
@@ -79,71 +75,6 @@ def test_kiosk_token_gilt_nicht_als_rest_bearer(
     assert "Kiosk" in response.json()["detail"]
 
 
-def test_device_manage_einer_zone_erreicht_keine_fremde_zone(
-    client_als, session: Session
-) -> None:
-    """``device.manage`` für Zone A darf keinen Kanal auf Zone B richten.
-
-    Vor der Korrektur wurde nur geprüft, ob das *Geraet* in einer verwaltbaren Zone
-    hängt, die aus dem Formular kommende Zielzone dagegen gar nicht. Ein bewusst auf
-    eine Zone beschränkter Nutzer konnte damit einen fremden Raum abschalten -- bei
-    jeder Drehung am Regler erneut.
-    """
-    zone_a = create_zone(session, "eigene-zone")
-    zone_b = create_zone(session, "fremde-zone")
-    operating_mode(session, "off")
-    device = create_device(session, "wandregler")
-    session.add(
-        ZoneDevice(
-            zone_id=zone_a.id,
-            device_id=device.id,
-            device_role_id=role(session, "controller").id,
-        )
-    )
-    session.add(
-        DeviceProperty(
-            device_id=device.id,
-            name="system_mode",
-            value_type="text",
-            is_readable=True,
-            is_writable=False,
-        )
-    )
-    session.add(ChannelKind(code="operating_mode", label="Betriebsart"))
-    session.flush()
-    client = client_als([("device.manage", zone_a.id)])
-    session_secret = client.cookies.get(COOKIE_NAME)
-    assert session_secret is not None
-
-    response = client.post(
-        "/controllers/channel",
-        data={
-            "device_id": str(device.id),
-            "property_name": "system_mode",
-            "direction": "read",
-            "kind": "operating_mode",
-            "zone_id": str(zone_b.id),
-        },
-        headers={
-            CSRF_HEADER: csrf_token(
-                session_secret, get_settings().secret_key.get_secret_value()
-            )
-        },
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert session.query(ControllerChannel).filter_by(device_id=device.id).count() == 0
-
-    # Und ohne Kanal bewegt auch die nächste Geraetemeldung die fremde Zone nicht.
-    apply_read_channels(
-        session,
-        device,
-        {"system_mode": "off"},
-        datetime(2026, 9, 2, 12, 0),
-    )
-
-    assert zone_b.operating_mode.code == "auto"
 
 
 def test_offen_webhook_redirect_nimmt_authorization_an_internes_ziel_mit() -> None:
@@ -192,92 +123,10 @@ def test_offen_webhook_redirect_nimmt_authorization_an_internes_ziel_mit() -> No
         )
 
 
-def test_tastenbelegung_verlangt_das_recht_fuer_jede_zone_des_geraets(
-    client_als, session: Session
-) -> None:
-    """Ein Tastendruck wirkt in *allen* Zonen des Bediengeräts, die Rechteprüfung auch.
-
-    `execute_action` in `domain/controller.py` führt die Belegung in jeder Zone aus,
-    in der das Geraet als Bediengerät hängt. Geprüft wurde vorher nur, ob es in
-    *einer* verwaltbaren Zone hängt -- der geteilte Flurregler reichte damit in jedes
-    Zimmer, an dem er ebenfalls hängt.
-    """
-    zone_a = create_zone(session, "eigene-zone")
-    zone_b = create_zone(session, "fremde-zone")
-    device = create_device(session, "flurregler")
-    for zone in (zone_a, zone_b):
-        session.add(
-            ZoneDevice(
-                zone_id=zone.id,
-                device_id=device.id,
-                device_role_id=role(session, "controller").id,
-            )
-        )
-    session.add(ControllerCommand(code="setpoint_up", label="Wärmer"))
-    session.flush()
-    client = client_als([("device.manage", zone_a.id)])
-    session_secret = client.cookies.get(COOKIE_NAME)
-    assert session_secret is not None
-
-    response = client.post(
-        "/controllers/button",
-        data={
-            "device_id": str(device.id),
-            "action_code": "single",
-            "command": "setpoint_up",
-            "step_k": "0.5",
-        },
-        headers={
-            CSRF_HEADER: csrf_token(
-                session_secret, get_settings().secret_key.get_secret_value()
-            )
-        },
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert session.query(ControllerBinding).count() == 0
 
 
-def test_bediengeraeteseite_verraet_keine_fremden_geraetenamen(
-    client_als, session: Session
-) -> None:
-    """Die Quellgeräteliste zeigte den gesamten Geraetebestand der Anlage.
-
-    Geraetenamen tragen in diesem Projekt Raum-, Bewohner- und Integrationsbezüge.
-    Wer `device.read` für eine einzige Zone hatte, erfuhr vorher die Namen aller
-    übrigen -- die Seite war zonengefiltert, diese eine Liste nicht.
-    """
-    zone_a = create_zone(session, "eigene-zone")
-    zone_b = create_zone(session, "fremde-zone")
-    eigenes = create_device(session, "eigener-fühler")
-    fremdes = create_device(session, "fremder-fühler")
-    session.add(
-        ZoneDevice(
-            zone_id=zone_a.id,
-            device_id=eigenes.id,
-            device_role_id=role(session, "sensor").id,
-        )
-    )
-    session.add(
-        ZoneDevice(
-            zone_id=zone_b.id,
-            device_id=fremdes.id,
-            device_role_id=role(session, "sensor").id,
-        )
-    )
-    session.flush()
-
-    seite = client_als([("device.read", zone_a.id)]).get("/controllers")
-
-    assert seite.status_code == 200
-    assert "eigener-fühler" in seite.text
-    assert "fremder-fühler" not in seite.text
 
 
-def test_bediengeraeteseite_verlangt_geraeteleserecht(client_als) -> None:
-    """Die Navigation hat `device.read` immer behauptet, die Seite nie geprüft."""
-    assert client_als([("zone.read", None)]).get("/controllers").status_code == 403
 
 
 def test_quellgeraet_eines_kanals_muss_lesbar_sein(client_als, session: Session) -> None:
@@ -362,55 +211,3 @@ def test_kiosk_token_gilt_auch_bei_mcp_nicht(session: Session) -> None:
         mcp_server.list_zones(session, plaintext)
 
 
-def test_der_erlaubte_fall_geht_weiterhin(client_als, session: Session) -> None:
-    """Die Gegenprobe zu den Riegeln: Wer die Rechte hat, richtet den Kanal wie bisher ein.
-
-    Ohne diesen Test belegt die Datei nur, was jetzt verboten ist. Eine Rechteprüfung,
-    die auch den erlaubten Fall abweist, wäre aber genauso kaputt -- nur unauffälliger.
-    """
-    zone = create_zone(session, "eigene-zone")
-    device = create_device(session, "wandregler")
-    fühler = create_device(session, "eigener-fühler")
-    for geraet, rolle in ((device, "controller"), (fühler, "sensor")):
-        session.add(
-            ZoneDevice(
-                zone_id=zone.id,
-                device_id=geraet.id,
-                device_role_id=role(session, rolle).id,
-            )
-        )
-    session.add(
-        DeviceProperty(
-            device_id=device.id,
-            name="local_temperature",
-            value_type="numeric",
-            is_readable=True,
-            is_writable=True,
-        )
-    )
-    session.add(ChannelKind(code="sensor_temperature", label="Fühlertemperatur"))
-    session.flush()
-    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
-    session_secret = client.cookies.get(COOKIE_NAME)
-    assert session_secret is not None
-
-    response = client.post(
-        "/controllers/channel",
-        data={
-            "device_id": str(device.id),
-            "property_name": "local_temperature",
-            "direction": "write",
-            "kind": "sensor_temperature",
-            "source_device_id": str(fühler.id),
-        },
-        headers={
-            CSRF_HEADER: csrf_token(
-                session_secret, get_settings().secret_key.get_secret_value()
-            )
-        },
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 303
-    kanal = session.query(ControllerChannel).one()
-    assert kanal.source_device_id == fühler.id

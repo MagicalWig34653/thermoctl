@@ -265,81 +265,19 @@ def test_the_map_still_shows_an_existing_double_assignment(session: Session) -> 
     assert sorted(c.zone_id for c in graph.connections if c.slot == "actuator") == sorted([a.id, b.id])
 
 
-# ---- Web: Zuordnungsseite --------------------------------------------------------------------------
 
 
-def test_the_assignment_page_shows_the_refusal(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    a, b = create_zone(session, "web-a"), create_zone(session, "web-b")
-    valve = _valve(session, "web-ventil")
-    actuator = role(session, "actuator")
-    assign_device(session, a, valve, actuator, actor_id=None)
-    client = client_als([("device.manage", b.id), ("device.read", b.id)])
-
-    response = client.post(
-        f"/zones/{b.id}/devices/assign",
-        data={"device_id": str(valve.id), "role_id": str(actuator.id)},
-        headers=_csrf(client),
-    )
-
-    assert response.status_code == 200
-    assert "ist bereits Aktor von Zone &#39;Web-a&#39;; ein Gerät kann nur eine Zone heizen." in response.text
-    assert _zones_of(session, valve) == [a.id]
 
 
-def test_the_swap_page_shows_the_refusal_and_keeps_the_old_valve(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    a, b = create_zone(session, "web-sa"), create_zone(session, "web-sb")
-    old, busy = _valve(session, "web-alt"), _valve(session, "web-belegt")
-    actuator = role(session, "actuator")
-    assign_device(session, a, old, actuator, actor_id=None)
-    assign_device(session, b, busy, actuator, actor_id=None)
-    client = client_als([("device.manage", a.id), ("device.read", a.id)])
-
-    response = client.post(
-        f"/zones/{a.id}/devices/swap",
-        data={"old_device_id": str(old.id), "new_device_id": str(busy.id)},
-        headers=_csrf(client),
-    )
-
-    assert response.status_code == 200
-    assert "ist bereits Aktor von Zone &#39;Web-sb&#39;" in response.text
-    assert _zones_of(session, old) == [a.id]
-
-
-def test_editing_an_existing_double_assignment_on_the_page_is_not_blocked(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    a, b = create_zone(session, "web-ba"), create_zone(session, "web-bb")
-    valve = _valve(session, "web-bestand")
-    row = _put(session, a, valve, "actuator")
-    _put(session, b, valve, "actuator")
-    client = client_als([("device.manage", a.id), ("device.read", a.id)])
-
-    mode = client.post(
-        f"/zones/{a.id}/devices/regulation",
-        data={"assignment_id": str(row.id), "thermostat_mode": "reading_only"},
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-    assert mode.status_code == 303
-    session.refresh(row)
-    assert row.thermostat_mode == "reading_only"
-
-    detach = client.post(
-        f"/zones/{a.id}/devices/detach",
-        data={"assignment_id": str(row.id)},
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-    assert detach.status_code == 303
-    assert _zones_of(session, valve) == [b.id]
 
 
 # ---- Karte -----------------------------------------------------------------------------------------
 
 
 def _connect(client: TestClient, first: str, second: str) -> Any:
-    return client.post("/devices/map/connect", headers=_csrf(client), data={"from_id": first, "to_id": second})
+    return client.post(
+        "/ui-api/devices/map/connect", headers=_csrf(client), json={"from_id": first, "to_id": second}
+    )
 
 
 def test_the_map_and_the_domain_give_the_same_reason(client_als: ClientAls, session: Session) -> None:
@@ -353,7 +291,7 @@ def test_the_map_and_the_domain_give_the_same_reason(client_als: ClientAls, sess
     client = client_als([("device.manage", a.id), ("device.manage", b.id)])
     refused = _connect(client, zone_port_id(b.id, "actuator"), f"dev-{valve.id}-thermostat")
     assert refused.status_code == 422
-    assert refused.json()["reason"] == domain.value.notice
+    assert refused.json()["detail"] == domain.value.notice
 
 
 def _blind_can_connect(real: Callable[..., Any]) -> Callable[..., Any]:
@@ -387,8 +325,8 @@ def test_a_concurrent_assignment_to_another_zone_is_refused_by_the_domain_on_the
 
     refused = _connect(client, zone_port_id(mine.id, "actuator"), f"dev-{valve.id}-thermostat")
 
-    assert refused.status_code == 422
-    assert refused.json()["reason"] == "'rs-ventil' ist bereits Aktor von Zone 'Rs-other'; ein Gerät kann nur eine Zone heizen."
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "'rs-ventil' ist bereits Aktor von Zone 'Rs-other'; ein Gerät kann nur eine Zone heizen."
     assert _zones_of(session, valve) == [other.id]
 
 
@@ -404,8 +342,8 @@ def test_that_refusal_keeps_an_unseen_zone_unnamed(
 
     refused = _connect(client, zone_port_id(mine.id, "actuator"), f"dev-{valve.id}-thermostat")
 
-    assert refused.status_code == 422
-    assert refused.json()["reason"] == "'rh-ventil' ist bereits Aktor einer anderen Zone; ein Gerät kann nur eine Zone heizen."
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "'rh-ventil' ist bereits Aktor einer anderen Zone; ein Gerät kann nur eine Zone heizen."
 
 
 def test_a_concurrent_identical_assignment_gives_409_not_500(
@@ -432,7 +370,7 @@ def test_a_concurrent_identical_assignment_gives_409_not_500(
     refused = _connect(client, zone_port_id(zone.id, "actuator"), f"dev-{valve.id}-thermostat")
 
     assert refused.status_code == 409
-    assert refused.json()["reason"] == "Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet."
+    assert refused.json()["detail"] == "Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet."
     assert len(calls) == 2  # Vorprüfung blind, danach der Blick nach dem Constraint-Fehler
     assert session.scalar(select(func.count()).select_from(ZoneDevice).where(ZoneDevice.device_id == valve.id)) == 1
 

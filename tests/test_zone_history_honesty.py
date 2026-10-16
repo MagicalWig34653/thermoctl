@@ -5,7 +5,6 @@ Absenkung, Sonnenbänder über Phasen ohne Absenkung, Linien über Lücken, Heiz
 künstlicher Breite, Legende mit Bucket-Mittel statt letzter Messung.
 """
 
-import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -99,25 +98,6 @@ def test_rows_without_a_recorded_schedule_value_leave_the_schedule_line_open(
     assert chart.scheduled_runs[0][0] == now - timedelta(minutes=60)
 
 
-def test_legacy_rows_are_marked_unknown_and_never_reported_as_no_setback(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "altabsenkung")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(60):
-        _row(session, zone, now - timedelta(minutes=120 - minute), setpoint="18.5")
-    session.flush()
-    chart = chart_for_zone(session, zone.id, "24h", now, BERLIN)
-    assert chart.scheduled_runs == ()
-    assert "Keine Sonnenabsenkung" not in chart.summary
-    assert "Absenkung für 1,0 Stunden unbekannt (vor der Aufzeichnung)." in chart.summary
-    assert "Zuletzt Sollwert vor Sonnenabsenkung" not in chart.summary
-    html = _history_html(client_als, zone)
-    assert "Absenkung unbekannt (vor der Aufzeichnung)" in html
-    assert html.count('class="tc-history-unknown"') == len(LAYOUTS)
-    assert re.findall(r'<path d="([^"]*)" class="tc-history-scheduled"', html) == [""] * len(
-        LAYOUTS
-    )
 
 
 def test_recorded_rows_without_setback_keep_the_statement_that_there_was_none(
@@ -153,24 +133,6 @@ def test_alternating_setback_rows_never_form_one_continuous_band(window: str) ->
     assert covered == 30 * 60
 
 
-def test_a_changing_setback_is_labelled_with_its_range_not_its_maximum(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "bereich")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(360):
-        _row(
-            session,
-            zone,
-            now - timedelta(minutes=370 - minute),
-            setpoint="18.5",
-            scheduled="20.5",
-            solar="1.5" if minute < 180 else "2.0",
-        )
-    session.flush()
-    html = _history_html(client_als, zone)
-    assert "Sonnenabsenkung 1,5 bis 2,0 K</text>" in html
-    assert "Sonnenabsenkung 2,0 K</text>" not in html
 
 
 # --- Befund 3: Lücken --------------------------------------------------------------------
@@ -235,77 +197,15 @@ def test_a_single_heating_row_colours_at_most_its_own_cycle() -> None:
     assert last - first <= timedelta(seconds=90)
 
 
-def test_drawn_widths_carry_no_minimum_that_would_claim_time(session: Session, client_als) -> None:
-    zone = create_zone(session, "mindestbreite")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    _row(session, zone, now - timedelta(minutes=300), heat=True, scheduled="20.5")
-    _row(session, zone, now - timedelta(minutes=100), heat=False, scheduled="20.5")
-    session.flush()
-    html = _history_html(client_als, zone)
-    # 24 h auf 880 Einheiten: 60 s sind 0,6 Einheiten, nicht 1,5.
-    widths = [float(w) for w in re.findall(r'width="([\d.]+)"[^>]*class="tc-history-demand"', html)]
-    assert len(widths) == len(LAYOUTS) and max(widths) < 1.0
-    for d in re.findall(r'<path d="([^"]*)" class="tc-history-(?:scheduled|effective)"', html):
-        # Eine einzelne Zeile ergibt einen Punkt: Anfang und Ende gleich, keine Zugabe.
-        for x1, x2 in re.findall(r"M([\d.]+),[\d.]+ H([\d.]+)", d):
-            assert x1 == x2 or float(x2) - float(x1) < 0.3
 
 
-def test_a_setback_shorter_than_a_pixel_gets_a_marker_but_no_stretched_band(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "kurzband2")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minutes, solar in ((300, None), (299, "2.0"), (298, None)):
-        _row(session, zone, now - timedelta(minutes=minutes), scheduled="20.0", solar=solar)
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    assert html.count("tc-history-solar-mark") == len(LAYOUTS)
-    widths = re.findall(r'<rect [^>]*width="([\d.]+)"[^>]*class="tc-history-solar"', html)
-    assert all(float(w) < 0.5 for w in widths)
 
 
 # --- Befund 5: Legende und Verdichtung --------------------------------------------------
 
 
-def test_the_legend_shows_the_last_measurement_with_its_time_not_a_bucket_mean(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "legende")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(30):
-        # Letzter Wert 24,0: das Mittel seines Buckets (7 Tage: 17 Minuten) liegt darunter.
-        temperature = "24.0" if minute == 29 else "19.0"
-        _row(
-            session,
-            zone,
-            now - timedelta(minutes=30 - minute),
-            temperature=temperature,
-            scheduled="20.5",
-        )
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    assert re.search(r"Ist: 24,0 °C \(letzte Messung \d\d:\d\d Uhr\)", html)
 
 
-def test_compressed_windows_show_the_range_of_each_section_and_say_so(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "huelle")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(60):
-        _row(
-            session,
-            zone,
-            now - timedelta(minutes=60 - minute),
-            temperature="22.0" if minute == 30 else "19.0",
-            scheduled="20.5",
-        )
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    assert html.count("tc-history-range") >= len(LAYOUTS)
-    assert "Mittelwert je Abschnitt von bis zu 17 Minuten" in html
-    assert "Kleinster bis größter Wert je Abschnitt" in html
 
 
 def test_x_position_is_unchanged_for_reference() -> None:
@@ -394,25 +294,6 @@ def test_every_isolated_section_gets_its_own_bar_and_flat_ones_get_none() -> Non
     assert bars.count("M") == 2 and bars.count("Z") == 2
 
 
-def test_the_spike_bar_reaches_every_variant_of_the_page(session: Session, client_als) -> None:
-    zone = create_zone(session, "ausreisser")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(16):
-        _row(
-            session,
-            zone,
-            now - timedelta(minutes=16 - minute),
-            temperature="30.0" if minute == 7 else "20.0",
-            scheduled="20.5",
-        )
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    areas = re.findall(r'<path d="([^"]*)" class="tc-history-range"', html)
-    bars = re.findall(r'<path d="([^"]*)" class="tc-history-range-bar"', html)
-    assert len(areas) == len(bars) == len(LAYOUTS)
-    # Je nach Lage der 16 Minuten zu den Bucketgrenzen: ein Abschnitt (Balken) oder zwei (Fläche).
-    for area, bar in zip(areas, bars, strict=True):
-        assert re.fullmatch(r"M[\d., LZ]+", area + bar)
 
 
 # --- Befund 1 der dritten Runde: gemischte Fenster --------------------------------------
@@ -446,34 +327,11 @@ def test_a_mixed_window_with_a_setback_names_only_what_the_rows_prove(session: S
     assert "Absenkung für 1,0 Stunden unbekannt (vor der Aufzeichnung)." in summary
 
 
-def test_the_legend_of_a_mixed_window_has_no_statement_of_none(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "gemischt3")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(20):
-        _row(session, zone, now - timedelta(minutes=60 - minute), setpoint="18.5")
-    for minute in range(20):
-        _row(session, zone, now - timedelta(minutes=30 - minute), scheduled="20.5", solar="0")
-    session.flush()
-    html = _history_html(client_als, zone)
-    assert "Absenkung unbekannt (vor der Aufzeichnung)" in html
-    assert "Keine Sonnenabsenkung" not in html
 
 
 # --- Befunde 3 bis 5 der dritten Runde: Legende sagt, was das Bild zeigt -----------------
 
 
-def test_the_legend_of_the_heat_lane_names_a_share_per_section_not_a_duration(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "heizlegende")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    _row(session, zone, now - timedelta(minutes=20), heat=True, scheduled="20.5")
-    session.flush()
-    html = _history_html(client_als, zone)
-    assert "Anteil der Zeit mit Heizanforderung je Abschnitt" in html
-    assert "blasser = seltener" not in html
 
 
 def test_one_heating_minute_among_sixteen_is_the_palest_level_not_a_full_stroke() -> None:
@@ -484,33 +342,8 @@ def test_one_heating_minute_among_sixteen_is_the_palest_level_not_a_full_stroke(
     assert level == 1 and (first, last) == (start, start + timedelta(minutes=17, seconds=30))
 
 
-def test_the_curve_legend_says_up_to_and_not_a_fixed_length(session: Session, client_als) -> None:
-    zone = create_zone(session, "kurvenlegende")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    _row(session, zone, now - timedelta(minutes=20), scheduled="20.5")
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    assert "Mittelwert je Abschnitt von bis zu 17 Minuten" in html
-    assert "ein Punkt kann aus einer einzigen Messung stammen" in html
-    assert "Mittelwert je 17 Minuten" not in html
 
 
-def test_a_ten_minute_setback_in_seven_days_has_a_thin_band_and_a_marker(
-    session: Session, client_als
-) -> None:
-    zone = create_zone(session, "zehnminuten")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minute in range(60):
-        solar = "2.0" if 20 <= minute < 30 else "0"
-        _row(session, zone, now - timedelta(minutes=120 - minute), scheduled="20.5", solar=solar)
-    session.flush()
-    html = _history_html(client_als, zone, "7d")
-    # Das Verhalten, das die Anleitung beschreibt: schmales, unverbreitertes Band UND Dreieck.
-    assert html.count("tc-history-solar-mark") == len(LAYOUTS)
-    widths = [float(w) for w in re.findall(r'width="([\d.]+)"[^>]*class="tc-history-solar"', html)]
-    assert len(widths) == len(LAYOUTS) and all(0.25 <= w < 1.0 for w in widths)
-    assert "Dreieck oben: kurze Absenkung, im Bild nur als schmaler Streifen" in html
-    assert "zu schmal für ein Band" not in html
 
 
 def test_rows_with_the_same_timestamp_do_not_colour_or_cover_anything() -> None:
@@ -609,12 +442,6 @@ def test_up_to_n_minutes_is_rounded_up_so_it_never_understates() -> None:
     assert _minutes_text(0.4) == "1 Sekunde"
 
 
-def test_the_legend_of_the_24_hour_window_names_three_minutes(session: Session, client_als) -> None:
-    zone = create_zone(session, "dreiminuten")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    _row(session, zone, now - timedelta(minutes=20), scheduled="20.5")
-    session.flush()
-    assert "Mittelwert je Abschnitt von bis zu 3 Minuten" in _history_html(client_als, zone, "24h")
 
 
 def test_setpoint_legend_carries_a_stamp_when_the_data_is_stale_and_not_otherwise() -> None:
@@ -633,15 +460,6 @@ def test_setpoint_legend_carries_a_stamp_when_the_data_is_stale_and_not_otherwis
     assert unknown.effective_text == "20,5 °C (Stand 10.10. 11:00 Uhr)"
 
 
-def test_the_stamp_reaches_the_legend_of_the_page(session: Session, client_als) -> None:
-    zone = create_zone(session, "veraltet")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    _row(session, zone, now - timedelta(hours=3), scheduled="21.0", setpoint="19.0")
-    session.flush()
-    html = _history_html(client_als, zone)
-    stamp = r"\(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)"
-    assert re.search(rf"Sollwert vor Sonnenabsenkung: 21,0 °C {stamp}", html)
-    assert re.search(r"Wirksamer Soll: 19,0 °C \(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)", html)
 
 
 def test_the_heat_lane_weighs_rows_by_their_seconds_like_the_summary() -> None:

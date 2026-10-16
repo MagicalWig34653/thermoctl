@@ -15,7 +15,7 @@ def test_asset_cache_policy_and_conditional_response(
     request: pytest.FixtureRequest, fixture: str, version: str | None
 ) -> None:
     client: TestClient = request.getfixturevalue(fixture)
-    url = "/static/thermoctl.css" + (f"?v={version}" if version else "")
+    url = "/static/favicon.svg" + (f"?v={version}" if version else "")
     response = client.get(url)
     assert response.status_code == 200
     expected = (
@@ -51,7 +51,3 @@ def test_no_vendor_source_map_reference_points_to_a_missing_file() -> None:
                 assert target.startswith("data:") or (path.parent / target).is_file(), path
 
 
-def test_html_announces_asset_set_for_tabs_open_during_an_update(client: TestClient) -> None:
-    response = client.get("/login")
-    assert response.headers["X-Thermoctl-Assets"] == ASSET_VERSION
-    assert f"?v={ASSET_VERSION}" in response.text

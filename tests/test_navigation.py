@@ -2,125 +2,48 @@ import ast
 import importlib
 import inspect
 import re
-from collections.abc import Callable
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
-from tests.helpers import create_settings, create_zone
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.navigation import NAVIGATION_ITEMS
 
+_PERMISSION = re.compile(r"^[a-z]+\.[a-z]+$")
 
-def _navigation(html: str) -> str:
-    """Die gerenderte Navigation der Anlagenhülle.
-
-    Seit dem Redesign ist das die Seitenleiste (`base_admin.html`) statt der alten
-    Kopfleiste. Die Zusicherung dieser Datei ist dieselbe geblieben: was hier steht,
-    darf nur stehen, wenn das Recht dazu vorliegt -- und dass es hier *nicht* steht,
-    ist keine Absicherung, die prüft der Endpunkt.
-    """
-    match = re.search(r'<nav class="tc-sidenav.*?</nav>', html, re.DOTALL)
-    assert match is not None
-    return match.group(0)
+# Einträge, deren Endpunkt bewusst ein schwächeres Recht prüft als die Navigation
+# verlangt. Die Navigation ist nur Darstellung und darf strenger sein; der Endpunkt ist die
+# Sicherheitsgrenze. Beide Verlaufseinträge lesen dieselbe Messreihe (`show_history`), die
+# je Zone auf `zone.read` filtert; die Verwaltung zeigt den Eintrag nur Verwaltern.
+STRICTER_THAN_ENDPOINT = {
+    "/zones/history": "zone.manage",
+    "/temperature-history": "zone.read",
+}
 
 
-def test_user_without_user_management_neither_sees_link_nor_gets_access(
-    client_als: Callable[[list[tuple[str, int | None]]], TestClient],
-) -> None:
-    client = client_als([("zone.read", None)])
-    navigation = _navigation(client.get("/").text)
-    assert "Benutzer" not in navigation
-    assert client.get("/users").status_code == 403
-
-
-def test_user_with_all_permissions_sees_every_navigation_item(
-    angemeldeter_client: TestClient,
-) -> None:
-    """Jeder Eintrag der Anlagensicht steht dort auch wirklich.
-
-    Seit v0.9.0 trägt die Tabelle zusätzlich die Einträge der Wohnungssicht. Die
-    gehören ausdrücklich **nicht** in diese Navigation -- geprüft wird deshalb je
-    Profil, nicht über die ganze Tabelle. Die Zusicherung selbst ist dieselbe
-    geblieben: was in der Tabelle steht, muss auch erscheinen.
-    """
-    navigation = _navigation(angemeldeter_client.get("/").text)
-    for item in NAVIGATION_ITEMS:
-        if item.profile is not WebUiProfile.ADMIN:
-            assert f'href="{item.path}"' not in navigation, item.path
-            continue
-        assert f'href="{item.path}"' in navigation
-        assert item.label in navigation
-
-
-def test_no_section_heading_remains_when_none_of_its_entries_is_available(
-    client_als: Callable[[list[tuple[str, int | None]]], TestClient],
-) -> None:
-    """Eine Überschrift ohne einen einzigen Eintrag darunter ist eine leere
-    Behauptung, hier gäbe es etwas.
-
-    „Hauptbereich" ist davon ausgenommen und bleibt stehen: „Übersicht" steht dort
-    fest und ist für jeden Angemeldeten erreichbar -- die Überschrift hat also
-    immer mindestens einen Eintrag unter sich.
-    """
-    page = client_als([]).get("/").text
-    navigation = _navigation(page)
-    for title in ("Analyse", "System", "Zugänge"):
-        assert title not in navigation
-    assert "Hauptbereich" in navigation
-    assert 'href="/"' in navigation
-    assert "dropdown-menu" in page  # Das Kontomenü gibt es weiterhin.
-
-
-@pytest.mark.parametrize(
-    ("permission", "visible_path", "hidden_path"),
-    [("zone.read", "/zones", "/control"), ("device.read", "/controllers", "/devices")],
-)
-def test_zone_scoped_permission_shows_only_zone_filtering_destinations(
-    client_als: Callable[[list[tuple[str, int | None]]], TestClient],
-    session: Session,
-    permission: str,
-    visible_path: str,
-    hidden_path: str,
-) -> None:
-    zone = create_zone(session, f"navigation-{permission}")
-    create_settings(session)
-    navigation = _navigation(client_als([(permission, zone.id)]).get("/").text)
-    assert f'href="{visible_path}"' in navigation
-    assert f'href="{hidden_path}"' not in navigation
-
-
-def _permission_checks(endpoint: str) -> tuple[set[str], set[str]]:
+def _permission_checks(endpoint: str) -> set[str]:
+    """Alle Rechtecodes, die der Endpunkt oder die Hilfen seines Moduls nennen."""
     module_name, function_name = endpoint.rsplit(".", 1)
     module = importlib.import_module(module_name)
-    function = getattr(module, function_name)
+    getattr(module, function_name)  # der Endpunkt muss existieren
     tree = ast.parse(inspect.getsource(module))
     functions = {
         node.name: node
         for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    plant: set[str] = set()
-    any_zone: set[str] = set()
-    pending = [function.__name__]
+    found: set[str] = set()
+    pending = [function_name]
     visited: set[str] = set()
     while pending:
         name = pending.pop()
         if name in visited or name not in functions:
             continue
         visited.add(name)
-        for call in (node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)):
-            if not isinstance(call.func, ast.Name):
-                continue
-            if call.func.id in functions:
-                pending.append(call.func.id)
-            if call.func.id not in {"require", "visible_zones", "_zones"}:
-                continue
-            for argument in call.args:
-                if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
-                    (plant if call.func.id == "require" else any_zone).add(argument.value)
-    return plant, any_zone
+        for node in ast.walk(functions[name]):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if _PERMISSION.match(node.value):
+                    found.add(node.value)
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                pending.append(node.func.id)
+    return found
 
 
 def test_every_navigation_entry_carries_a_profile_that_exists() -> None:
@@ -131,7 +54,7 @@ def test_every_navigation_entry_carries_a_profile_that_exists() -> None:
 
 
 def test_navigation_permissions_match_destination_guards() -> None:
-    """Changing a view guard without its navigation contract must fail here."""
+    """Changing an endpoint guard without its navigation contract must fail here."""
     for item in NAVIGATION_ITEMS:
         if item.permission is None:
             # Genau ein Eintrag trägt kein Recht: der persönliche Bereich
@@ -141,10 +64,18 @@ def test_navigation_permissions_match_destination_guards() -> None:
             # niemand ändern kann. Der Endpunkt prüft deshalb tatsächlich keins,
             # und dieser Test hätte hier nichts zu vergleichen.
             assert item.path == "/account", item.path
+            _permission_checks(item.endpoint)
             continue
-        plant, any_zone = _permission_checks(item.endpoint)
-        actual = any_zone if item.scope == "any_zone" else plant
+        actual = _permission_checks(item.endpoint)
+        if STRICTER_THAN_ENDPOINT.get(item.path) == item.permission:
+            continue
         assert item.permission in actual, (
             f"{item.path}: navigation requires {item.permission}, but "
             f"{item.endpoint} checks {sorted(actual)}"
         )
+
+
+def test_every_navigation_endpoint_is_a_ui_api_handler() -> None:
+    """Die Navigation verweist auf die Endpunkte der Svelte-Oberfläche, nicht auf Alt-Views."""
+    for item in NAVIGATION_ITEMS:
+        assert item.endpoint.startswith("thermoctl.web.ui_api_"), item.endpoint

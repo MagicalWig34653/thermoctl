@@ -7,31 +7,9 @@ CDN-Aufruf würde jedem Betreiber-Netzwerk gegenüber Dritten verraten, wann jem
 die Heizungssteuerung öffnet.
 
 Die npm-Abhängigkeiten der neuen Svelte-Oberfläche (Quelle `frontend/`, Ausgabe
-`static/app/`) stehen mit Version und Lizenz in `frontend/HERKUNFT.md`. Die untenstehenden
-Dateien (Bootstrap, HTMX, Swagger UI, Mermaid) gehören zur bisherigen Oberfläche und bleiben bis
-zu deren Ablösung.
-
-## Bootstrap 5.3.3
-
-Quelle: https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/
-Lizenz: MIT (https://github.com/twbs/bootstrap/blob/main/LICENSE)
-
-| Datei | SHA-384 |
-|---|---|
-| `vendor/bootstrap/bootstrap.min.css` | `sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH` |
-| `vendor/bootstrap/bootstrap.bundle.min.js` | `sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz` |
-
-Das Bundle-JS enthält Popper.js, wird für Dropdowns/Toasts/Tooltips mitgeliefert,
-auch wenn die aktuellen Templates es noch nicht ausnutzen.
-
-## HTMX 2.0.4
-
-Quelle: https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js
-Lizenz: BSD 2-Clause (https://github.com/bigskysoftware/htmx/blob/master/LICENSE)
-
-| Datei | SHA-384 |
-|---|---|
-| `vendor/htmx/htmx.min.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
+`static/app/`) stehen mit Version und Lizenz in `frontend/HERKUNFT.md`. Hier liegt
+als Fremdcode nur noch Swagger UI (für `/docs`); Bootstrap, HTMX und Mermaid der früheren
+Jinja/HTMX-Oberfläche sind mit deren Ablösung entfernt.
 
 ## Swagger UI 5.17.14
 
@@ -56,21 +34,6 @@ Browser bei jedem Seitenaufruf vergeblich nach `/favicon.ico`.
 ReDoc (`/redoc`) ist ersatzlos abgeschaltet: dasselbe CDN-Problem, und eine zweite
 Lesefassung derselben Beschreibung ist den Ballast nicht wert.
 
-## Mermaid 11.4.1
-
-Quelle: https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js
-Lizenz: MIT (https://github.com/mermaid-js/mermaid/blob/develop/LICENSE)
-
-| Datei | SHA-384 |
-|---|---|
-| `vendor/mermaid/mermaid.min.js` | `sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I` |
-
-Für die Seite „Datenfluss“ (`/zones/data-flow`). Die Datei ist unverändert (kein
-`sourceMappingURL`), eine einzelne Datei ohne nachgeladene Teile. Sie wird nur auf dieser
-Seite geladen, und zwar von `static/data_flow.js` über die eigene Adresse -- nie von einem
-CDN. Gezeichnet wird mit `securityLevel: "strict"`; der Quelltext wird serverseitig aus
-dem Datenfluss-Graphen erzeugt und jeder Name dort escapt (`domain/data_flow_mermaid.py`).
-
 ## Pflege
 
 Beim Aktualisieren einer dieser Dateien: neue Version laden, Hash in dieser Tabelle
@@ -88,6 +51,4 @@ Beim Aktualisieren diesen Schritt wiederholen und beide Hash-Tabellen nachführe
 
 | Geänderte Datei | SHA-384 der lokalen Fassung |
 |---|---|
-| `vendor/bootstrap/bootstrap.min.css` | `sha384-wtrIRqztIYGvkbJp4m6Vi2ETIkyUhJ/Ik2fZyGQZwVxCUYzb3nUwIZnNQjzGbTLm` |
-| `vendor/bootstrap/bootstrap.bundle.min.js` | `sha384-HqZ4oRyF0315sRxm0icZGRHk+ppSPetPAgYnl2DqGNobhcX2fLVRHC771KNO7RC8` |
 | `vendor/swagger-ui/swagger-ui.css` | `sha384-ZpZakqAmqVkjVQvPHC7JrCdmocLHj570Ke/GDWRvH4HOi8I1rx8hZa2jIN6MMeNN` |

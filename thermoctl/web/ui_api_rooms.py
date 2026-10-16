@@ -52,8 +52,8 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.services import cluster
+from thermoctl.web.shared.home_notice import home_notice
 from thermoctl.web.shared.zone_status import MINUTES_PER_DAY, zone_status_context
-from thermoctl.web.tenant_views import _home_notice
 
 
 class RoomApiError(Exception):
@@ -257,7 +257,7 @@ class PlantOut(BaseModel):
 
 
 class HomeNoticeOut(BaseModel):
-    """Der Effekt eines Problems für die Wohnung, nicht die Ursache (`_home_notice`)."""
+    """Der Effekt eines Problems für die Wohnung, nicht die Ursache (`home_notice`)."""
 
     kind: Literal["sensor", "notbetrieb", "window"]
     zone_name: str
@@ -648,8 +648,8 @@ def _plant(
 def _home(
     zones: list[Zone], context: dict[str, object], now: datetime
 ) -> HomeOut:
-    """Dieselbe Entscheidung wie die Wohnungs-Startseite (`tenant_views._home_notice`)."""
-    notice = _home_notice(
+    """Dieselbe Entscheidung wie die Wohnungs-Startseite (`shared.home_notice.home_notice`)."""
+    notice = home_notice(
         zones,
         cast("dict[int, tuple[ZoneState, SensorStatus]]", context["states"]),
         cast("dict[int, Any]", context["emergency_banners"]),

@@ -335,18 +335,6 @@ PERIODS: dict[str, tuple[str, int]] = {
     "90": ("90 Tage", 90),
 }
 
-DEFAULT_PERIOD = "7"
-
-
-def period_days(key: str) -> tuple[str, int]:
-    """Beschriftung und Tageszahl zu einem Zeitraumschlüssel.
-
-    Ein unbekannter Schlüssel -- aus einem von Hand veränderten Abfrageparameter --
-    fällt auf den Vorgabezeitraum zurück, statt die Seite mit einem Fehler zu
-    beantworten. Zu sehen gibt es dann eben die letzte Woche.
-    """
-    return PERIODS.get(key, PERIODS[DEFAULT_PERIOD])
-
 
 def heating_periods(
     session: Session,

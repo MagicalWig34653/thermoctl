@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -16,7 +17,6 @@ import urllib.request
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlencode
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -216,7 +216,7 @@ def _live_server(
         if before_setup is not None:
             before_setup(LiveServer(base_url, database_url, admin_username, ADMIN_PASSWORD))
 
-        payload = urlencode(
+        payload = json.dumps(
             {
                 "username": admin_username,
                 "display_name": "Browsertest-Verwaltung",
@@ -226,8 +226,9 @@ def _live_server(
             }
         ).encode()
         request = urllib.request.Request(  # noqa: S310
-            f"{base_url}/setup",
+            f"{base_url}/ui-api/setup",
             data=payload,
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
@@ -235,8 +236,8 @@ def _live_server(
                 status = response.status
         except urllib.error.HTTPError as exc:
             status = exc.code
-        if status not in (200, 303):
-            raise RuntimeError(f"/setup hat mit Status {status} geantwortet, erwartet 303.")
+        if status != 200:
+            raise RuntimeError(f"/ui-api/setup hat mit Status {status} geantwortet, erwartet 200.")
 
         yield LiveServer(
             base_url=base_url,

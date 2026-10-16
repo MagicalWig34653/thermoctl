@@ -4,20 +4,16 @@ Grundsatz wie beim Diagramm selbst: Die Daten enthalten nur, was protokollierte 
 Wo keine Zeile liegt, liegt auch kein Eintrag -- die Anzeige sagt dort "keine Daten".
 """
 
-import html as html_module
 import json
 import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_shadow_decision, create_zone
+from tests.helpers import create_shadow_decision
 from thermoctl.domain import zone_history_chart as chart_module
 from thermoctl.domain.zone_history_chart import Sample, build_chart
-from thermoctl.web import templates
 from thermoctl.web.navigation import NAVIGATION_ITEMS
 
 BERLIN = "Europe/Berlin"
@@ -187,14 +183,6 @@ def test_the_payload_stays_compact_for_a_busy_week() -> None:
     assert len(text) < 20_000
 
 
-def test_the_attribute_form_of_the_json_cannot_leave_its_quotes() -> None:
-    from thermoctl.web.zone_views import _attribute_json
-
-    nasty = {"b": "x' onmouseover='alert(1)", "tz": "a&b<c>d", "c": [1, 2]}
-    text = str(_attribute_json(nasty))
-    for char in "'&<>":
-        assert char not in text
-    assert json.loads(text) == nasty
 
 
 # --- Seiten --------------------------------------------------------------------------
@@ -216,163 +204,26 @@ def _tile_ids(html: str) -> list[int]:
     return [int(value) for value in re.findall(r'id="zone-history-(\d+)"', html)]
 
 
-def test_a_card_carries_parseable_hover_data_and_the_drawing_sizes(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "hoverkarte")
-    _fill(session, zone)
-    page = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history").text
-    match = re.search(r"data-history-data='([^']*)'", page)
-    assert match is not None
-    payload = json.loads(html_module.unescape(match.group(1)))
-    assert payload["v"] == 1 and payload["e"] == 24 * 3600 and _cells(payload)
-    assert page.count("data-left=") == 4  # eine Maßangabe je Zeichnung
-    assert "data-history-plot" in page
-    # Nur eine Reihe Daten, nicht je Zeichnung: vier Zeichnungen, ein Datensatz.
-    assert page.count("data-history-data=") == 1
-    assert "<script" not in page
 
 
-def test_a_card_without_data_has_no_hover_data(client_als, session: Session) -> None:
-    zone = create_zone(session, "leerkarte")
-    page = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history").text
-    assert "data-history-data" not in page and "Keine Verlaufsdaten" in page
 
 
-def test_the_card_on_the_zone_page_keeps_its_ids_and_the_tile_gets_its_own(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "kennungen")
-    _fill(session, zone)
-    user = client_als([("zone.manage", zone.id)])
-    card = user.get(f"/zones/{zone.id}/history").text
-    tile = user.get(f"/zones/{zone.id}/history?tile=1").text
-    assert 'id="zone-history"' in card and 'aria-describedby="zone-history-summary"' in card
-    assert f'id="zone-history-{zone.id}"' in tile
-    assert f'aria-describedby="zone-history-{zone.id}-summary"' in tile
-    assert f'id="zone-history-{zone.id}-summary"' in tile
-    assert f'id="zone-history-{zone.id}-hatch-desktop"' not in tile  # nur bei unbekannter Absenkung
-    # Die Kachel hat keine eigene Zeitraumwahl (die steht auf der Seite) und verlinkt die Zone.
-    assert 'aria-label="Zeitraum"' not in tile
-    assert f'<a href="/zones/{zone.id}">' in tile
-    assert 'aria-label="Zeitraum"' in card
 
 
-def test_hatch_patterns_get_one_id_per_tile(client_als, session: Session) -> None:
-    zone = create_zone(session, "schraffur")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for index in range(5):
-        row = create_shadow_decision(session, zone)
-        row.decided_at = now - timedelta(minutes=5 - index)
-        row.temperature_c = Decimal("19.5")
-        row.setpoint_c = Decimal("20.5")  # Altzeile: weder Sollwert vor Absenkung noch Absenkung
-    session.flush()
-    tile = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history?tile=1").text
-    assert f'id="zone-history-{zone.id}-hatch-desktop"' in tile
-    assert f"url(#zone-history-{zone.id}-hatch-desktop)" in tile
 
 
-def test_overview_lists_only_the_zones_each_user_may_manage(
-    client_als, client: TestClient, session: Session
-) -> None:
-    mine = create_zone(session, "meinraum")
-    theirs = create_zone(session, "fremderraum")
-    first = client_als([("zone.manage", mine.id)]).get("/zones/history")
-    assert first.status_code == 200
-    assert _tile_ids(first.text) == [mine.id]
-    assert "Fremderraum" not in first.text and "fremderraum" not in first.text
-    second = client_als([("zone.manage", theirs.id)]).get("/zones/history")
-    assert _tile_ids(second.text) == [theirs.id]
-    assert "Meinraum" not in second.text
-    both = client_als([("zone.manage", None)]).get("/zones/history")
-    assert sorted(_tile_ids(both.text)) == sorted([mine.id, theirs.id])
-    # Die Seite trägt keine Messdaten: die holt jede Kachel einzeln, und dort prüft die
-    # Einzelkarte die Zone noch einmal.
-    assert "data-history-data" not in first.text
-    assert f'hx-get="/zones/{mine.id}/history?period=24h&amp;tile=1"' in first.text.replace(
-        "&tile=1", "&amp;tile=1"
-    )
-    assert 'hx-trigger="revealed"' in first.text
 
 
-def test_overview_answers_like_the_zone_list_without_the_right(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "nurlesen")
-    user = client_als([("zone.read", zone.id)])
-    overview = user.get("/zones/history")
-    listing = user.get("/zones")
-    assert overview.status_code == listing.status_code == 200
-    assert _tile_ids(overview.text) == []
-    assert "Noch keine sichtbaren Zonen vorhanden." in overview.text
-    assert "Nurlesen" not in overview.text
-    # Und die Verknüpfung dorthin steht dann auch nicht auf der Zonenliste.
-    assert "/zones/history" not in listing.text
-    nobody = client_als([]).get("/zones/history")
-    assert nobody.status_code == 200 and _tile_ids(nobody.text) == []
 
 
-def test_overview_tile_of_a_foreign_zone_is_refused_even_when_asked_for_directly(
-    client_als, session: Session
-) -> None:
-    mine = create_zone(session, "kachelmein")
-    theirs = create_zone(session, "kachelfremd")
-    user = client_als([("zone.manage", mine.id)])
-    assert user.get(f"/zones/{mine.id}/history?tile=1").status_code == 200
-    refused = user.get(f"/zones/{theirs.id}/history?tile=1")
-    assert refused.status_code == 404
-    assert "kachelfremd" not in refused.text.lower()
-    assert user.get(f"/zones/{theirs.id}/history?tile=1&period=ungültig").status_code == 404
 
 
-def test_overview_is_closed_to_tenants_and_anonymous_visitors(
-    client_als, tenant_client, client: TestClient, session: Session
-) -> None:
-    zone = create_zone(session, "mieterraum")
-    anonymous = client.get("/zones/history", follow_redirects=False)
-    assert anonymous.status_code in (303, 401) and "Mieterraum" not in anonymous.text
-    tenant = tenant_client([("zone.manage", zone.id)])
-    assert tenant.get("/zones/history").status_code == 403
-    assert tenant.get(f"/zones/{zone.id}/history?tile=1").status_code == 403
-    assert "Mieterraum" not in tenant.get("/zones/history").text
 
 
-def test_overview_rejects_an_unknown_period_and_passes_the_valid_one_to_every_tile(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "zeitraeume")
-    user = client_als([("zone.manage", zone.id)])
-    for bad in ("ungültig", "", "24H", "1d", "x" * 5000, "../etc"):
-        assert user.get("/zones/history", params={"period": bad}).status_code == 422, bad
-    for good in ("24h", "3d", "7d"):
-        page = user.get("/zones/history", params={"period": good}).text
-        chosen = re.findall(r'btn btn-primary"\s+hx-get="[^"]*period=(\w+)"', page)
-        assert chosen == [good] and f"period={good}&" in page
-    assert user.get("/zones/history").status_code == 200  # Vorgabe: 24 Stunden
 
 
-def test_overview_is_a_page_of_its_own_and_not_mistaken_for_a_zone(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "keinzoneid")
-    page = client_als([("zone.manage", zone.id)]).get("/zones/history")
-    assert page.status_code == 200 and "<h1" in page.text and "Verläufe aller Zonen" in page.text
-    assert "<title>Verläufe aller Zonen" in page.text
 
 
-def test_navigation_and_the_zone_list_point_to_the_overview(client_als, session: Session) -> None:
-    zone = create_zone(session, "wegweiser")
-    user = client_als([("zone.manage", zone.id)])
-    nav = re.search(r'<nav class="tc-sidenav.*?</nav>', user.get("/").text, re.S)
-    assert nav is not None and 'href="/zones/history"' in nav.group(0)
-    assert 'href="/zones/history"' in user.get("/zones").text
-    # Unter der Übersicht ist nur ihr eigener Eintrag die aktuelle Seite, nicht zugleich "Zonen".
-    here = re.search(r'<nav class="tc-sidenav.*?</nav>', user.get("/zones/history").text, re.S)
-    assert here is not None
-    assert here.group(0).count('aria-current="page"') == 1
-    assert re.search(r'href="/zones/history"\s+aria-current="page"', here.group(0))
-    nothing = re.search(r'<nav class="tc-sidenav.*?</nav>', client_als([]).get("/").text, re.S)
-    assert nothing is not None and "/zones/history" not in nothing.group(0)
 
 
 def test_the_navigation_entry_is_bound_to_the_right_the_view_checks() -> None:
@@ -380,43 +231,5 @@ def test_the_navigation_entry_is_bound_to_the_right_the_view_checks() -> None:
     assert (entry.permission, entry.scope, entry.section) == ("zone.manage", "any_zone", "analysis")
 
 
-def test_the_page_body_is_reusable_with_other_addresses_and_another_zone_filter() -> None:
-    """Die Nahtstelle für eine spätere Mieter-Route: Körper ohne Rechte und feste Adressen."""
-
-    class Room:
-        id = 7
-        display_name = "Mieterzimmer"
-
-    body = templates.env.get_template("zones_history_body.html").render(
-        zones=[Room()],
-        period="3d",
-        page_path="/wohnung/verlaeufe",
-        tile_path="/wohnung/raeume/{zone_id}/verlauf",
-        url_prefix="/ha",
-    )
-    assert 'hx-get="/ha/wohnung/verlaeufe?period=7d"' in body
-    assert 'hx-get="/ha/wohnung/raeume/7/verlauf?period=3d&amp;tile=1"' in body or (
-        'hx-get="/ha/wohnung/raeume/7/verlauf?period=3d&tile=1"' in body
-    )
-    assert "Mieterzimmer" in body and "/zones/" not in body
 
 
-@pytest.mark.parametrize("name", ["desktop", "desktop-full", "mobile", "mobile-tall"])
-def test_every_drawing_carries_its_own_plot_measures(
-    client_als, session: Session, name: str
-) -> None:
-    zone = create_zone(session, f"masse-{name}")
-    _fill(session, zone)
-    page = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history").text
-    layout = next(item for item in chart_module.LAYOUTS if item.name == name)
-    expected = f'viewBox="0 0 {layout.width} {layout.height}"'
-    svg = re.search(rf"<svg {re.escape(expected)}[^>]*>", page)
-    assert svg is not None
-    for key, value in (
-        ("left", layout.left),
-        ("right", layout.right),
-        ("top", layout.top),
-        ("bottom", layout.bottom),
-        ("lane-bottom", layout.lane_bottom),
-    ):
-        assert f'data-{key}="{value}"' in svg.group(0)

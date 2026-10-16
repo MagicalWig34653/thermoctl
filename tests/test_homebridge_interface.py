@@ -25,7 +25,7 @@ from thermoctl.domain.interfaces import (
     homebridge_broker_url,
     homebridge_zone_configs,
 )
-from thermoctl.integrations.mqtt.publication import command_topics, states_topics
+from thermoctl.integrations.mqtt.publication import states_topics
 
 
 def _settings(**overrides: object) -> Settings:
@@ -204,45 +204,8 @@ def test_zone_configs_placeholder_broker_when_none_is_configured(
 # --- the rendered page -------------------------------------------------------------
 
 
-def test_the_rendered_topics_match_publication_py(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """The guard: every topic shown must equal what `publication.py` builds for the
-    same zone and the same configured prefix -- not a second, hand-written copy."""
-    create_settings(session)
-    zone = create_zone(session, "wohnzimmer")
-    session.flush()
-
-    response = angemeldeter_client.get("/interfaces")
-    assert response.status_code == 200
-
-    configs = _configs_from_html(response.text)
-    assert zone.id in configs, "Die Zone erscheint nicht im Homebridge-Abschnitt."
-    topics = configs[zone.id]["topics"]
-
-    expected_state = states_topics(zone.id, "thermoctl")
-    expected_command = command_topics(zone.id, "thermoctl")
-    assert topics["getCurrentTemperature"]["topic"] == expected_state.current_temperature
-    assert topics["getTargetTemperature"]["topic"] == expected_state.setpoint
-    assert topics["setTargetTemperature"]["topic"] == expected_command.setpoint
-    assert topics["getCurrentHeatingCoolingState"]["topic"] == expected_state.would_heat
-    assert topics["getTargetHeatingCoolingState"]["topic"] == expected_state.operating_mode
-    assert topics["setTargetHeatingCoolingState"]["topic"] == expected_command.operating_mode
 
 
-def test_the_page_names_the_zone_and_carries_placeholder_credentials(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    create_zone(session, "schlafzimmer")
-    session.flush()
-
-    response = angemeldeter_client.get("/interfaces")
-    assert response.status_code == 200
-    assert "Schlafzimmer" in response.text
-    assert "mqtt-thing" in response.text
-    assert "docs/homebridge.md" in response.text
-    assert "docs/mqtt.md" in response.text
 
 
 def test_details_are_collapsed_by_default(
@@ -261,71 +224,11 @@ def test_details_are_collapsed_by_default(
         assert "open" not in match.group(), match.group()
 
 
-def test_no_zone_visible_without_zone_read(client_als, session: Session) -> None:
-    """`setting.manage` alone must not leak zone names -- the same distinction that
-    fixed the controller-device page's zone-name leak
-    (docs/sicherheitsdurchsicht-2026-09-02.md)."""
-    create_settings(session)
-    create_zone(session, "verborgene-zone")
-    session.flush()
-
-    response = client_als([("setting.manage", None)]).get("/interfaces")
-    assert response.status_code == 200
-    assert "verborgene-zone" not in response.text.lower()
-    assert "Keine Zone sichtbar" in response.text
 
 
-def test_only_the_zone_read_scoped_zone_is_shown(client_als, session: Session) -> None:
-    create_settings(session)
-    visible = create_zone(session, "sichtbare-zone")
-    hidden = create_zone(session, "verborgene-zone")
-    session.flush()
-
-    client = client_als(
-        [("setting.manage", None), ("zone.read", visible.id)]
-    )
-    response = client.get("/interfaces")
-    assert response.status_code == 200
-    assert visible.display_name in response.text
-    assert hidden.display_name not in response.text
 
 
-def test_global_zone_read_shows_every_zone(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    first = create_zone(session, "erste-zone")
-    second = create_zone(session, "zweite-zone")
-    session.flush()
-
-    response = angemeldeter_client.get("/interfaces")
-    assert response.status_code == 200
-    assert first.display_name in response.text
-    assert second.display_name in response.text
 
 
-def test_broker_placeholder_hint_when_mqtt_host_is_not_configured(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "wohnzimmer")
-    session.flush()
-
-    response = angemeldeter_client.get("/interfaces")
-    assert response.status_code == 200
-    configs = _configs_from_html(response.text)
-    assert "<broker-adresse>" in configs[zone.id]["url"]
-    assert "THERMOCTL_MQTT_HOST" in response.text
 
 
-def test_password_field_is_a_placeholder_not_thermoctls_own(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "wohnzimmer")
-    session.flush()
-
-    response = angemeldeter_client.get("/interfaces")
-    configs = _configs_from_html(response.text)
-    assert configs[zone.id]["username"] == "homebridge"
-    assert "<" in configs[zone.id]["password"]

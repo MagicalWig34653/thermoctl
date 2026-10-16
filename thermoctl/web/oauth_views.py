@@ -18,7 +18,6 @@ from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, has_permission, 
 from thermoctl.domain.oauth import OAuthError, approve, deny, load_request
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.token_presets import PRESETS
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web import templates
 from thermoctl.web.urls import prefixed
 
@@ -67,18 +66,13 @@ def _redirect(uri: str, **params: str | None) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def _leave(request: Request, url: str) -> Response:
-    """Weiterleitung auf die Redirect-URI des Clients, nie als HTMX-Anfrage.
+def _leave(url: str) -> Response:
+    """Weiterleitung auf die Redirect-URI des Clients.
 
-    Das Formular ist mit `hx-boost="false"` ein gewöhnlicher Seitenwechsel. Käme dennoch
-    eine HTMX-Anfrage an (ein anderes Basis-Template, ein späterer Umbau), würde der
-    XHR einer 303 auf eine fremde Adresse selbst folgen: Cross-Origin, mit Preflight,
-    den der Client nicht beantwortet -- die Zustimmung erreichte ihn nie, und der Code
-    wäre verbraucht. `HX-Redirect` lässt htmx stattdessen per `window.location`
-    navigieren, also als echten Seitenwechsel ohne XHR.
+    Das Formular der Zustimmung ist ein gewöhnlicher Seitenwechsel, kein XHR: Ein XHR
+    folgte der 303 auf eine fremde Adresse Cross-Origin, mit Preflight, den der Client
+    nicht beantwortet -- die Zustimmung erreichte ihn nie, und der Code wäre verbraucht.
     """
-    if request.headers.get("HX-Request") == "true":
-        return Response(status_code=status.HTTP_200_OK, headers={"HX-Redirect": url})
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -155,7 +149,6 @@ def _page(
             "preset": preset,
             "omitted": omitted,
             "error": error,
-            "is_tenant": principal.ui_profile is WebUiProfile.TENANT,
         },
     )
 
@@ -198,9 +191,7 @@ async def consent_submit(
         return _error()
     if action == "deny":
         deny(session, pending)
-        return _leave(
-            request, _redirect(pending.redirect_uri, error="access_denied", state=pending.state)
-        )
+        return _leave(_redirect(pending.redirect_uri, error="access_denied", state=pending.state))
     if action != "allow":
         return _page(
             request, session, principal, request_id, "read_only", error="Ungültige Aktion."
@@ -242,6 +233,4 @@ async def consent_submit(
         return HTMLResponse(
             "<h1>Diese Anfrage konnte nicht bestätigt werden.</h1>", status_code=400
         )
-    return _leave(
-        request, _redirect(pending.redirect_uri, code=code_plain, state=pending.state)
-    )
+    return _leave(_redirect(pending.redirect_uri, code=code_plain, state=pending.state))

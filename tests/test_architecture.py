@@ -5,7 +5,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent / "thermoctl"
 FORBIDDEN_FOR_DOMAIN = ("thermoctl.web", "thermoctl.api", "fastapi")
 TEMPLATES = ROOT / "web" / "templates"
-STYLESHEET = ROOT / "web" / "static" / "thermoctl.css"
 
 
 def _imports(file: Path) -> set[str]:
@@ -83,31 +82,6 @@ def test_no_second_template_environment() -> None:
     )
 
 
-def test_template_project_classes_have_css_rules() -> None:
-    """Every project-specific class used by a template has a stylesheet rule."""
-    class_attributes = re.compile(r'''class\s*=\s*(?:"([^"]*)"|'([^']*)')''', re.DOTALL)
-    project_class = re.compile(r"(?<![\w-])(?:t|tc)-[A-Za-z0-9_-]+")
-    used: dict[str, set[str]] = {}
-    for template in TEMPLATES.rglob("*.html"):
-        source = template.read_text(encoding="utf-8")
-        for attribute in class_attributes.finditer(source):
-            value = next(group for group in attribute.groups() if group is not None)
-            for name in project_class.findall(value):
-                # A trailing dash belongs to a Jinja-composed class such as
-                # `tc-node-{{ kind }}` and is not itself a browser class.
-                if not name.endswith("-"):
-                    used.setdefault(name, set()).add(template.name)
-
-    defined = {
-        match[1:]
-        for match in re.findall(
-            r"\.(?:t|tc)-[A-Za-z0-9_-]+", STYLESHEET.read_text(encoding="utf-8")
-        )
-    }
-    missing = [
-        f"{name}: {', '.join(sorted(used[name]))}" for name in sorted(used.keys() - defined)
-    ]
-    assert not missing, "Project classes without a CSS rule:\n" + "\n".join(missing)
 
 
 def test_no_emoji_in_any_of_our_own_interface_files() -> None:
@@ -134,16 +108,13 @@ def test_no_emoji_in_any_of_our_own_interface_files() -> None:
         "\u2B00-\u2BFF"            # Zusätzliche Pfeile und geometrische Formen
         "\uFE0F]"                   # Variantenselektor "als Emoji darstellen"
     )
-    roots = [
-        TEMPLATES,
-        STYLESHEET.parent,
-    ]
+    roots = [TEMPLATES, ROOT.parent / "frontend" / "src"]
     findings: list[str] = []
     for root in roots:
         for path in sorted(root.rglob("*")):
             if not path.is_file() or "vendor" in path.parts:
                 continue
-            if path.suffix not in {".html", ".css", ".js", ".svg"}:
+            if path.suffix not in {".html", ".css", ".js", ".svg", ".svelte", ".ts"}:
                 continue
             for number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1

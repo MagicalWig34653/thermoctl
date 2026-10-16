@@ -3,7 +3,7 @@
   import KioskPage from '$lib/components/access/KioskPage.svelte';
   import PeoplePage from '$lib/components/access/PeoplePage.svelte';
   import TokensPage from '$lib/components/access/TokensPage.svelte';
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  import NotFound from '$lib/components/NotFound.svelte';
   import ControllersPage from '$lib/components/devices/ControllersPage.svelte';
   import DevicesPage from '$lib/components/devices/DevicesPage.svelte';
   import PlantPage from '$lib/components/devices/PlantPage.svelte';
@@ -86,5 +86,5 @@
   </header>
   <ModesAdmin />
 {:else}
-  <Placeholder title={page.label} description={area.label} links={page.links} />
+  <NotFound />
 {/if}

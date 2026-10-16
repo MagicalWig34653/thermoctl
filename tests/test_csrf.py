@@ -62,22 +62,20 @@ def test_the_api_does_not_accept_a_session_cookie(client: TestClient, session, u
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.parametrize("path", ["/zones"])
+@pytest.mark.parametrize("path", ["/ui-api/csrf-probe", "/oauth/consent"])
 def test_a_state_changing_route_without_a_token_is_rejected(
-    client: TestClient, angemeldeter_client: TestClient, path: str
+    angemeldeter_client: TestClient, path: str
 ) -> None:
-    """Deliberately not `/logout` any more -- see the recovery tests below.
+    """Deliberately not the login/logout routes -- see the recovery test below.
 
-    This test used to point at `/logout`, and that was exactly the behaviour that
-    stranded a user: with a stale page, every form was refused *and so was the way
-    out of it*. The rejection itself still has to hold, so it now uses an ordinary
-    state-changing route.
+    With a stale page, every form was refused *and so was the way out of it*. The
+    rejection itself still has to hold for an ordinary state-changing route.
     """
     response = angemeldeter_client.post(path)
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
-@pytest.mark.parametrize("path", ["/logout", "/login"])
+@pytest.mark.parametrize("path", ["/ui-api/logout", "/ui-api/login"])
 def test_a_stale_page_can_still_log_out_and_back_in(
     angemeldeter_client: TestClient, path: str
 ) -> None:
@@ -89,22 +87,36 @@ def test_a_stale_page_can_still_log_out_and_back_in(
     the right cookie by hand, which is not something to ask of anyone.
 
     The request stays unexecuted; what changes is that the session and CSRF cookies
-    are cleared and the browser lands on the login form.
+    are cleared (the app reads the JSON marker and shows the login).
     """
-    response = angemeldeter_client.post(path, follow_redirects=False)
+    response = angemeldeter_client.post(
+        path, json={"username": "x", "password": "y"} if path.endswith("login") else None
+    )
 
-    assert response.status_code == status.HTTP_303_SEE_OTHER
-    assert response.headers["location"] == "/login?stale=1"
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["stale"] is True
     gesetzt = response.headers.get_list("set-cookie")
     assert any(COOKIE_NAME in eintrag for eintrag in gesetzt)
     assert any(CSRF_COOKIE_NAME in eintrag for eintrag in gesetzt)
 
 
+def test_a_non_recovery_route_keeps_the_cookies_on_a_stale_token(
+    angemeldeter_client: TestClient,
+) -> None:
+    """Only the two recovery paths clear cookies; anything else is just refused."""
+    response = angemeldeter_client.post("/ui-api/csrf-probe")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["stale"] is True
+    assert response.headers.get_list("set-cookie") == []
+
+
 def test_a_browser_gets_a_readable_page_instead_of_json(
     angemeldeter_client: TestClient,
 ) -> None:
-    """`{"detail": "Ungültiges CSRF-Token"}` tells nobody what to do next."""
-    response = angemeldeter_client.post("/zones", headers={"Accept": "text/html"})
+    """`{"detail": "Ungültiges CSRF-Token"}` tells nobody what to do next (server-side
+    pages, today the OAuth consent)."""
+    response = angemeldeter_client.post("/oauth/consent", headers={"Accept": "text/html"})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert "text/html" in response.headers["content-type"]
@@ -112,52 +124,13 @@ def test_a_browser_gets_a_readable_page_instead_of_json(
     assert "neu laden" in response.text
 
 
-def test_an_htmx_control_is_marked_so_the_page_can_say_something(
+def test_a_script_client_gets_json_instead_of_the_page(
     angemeldeter_client: TestClient,
 ) -> None:
-    """Measured in the browser: without this, the control simply did nothing.
-
-    htmx ignores the body of an error answer, so a message put there is seen by
-    nobody. The marker header is what the small handler in `base_core.html` turns into a
-    visible notice. Deliberately not `HX-Refresh`: that was tried, and a control
-    that fires again on restore turns it into a loop of reload and refusal.
-    """
-    response = angemeldeter_client.post(
-        "/zones", headers={"Accept": "text/html", "HX-Request": "true"}
-    )
+    response = angemeldeter_client.post("/oauth/consent", headers={"Accept": "application/json"})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.headers["HX-Stale-Page"] == "1"
-    assert "HX-Refresh" not in response.headers
     assert response.json() == {"detail": "Ungültiges CSRF-Token"}
-
-
-def test_the_base_template_turns_that_marker_into_something_visible() -> None:
-    """The header alone changes nothing -- somebody has to render it."""
-    from pathlib import Path as _Path
-
-    base = (
-        _Path(__file__).parent.parent
-        / "thermoctl" / "web" / "templates" / "base_core.html"
-    ).read_text(encoding="utf-8")
-
-    assert "htmx:responseError" in base
-    assert "HX-Stale-Page" in base
-    assert "location.reload" in base
-
-
-@pytest.mark.parametrize("path", ["/logout", "/login"])
-def test_htmx_is_sent_out_of_a_stale_page_by_its_own_header(
-    angemeldeter_client: TestClient, path: str
-) -> None:
-    """A redirect alone would be followed invisibly and swapped into the old page."""
-    response = angemeldeter_client.post(
-        path, headers={"HX-Request": "true"}, follow_redirects=False
-    )
-
-    assert response.headers["HX-Redirect"] == "/login?stale=1"
-    gesetzt = response.headers.get_list("set-cookie")
-    assert any(COOKIE_NAME in eintrag for eintrag in gesetzt)
 
 
 def test_a_state_changing_route_with_a_valid_token_goes_through(
@@ -167,54 +140,36 @@ def test_a_state_changing_route_with_a_valid_token_goes_through(
     from thermoctl.config import get_settings
 
     headers = {"X-CSRF-Token": csrf_token(secret, get_settings().secret_key.get_secret_value())}
-    response = angemeldeter_client.post("/logout", headers=headers, follow_redirects=False)
-    assert response.status_code == status.HTTP_303_SEE_OTHER
+    response = angemeldeter_client.post("/ui-api/csrf-probe", headers=headers)
+    assert response.status_code == status.HTTP_200_OK
 
 
 def test_a_valid_token_in_a_form_field_goes_through_without_a_header(
     angemeldeter_client: TestClient,
 ) -> None:
+    """The OAuth consent form is an ordinary HTML form: it can only send its fields."""
     from thermoctl.config import get_settings
 
     secret = angemeldeter_client.cookies[COOKIE_NAME]
     token = csrf_token(secret, get_settings().secret_key.get_secret_value())
 
     response = angemeldeter_client.post(
-        "/logout", data={"csrf_token": token}, follow_redirects=False
+        "/oauth/consent", data={"csrf_token": token, "request": "gibt-es-nicht", "action": "deny"}
     )
 
-    # Straight to `/login`, not to `/`: a logout that lands on the start page and is
-    # only redirected onward from there is followed invisibly by `hx-boost`, which
-    # swaps the content and leaves the address bar on `/`. Reported from use as "beim
-    # Abmelden wird man nicht zum Login geleitet" -- the page was right, the address
-    # was not.
-    assert response.status_code == status.HTTP_303_SEE_OTHER
-    assert response.headers["location"] == "/login"
+    # Past the CSRF check: the unknown request is a 404 of the consent page itself.
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_without_a_session_cookie_the_protection_does_not_apply(client: TestClient) -> None:
     """Login itself carries no cookie and must not fail due to CSRF protection."""
-    response = client.post("/login", data={"username": "gibtesnicht", "password": "x"})
+    response = client.post("/ui-api/login", json={"username": "gibtesnicht", "password": "x"})
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 def test_csrf_cookie_is_set_at_login(client: TestClient, user) -> None:
     response = client.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
-    assert response.status_code == status.HTTP_303_SEE_OTHER
+    assert response.status_code == status.HTTP_200_OK
     assert CSRF_COOKIE_NAME in client.cookies
-
-
-def test_base_template_carries_the_csrf_cookie_via_htmx() -> None:
-    """Without the browser bridge, real form submissions end in 403 despite the cookie."""
-    from pathlib import Path
-
-    base_template = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base_core.html"
-    ).read_text(encoding="utf-8")
-    assert 'hx-boost="true"' in base_template
-    assert 'headers["X-CSRF-Token"]' in base_template
-    assert "thermoctl_csrf=" in base_template

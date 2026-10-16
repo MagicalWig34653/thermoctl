@@ -1,5 +1,7 @@
 # Funktionsmatrix UI-Migration (Bestand v0.17.1 nach Svelte)
 
+**Status 2026-10-17: umgesetzt, Alt-Oberfläche entfernt** (Worktree `ui/delete-legacy`). Die Spalten „Alt-Seite/Alt-Test" beschreiben den entfernten Stand; maßgeblich sind jetzt `frontend/src`, `thermoctl/web/ui_api*.py`, `kiosk_api.py` und `legacy_redirects.py`. Noch teilweise: Schaltpunkt ohne Zeiger anlegen, drei Anzeigefelder der Notbetrieb-Aktortabelle (siehe `docs/STATUS.md`).
+
 Nachverfolgbare Zuordnung `Bestandsfunktion -> Svelte-Ansicht -> Endpunkt/Adapter -> Berechtigung -> Test -> Status` für die gesamte heutige Weboberfläche. Sie ist die Abnahmegrundlage für „jede produktive Funktion ist einer neuen Ansicht zugeordnet“ (ENTSCHEIDUNGEN-UI-REDESIGN §8).
 
 Quellen: `thermoctl/web/*_views.py` und `navigation.py` (v0.17.1, 126 Routen-Dekoratoren in 25 Modulen), Inventurberichte Web / API+Build / Demo, `svelte-demo/FUNKTIONSMATRIX.md` (v6), `ENTSCHEIDUNGEN-UI-REDESIGN.md` §2 (sieben Menübereiche). Die Spalte „Status“ ist der Abgleich mit dem gebauten Stand (Branch `ui/parity`, Prüfung 2026-10-16): jede Behauptung stammt aus `frontend/src`, `thermoctl/web/ui_api*.py`/`kiosk_api.py` und den Tests; gelaufen sind die UI-API- und Kiosk-Tests (Python, SQLite) und die Frontend-Tests (siehe Abschnitt „Abnahme-Übersicht“).

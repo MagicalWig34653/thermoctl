@@ -1,23 +1,43 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-15.
+Letzte Aktualisierung: 2026-10-17.
 
-## UI-Migration auf Svelte (laufend)
+## Oberfläche auf Svelte umgestellt (2026-10-17, nicht freigegeben)
 
-Entscheidung des Projektinhabers, 2026-10-15: Die komplette Weboberfläche wird mit Svelte 5 + TypeScript,
-shadcn-svelte/Bits UI und Tailwind (Vite) neu gebaut; das ersetzt „Jinja/HTMX/Bootstrap, kein npm" (`CLAUDE.md`).
+Die Jinja/HTMX/Bootstrap-Oberfläche ist entfernt (Auftrag des Projektinhabers, „die alte UI rausschmeißen"; Bedingung
+„alle Funktionen in der neuen UI" laut zweiter Paritätsprüfung erfüllt, Belege `docs/ui-migration/FUNKTIONSMATRIX.md`).
+Stand Worktree `ui/delete-legacy`, **nicht gemergt, nicht released, Version unverändert, Add-on-Repository unberührt.**
 
-- Quelle `frontend/`, Ausgabe `thermoctl/web/static/app/` (nicht eingecheckt), ausgeliefert vom Python-Container.
-  Node nur zur Build-Zeit: Build-Stufe in `docker/Dockerfile`; Endabbild ohne Node.
-- Die bisherige Jinja/HTMX/Bootstrap-Oberfläche läuft unverändert weiter, bis sie seitenweise abgelöst ist.
-- CI: Job `frontend` (`npm ci`, `npm run check`, `npm test`, `npm run build`) vor dem Python-Lauf; die gebaute
-  Oberfläche geht als Artefakt an die Python-Jobs. `docker.yml` unverändert (Dockerfile baut selbst).
-- Ingress: Asset-Pfade relativ gebaut, der Server setzt den Präfix zur Laufzeit ein (`docs/self-hosting.md`, 6c).
-- Abhängigkeiten mit Version und Lizenz: `frontend/HERKUNFT.md`; 24 Pakete (lightningcss) stehen unter MPL-2.0.
-- Entwicklung: README, Abschnitt „Oberfläche bauen und entwickeln". Der Dev-Proxy von `npm run dev` auf das
-  Backend ist im Gerüst noch nicht in `vite.config.ts` eingetragen.
-- Nicht geprüft: CI-Lauf der neuen Schritte (Workflow nicht ausgeführt); Python-Jobs setzen voraus, dass
-  `frontend/` im selben Stand vorhanden ist (Merge von `ui/durchstich-frontend`).
+- **Es gibt nur noch die Svelte-SPA** unter `/app` (Quelle `frontend/`, Ausgabe `thermoctl/web/static/app/`, nicht
+  eingecheckt), Daten über `/ui-api` (Sitzung, CSRF-Header) und `/kiosk-api` (Kiosk-Cookie). Node nur zur Build-Zeit;
+  CI-Job `frontend` und `docker/Dockerfile` unverändert. Ingress: Asset-Pfade relativ gebaut, der Server setzt den Präfix
+  zur Laufzeit ein.
+- **Entfernt:** alle Alt-HTML-Seiten und alle Alt-Formular-POSTs (21 `*_views.py`), 52 Templates, Alt-JS,
+  `thermoctl.css`, Bootstrap, HTMX, Mermaid, die HTMX-Hilfen in `web/__init__.py` und `web/forms.py`, der Profil-Wächter
+  web/guards (Datei entfernt), `/login`-Formular und `POST /logout`. Die Weiterleitungen in `web/legacy_redirects.py` übernehmen jeden
+  alten GET-Pfad; ein alter POST antwortet 404/405.
+- **Bewusst serverseitig geblieben:** OAuth-Zustimmung `/oauth/consent` (Clickjacking-Schutz, absolute Weiterleitung;
+  Vorlage ohne Fremdcode), Passkey-JSON-Routen `/passkey/...`, Kiosk-Einlösung `GET /kiosk/{token}` (setzt das Cookie,
+  leitet auf `/app/kiosk`) mit Hinweisseite für ein ungültiges Token, Hinweisseite „Seite veraltet" für server-
+  gerenderte POSTs. Gemeinsame Hüllen: `base_plain.html` (eigener kleiner Stil, kein Fremdcode, keine Skripte).
+- **Verschobene Funktionen:** `home_notice` (Wohnungshinweis) nach `web/shared/home_notice.py`; die übrigen Helfer standen
+  schon in `web/shared/`.
+- **Abweichungen gegenüber der Alt-Oberfläche** (Matrix, Zeilen „bewusst anders"): Sollwert −/+ nur im Raumdetail;
+  Messquelle in der Zuordnung statt im Raumformular; Zeiträume 24 Std./7/30 Tage statt 24 h/3/7 Tage; Wochenplan per
+  Pinsel und Inspektor statt Formular; Löschen mit „Rückgängig" statt Bestätigungsseite; Auswahlfelder statt Ziehen bei der
+  Zuordnung; kein Autofill-Login; kein globaler Ladebalken; Sitzungsablauf führt zur Anmeldung. Noch teilweise: Schaltpunkt
+  ohne Zeiger/Touch neu anlegen (nur Verschieben/Kürzen per Tastatur) und drei Anzeigefelder der Notbetrieb-Aktortabelle
+  (`phase_deadline_at`, `cycle_source`, `sensor_timeout_seconds`).
+- **Entfallen mit der Alt-Oberfläche:** die HTML-Passwortänderung ohne bisheriges Passwort (`/users/{id}/password`);
+  eigenes Passwort ändert nur noch `PUT /ui-api/account/password` mit bisherigem Passwort.
+- **Tests:** 328 übersprungene Alt-Tests (`legacy-ui`) und weitere reine Alt-Seiten-/Formulartests gelöscht; Wächter
+  (`test_ui_profile`, `test_csrf`, `test_navigation`, `test_endpoint_coverage`, `test_smoke_test`) auf die verbleibenden
+  Router umgestellt. `browser_tests/` auf Anmeldung/Abmeldung, Ingress-Präfix, Kiosk und OAuth-Zustimmung gekürzt.
+- **Offene Entscheidungen für den Projektinhaber:** (1) fehlendes Audit bei der Ausstellung von API-Tokens und
+  Kiosk-Tokens, bei `set_binding` und `configure_channel`; (2) Entscheidung zur OAuth-Zustimmung (serverseitig lassen oder
+  in die SPA holen); (3) Einrichtung (`/setup`) als SPA-Seite mit `POST /ui-api/setup`; (4) Eskalation über `user.manage`
+  (wer Benutzer verwaltet, kann sich Rechte verschaffen); (5) `audit.read` wirkt anlagenweit; (6) der Fehlversuchszähler
+  der Anmeldung liegt im Prozessspeicher (mehrere Prozesse zählen getrennt).
 
 ## Offene Entscheidungen (Projektinhaber)
 
@@ -39,7 +59,7 @@ Tag `v0.17.0`, GitHub-Release, Abbild auf ghcr.io gebaut, CI grün (SQLite, Mari
 gepusht. Zwei Neuerungen: Login-Weiterleitung und Zuordnungskarte, dazu die Zuordnungsregel „ein Gerät, eine Zone".
 **Nicht ausprobiert:** echter Browser mit Passkey-Rücksprung, Ingress-Betrieb, die Karte auf dem Handy und mit Touch,
 die echte Anlage. **Bekannt offen:** Browsertests laufen im Gesamtlauf nicht stabil (Karten-Tests einzeln grün; im
-geteilten Server liegen andere Karten über Linienmitten); `browser_tests/test_screenshots.py` meldet drei Routen aus
+geteilten Server liegen andere Karten über Linienmitten); browser_tests/test_screenshots.py meldet drei Routen aus
 0.15.0/0.16.0 ohne Screenshot (`/changes`, `/oauth/consent`, `/zones/data-flow`); die Zuordnungsregel
 hat auf MariaDB bei gleichzeitigen Anfragen eine Restlücke (DB-Fehler statt Meldung, aber keine zweite Zeile).
 
@@ -166,7 +186,7 @@ auf 0.15.0 gepusht).
   (`build_data_flow`), entschieden ausschließlich über `thermostat_mode.switches/writes_setpoint/writes_actual`;
   Mermaid-Quelltext getrennt in `domain/data_flow_mermaid.py` (Positivliste, alles Unbekannte als `#<Codepunkt>;`).
   Mermaid 11.4.1 lokal unter `static/vendor/mermaid/` (MIT, SHA-384 in `static/HERKUNFT.md`), geladen nur von
-  `static/data_flow.js`, `securityLevel: "strict"`. Ohne JavaScript: Quelltext im `<pre>` plus Kantenliste.
+  static/data_flow.js, `securityLevel: "strict"`. Ohne JavaScript: Quelltext im `<pre>` plus Kantenliste.
   Auf dem Handy scrollt das Bild seitlich (Mindestbreite 720 px).
 - Geprüft: `tests/test_data_flow.py`, Smoke-Test, Playwright-Test `browser_tests/test_data_flow.py`.
 - Annahme: ein Aktor ohne `switch`/`thermostat`-Fähigkeit in `controlled` erscheint als gestrichelte Kante.
@@ -194,7 +214,7 @@ auf 0.15.0 gepusht).
 ## 0.13.0 (2026-10-11)
 
 Neu seit 0.12.0, keine Migration: **Werte am Mauszeiger** im Temperaturverlauf (Maus, Touch, Pfeiltasten; Daten
-einmal je Karte als JSON im Attribut `data-history-data`, `zone_history_chart.hover_payload`, `zone_history.js`),
+einmal je Karte als JSON im Attribut `data-history-data`, `zone_history_chart.hover_payload`, zone_history.js),
 die Seite **„Verläufe aller Zonen“** (`/zones/history`, Analyse → Zonenverläufe; Kacheln laden nacheinander
 nach, `hx-sync`; Recht `zone.manage` über `visible_zones`, nur Anlagensicht) und die Seite **„Verlauf“ der
 Wohnungssicht** (`/temperature-history`, Kachel-Route `/temperature-history/{id}/tile`; Filter
@@ -273,7 +293,7 @@ Bekannte Grenze: der Docstring von `app.py::_emergency_notices` („nie ein drit
 passt für den Absturzfall nicht ganz.
 
 **Temperaturverlauf je Zone** (Reiter Zonendaten, oberhalb des Formulars; `domain/zone_history_chart.py`,
-`web/templates/zone_history_chart.html`, `static/zone_history.js`): Ist, Zeitplan-Soll, wirksamer Soll,
+`web/templates/zone_history_chart.html`, static/zone_history.js): Ist, Zeitplan-Soll, wirksamer Soll,
 Sonnenabsenkung als beschriftetes Band, Heizanforderung als eigene Spur, Zeiträume 24 Stunden,
 3 oder 7 Tage (HTMX-Partial `/zones/{id}/history`), Vollbild mit je einer Zeichnung für Breit- und
 Hochformat. **Grundsatz: es zeichnet nur, was protokollierte Zeilen belegen.** Sonnenband, „Absenkung
@@ -294,7 +314,7 @@ Hülle bei einem einzelnen Abschnitt), das letzte Gegenlesen machte ein unabhän
 etwa eine Minute; Ende-zu-Ende-Messung gegen 570 000 Zeilen steht aus (Berechnung 17 000 Zeilen
 etwa 0,4 s, Abfrage über `ix_shadow_decision_zone_decided_id`).
 
-**PNG-Maßregel:** `browser_tests/test_screenshots.py` kennt Abschnittsausschnitte
+**PNG-Maßregel:** browser_tests/test_screenshots.py kennt Abschnittsausschnitte
 (`View.section`; zurzeit `anlage-einstellungen-notbetrieb`, `anlage-bad-parameter-notbetrieb`),
 abgeleitet aus der Ansichtenliste. `anlage-bad-parameter-notbetrieb.png` war veraltet und wurde
 neu erzeugt.
@@ -479,7 +499,7 @@ Home-Assistant-MQTT-Entität kennt nur `sensor:<zone id>`-Schlüssel, Notbetrieb
   wirksame Werte mit Herkunft daneben.
 - **Regelvorgaben-Karte „Notbetrieb bei Sensorausfall"** (`/settings`, `settings.html`): ein
   Speichern-Knopf für Festtakt, Rückkehrprüfung, Wiederanlaufspanne, anlagenweiten Notsollwert
-  und die Außenkennlinie als Zeilen (`sensor_failure_curve.js`, wiederholte
+  und die Außenkennlinie als Zeilen (sensor_failure_curve.js, wiederholte
   `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`-Felder). Die Eingabe wird vor jedem
   Schreiben vollständig validiert; ein ungültiger Punkt oder eine unvollständige Zeile verwirft
   alles. Aktive Festtakte werden bei Änderung von Mindestzeiten und Regelintervall erneut
@@ -573,7 +593,7 @@ weiterer bestätigter Fall.
 Neuer Browsertest `browser_tests/test_form_hygiene.py::test_at_most_one_visible_
 speichern_button_per_page` (seitenweit, nicht mehr nur je Karte — genau die Lücke,
 durch die dieser Fehler bisher gerutscht ist) sowie
-`browser_tests/test_parameter_page_single_save.py` (echter Rundlauf: Checkbox
+browser_tests/test_parameter_page_single_save.py (echter Rundlauf: Checkbox
 setzen, den einen Knopf drücken, in neuem Kontext neu laden). HTTP-Regressionstests
 in `tests/test_daily_views.py`.
 
@@ -625,7 +645,7 @@ name=...)` suchen, sind davon nicht betroffen. Die font-spezifischen
 (siehe `.btn`s eigene Begründung in `thermoctl.css`) -- jetzt 44×44 px, ohne
 Layoutbruch bei 1280 und 390 px (Screenshots angesehen).
 
-Neuer Regressionstest `browser_tests/test_icon_centering.py`: misst die
+Neuer Regressionstest browser_tests/test_icon_centering.py: misst die
 Icon-Fläche (SVG-Bounding-Box bzw., für den historischen Nachweis unten,
 `CanvasRenderingContext2D.measureText()`s `actualBoundingBox*`-Metriken)
 gegen 1 px Toleranz, auf `/`, der Wohnungssicht-Startseite und
@@ -856,7 +876,7 @@ Zwei Nachbesserungen aus dem Kreuzreview der Navigations-Änderung unten:
   angerührt. Die „Rollen"-Tabelle in `device_assignment.html` trug denselben
   Fehler an einer Tabelle statt einer `.row` (fiel erst beim Ansehen der
   Screenshots auf) und ist jetzt ebenfalls `.tc-stack-table`.
-  Neuer Browsertest `browser_tests/test_form_field_width.py`: 390px, alle
+  Neuer Browsertest browser_tests/test_form_field_width.py: 390px, alle
   eindeutigen Anlagensicht-Routen, jedes sichtbare `select`/Text-`input`
   braucht ≥8rem Breite (Kriterium bewusst die Breite, nicht
   `scrollWidth`/`clientWidth` -- bei `select` unzuverlässig). Begründete
@@ -878,7 +898,7 @@ jetzt entfernt; „Mehr" ist der einzige mobile Zugang und öffnet `#tc-sidebar`
 Bootstrap-Offcanvas (`offcanvas-lg offcanvas-start`, Bootstrap 5.3.3) -- eine fixe
 Schublade über dem Inhalt, unabhängig von der Scrollposition, mit Hintergrund, Escape,
 Tippen daneben und Schließen-Knopf; ein Klick auf einen Navigationslink schließt sie
-zusätzlich (`page_scripts.js`, da Bootstrap das von sich aus nicht tut). Am Desktop
+zusätzlich (page_scripts.js, da Bootstrap das von sich aus nicht tut). Am Desktop
 steht die Seitenleiste unverändert fest.
 
 Zwei Stolperfallen dabei, beide erst durch einen echten Browser sichtbar geworden, nicht
@@ -903,12 +923,12 @@ jeweils `.tc-stack-table` (mit einer neuen, generischen `data-label`-Beschriftun
 Tabellen ohne eigenes Spezial-Layout) oder gestapelte `dt`/`dd`. Der Wochenplan
 (`/zones/{id}/schedule`) bleibt als Woche nebeneinander, jetzt aber horizontal
 scrollbar mit 9rem Mindestbreite je Tag statt schrumpfend bis zur Unlesbarkeit;
-`schedule.js` misst weiterhin per `getBoundingClientRect()` und ist unberührt. Der
+schedule.js misst weiterhin per `getBoundingClientRect()` und ist unberührt. Der
 winzige "ändern"-Verweis in jedem Zeitplanbalken (`.schedule-mode-link`, eine
 1,15rem-Box) bekam `white-space: nowrap`, weil sein Text sonst grundsätzlich --
 unabhängig von der Bildschirmbreite -- mitten im Wort brach.
 
-Ein neuer, generischer Browsertest (`browser_tests/test_mobile_word_wrap.py`) fährt bei
+Ein neuer, generischer Browsertest (browser_tests/test_mobile_word_wrap.py) fährt bei
 390×844 alle Anlagensicht-Ansichten aus `tools/screenshot_views.py` mit den
 Doku-Demodaten ab und schlägt bei jedem Wortumbruch mitten im Zeichen sowie bei
 horizontalem Dokumentüberlauf fehl (Ausnahmen: `pre`/`code`-Blöcke für wörtlich
@@ -926,7 +946,7 @@ im rohen HTML bzw. per Playwright, nicht nur statisch gelesen): `/controllers`,
 `/zones/{id}/parameters`, `/zones/{id}/setpoints`, `/modes/{id}`, `/settings`,
 `/account`, `/schedule`, `/heating-time` (Wohnung) sowie alle 39 eindeutigen
 GET-Ansichten aus `tools/screenshot_views.py` über den neuen generischen
-Browsertest `browser_tests/test_form_hygiene.py`.
+Browsertest browser_tests/test_form_hygiene.py.
 
 **Bestätigt und behoben:**
 - **`/controllers`, Lese-Kanal-Formular:** `<select name="kind">` hatte keine
@@ -961,7 +981,7 @@ tatsächlich genutzten `hx-get`/`hx-swap="outerHTML"`-Polling-Stellen
 (`start.html`, `tenant_start.html`) tauschen ein Element durch sich selbst
 aus, verdoppeln nichts.
 
-**Neuer Test:** `browser_tests/test_form_hygiene.py` -- für jede eindeutige
+**Neuer Test:** browser_tests/test_form_hygiene.py -- für jede eindeutige
 Anlagen- und Wohnungs-Ansicht aus `tools/screenshot_views.py`: höchstens ein
 sichtbarer, gleichlautender Speichern-Knopf je Formular, kein sichtbares
 Eingabefeld mit demselben Namen doppelt im selben Formular (Checkboxen/Radios
@@ -1015,12 +1035,12 @@ eine zweite Ebene:
   ggf. "Übersteuerung aufheben", ein Zurück-Knopf). Rückkehr durch Zurück oder
   automatisch nach 45 s ohne Bedienung.
 - **Umschaltung** über `?ansicht=panel`/`?ansicht=tafel`/`?ansicht=auto`
-  (`auto` entscheidet die Bildschirmbreite bei 600 px, `kiosk_panel.js`,
+  (`auto` entscheidet die Bildschirmbreite bei 600 px, kiosk_panel.js,
   `matchMedia`), gemerkt in einem eigenen Cookie
   (`thermoctl_kiosk_ansicht`, `thermoctl/web/kiosk_views.py`) -- unabhängig vom
   Kiosk-Cookie selbst und ohne jeden Einfluss auf Token, Rechte oder Sitzung.
 - **Ohne JavaScript** bleibt es bei der ursprünglichen, scrollenden Tafel-Form:
-  `data-ansicht-aktiv` an `<body>` wird ausschließlich von `kiosk_panel.js`
+  `data-ansicht-aktiv` an `<body>` wird ausschließlich von kiosk_panel.js
   gesetzt, jede Panel-Regel in `thermoctl.css` hängt daran. Absichtlich, siehe
   `thermoctl/auth/kiosk.py::kiosk_csrf_protection` -- die drei Formulare (Soll,
   Boost, Übersteuerung aufheben) laufen ohne Skript weiter als gewöhnliche
@@ -1075,7 +1095,7 @@ das Ergebnis aber nicht), zehnfach hintereinander grün.
 Wohnungssicht, Einrichtung, Anmeldung, Kiosk — gegen einen eigenen Server mit erfundenen
 Demodaten (`tools/screenshot_seed.py`). Versioniert sind nur die 40 Bilder, die die Doku
 einbindet (`--doku` → `docs/bilder/`, 3,9 MB); der volle Satz geht ins ignorierte
-`var/bilder/`. `browser_tests/test_screenshots.py` meldet jede neue Route ohne Aufnahme,
+`var/bilder/`. browser_tests/test_screenshots.py meldet jede neue Route ohne Aufnahme,
 `tests/test_docs_current.py` hält Kennzeichen und Einbindungen in beide Richtungen
 zusammen. Chromium läuft mit `--lang=de-DE`, sonst zeigen die Zeitfelder AM/PM.
 Schreibtisch-Aufnahmen sind auf 1280 × 900 Pixel begrenzt und zeigen bei Bedarf einen zweiten Sichtbereich; das Schaltprotokoll enthält sechs vielfältige Demoeinträge, während Messwerte und Regelentscheidungen vollständig bleiben.
@@ -1215,7 +1235,7 @@ Anlagengröße) und unabhängig variierter Datenmenge trennte die drei mögliche
 
 `shadow_decision_retention_days` steht vorgabemäßig auf **365** (nicht 30 wie
 `measurement_retention_days`), bei 60 s Regeltakt macht das bis zu ~525.000 Zeilen
-je Zone. `zone_status_context` (`web/start_views.py`) las bislang die **gesamte**
+je Zone. `zone_status_context` (web/start_views.py) las bislang die **gesamte**
 Historie aller sichtbaren Zonen (`select(ShadowDecision).where(zone_id.in_(...))
 .order_by(decided_at.desc(), id.desc())`, ohne `LIMIT`) nur um in Python die jeweils
 neueste Zeile je Zone zu behalten. `EXPLAIN` gegen MariaDB bestätigt es:
@@ -1229,7 +1249,7 @@ und einem `LIMIT 1`-Seek, unabhängig vom Bestand.
 Behoben, ohne neue Migration -- der vorhandene Index
 `ix_shadow_decision_zone_decided_id (zone_id, decided_at, id)` genügt bereits:
 
-- `_latest_decisions()` (neu, `web/start_views.py`) ersetzt den Vollscan durch zwei
+- `_latest_decisions()` (neu, web/start_views.py) ersetzt den Vollscan durch zwei
   gruppierte `MAX()`-Abfragen (neuestes `decided_at` je Zone, dann per `id` aufgelöst
   -- derselbe Sekunden-genaue Tiebreak wie bei `ZoneOverride`) und eine finale Abfrage
   über genau die gefundenen Zeilen. `EXPLAIN` zeigt jetzt `Using index for group-by`
@@ -1263,9 +1283,9 @@ gleicher Eingabe), Zonenisolation unberührt (jede Bündelabfrage bleibt auf die
 `visible_zones` gelieferten Zonen beschränkt). Ruff, mypy, Pytest gegen SQLite **und**
 MariaDB mit 100 % Abdeckung, Browsertests einzeln -- alle grün.
 
-**Noch offen, nicht Teil dieser Änderung:** `web/control_views.py` (die
+**Noch offen, nicht Teil dieser Änderung:** web/control_views.py (die
 Betriebsseite) hat dieselbe Vollscan-Abfrage über `shadow_decision` -- eigener
-Auftrag. Die Wohnungssicht (`tenant_views.py`) profitiert vom Fix mit, hat aber
+Auftrag. Die Wohnungssicht (tenant_views.py) profitiert vom Fix mit, hat aber
 ihren eigenen, noch ungeprüften Aufruf von `next_switch()` je Zone.
 
 ## Die Betriebsseite las dieselbe Historie wie die Übersicht
@@ -1277,8 +1297,8 @@ die neueste Zeile zu behalten. Bei 365 Tagen Aufbewahrung und einer Zeile je
 Zone und Regelzyklus sind das nach Monaten Betrieb Hunderttausende.
 
 Die Abfrage steht jetzt **einmal** als `domain/zones.py::latest_decisions_by_zone`
-und wird von beiden Seiten benutzt. Sie lag zuvor in `web/start_views.py`; dass
-`web/control_views.py` sie dort nicht mitbekam, ist genau der Grund, warum die
+und wird von beiden Seiten benutzt. Sie lag zuvor in web/start_views.py; dass
+web/control_views.py sie dort nicht mitbekam, ist genau der Grund, warum die
 langsame Fassung überlebt hat -- Grundsatz 6, eine Regel wird einmal
 implementiert. In der Domäne statt in einem der beiden Adapter, damit kein
 Adapter den anderen importieren muss; die Domäne kennt weiterhin keinen Adapter
@@ -1311,7 +1331,7 @@ mit 100 % Abdeckung, Browsertests einzeln) grün geprüft:
   Ändert sich eine Datei, ändert sich zwangsläufig die URL -- geprüft mit einer
   echten Dateiänderung: Hash vorher `0.9.0-421a...`, nach einer Änderung an
   `thermoctl.css` `0.9.0-59f5...`, nach Rücknahme wieder der alte Wert.
-- `thermoctl/web/static/page_scripts.js`: ein Lader im bleibenden `<head>`
+- thermoctl/web/static/page_scripts.js: ein Lader im bleibenden `<head>`
   (`base_core.html`, `base_plain.html`), der die sechs Funktionsskripte
   (passkey, schedule, permissions, assignment, device_filter, homebridge_copy)
   nur nachlädt, wenn ihr CSS-Selektor auf der aktuellen Seite tatsächlich
@@ -1427,7 +1447,7 @@ base.html ist entfernt; alle Vorlagen verwenden die jeweiligen Hüllen.
 ein Wandtablett hat weder Navigation noch Ladebalken, und seine CSRF-Behandlung ist
 eine andere.
 
-**Fertig: der persönliche Bereich** `/account` (`web/account_views.py`) -- eigenes
+**Fertig: der persönliche Bereich** `/account` (web/account_views.py) -- eigenes
 Passwort, andere Sitzungen beenden, Passkeys, Hilfe, Abmelden. Ohne Profil-Wächter,
 weil er beiden Oberflächen gehört, und ohne jedes Recht: das eigene Passwort zu
 ändern ist kein privilegierter Vorgang. Bis hierher lagen diese beiden Funktionen auf
@@ -1544,7 +1564,7 @@ Tabelle steht; damit ist auch `audit.read` bei einer frischen Einrichtung vorhan
 `browser_tests/` (Playwright) ist auf die neue Oberfläche gezogen: `.tc-head` gibt es
 nicht mehr, der Anker ist `.tc-topbar` (nicht `.tc-sidebar` -- die klappt unter 992 px
 weg), das Sammelmenü „Einstellungen" ist durch die Seitenleiste ersetzt. Neu:
-`test_tenant_ui.py` mit sechs Tests der Wohnungssicht (richtige Hülle, vier Bereiche
+test_tenant_ui.py mit sechs Tests der Wohnungssicht (richtige Hülle, vier Bereiche
 erreichbar, Sollwert-Stepper rechnet serverseitig, `/settings` ergibt 403, Fußleiste
 auf 390 px, Ladebalken vorhanden) und ein Test, dass die Seitenleiste auf schmalem
 Bildschirm über den Knopf auf- und zugeht.
@@ -2037,7 +2057,7 @@ Stil des Kiosks periodisch selbst ab (`hx-get`/`hx-select`/`hx-swap="outerHTML"`
 `#tc-live`) — kein neues Werkzeug, HTMX war schon da.
 
 Das Intervall ist keine feste Zahl, sondern kommt aus `setting.shadow_interval_seconds`
-(`poll_interval_seconds` in `start_views.py`) — häufiger abzufragen als sich ein Wert
+(`poll_interval_seconds` in start_views.py) — häufiger abzufragen als sich ein Wert
 ändern kann, wäre verschwendete Last, gerade hinter dem Ingress-Proxy. `[!document.hidden]`
 im `hx-trigger` pausiert den Abruf, solange der Tab im Hintergrund liegt.
 
@@ -2047,14 +2067,14 @@ Zwei Dinge mussten dafür ausdrücklich abgesichert werden, nicht nur der Abruf 
   Austausch nicht verlieren. Gelöst über `hx-preserve` auf dem Formular und dem
   Auf/Zu-Knopf (beide mit stabiler `id`) — htmx lässt diese Elemente beim Swap
   unangetastet stehen, statt sie durch eine frische, leere Fassung zu ersetzen.
-- Der globale Ladebalken (`loading_indicator.js`) darf für diesen Abruf nicht
+- Der globale Ladebalken (loading_indicator.js) darf für diesen Abruf nicht
   aufblitzen — er würde jede Minute von selbst erscheinen, ohne dass irgendjemand auf
   ihn wartet. Das auslösende Element trägt `data-tc-quiet-poll`; das Skript prüft
   genau dieses Element (`ereignis.detail.elt`), nicht dessen Vorfahren, damit ein POST
   aus einem Formular *innerhalb* des Bereichs (Übersteuern, Sollwert stellen) den
   Balken weiterhin zeigt.
 
-Nachgewiesen in `browser_tests/test_start_page_live.py` (vier Tests: abgeleitetes
+Nachgewiesen in browser_tests/test_start_page_live.py (vier Tests: abgeleitetes
 Intervall, ein geänderter Wert aktualisiert sich ohne Zutun, ein aufgeklappter Bereich
 samt begonnener Eingabe übersteht eine Aktualisierung, der Ladebalken bleibt dabei
 stumm — auch unter einer künstlich verzögerten Antwort).

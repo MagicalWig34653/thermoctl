@@ -1022,13 +1022,6 @@ def solar_marks_for(chart: Chart, layout: Layout) -> tuple[float, ...]:
     return tuple(float(x) for x in sorted(marks))
 
 
-def has_short_bands(chart: Chart) -> bool:
-    """Ob in irgendeiner Zeichnung ein Band nur als Markierung erscheint (für die Legende)."""
-    coarsest = min(layout.right - layout.left for layout in LAYOUTS)
-    limit = MARK_BELOW * (chart.end - chart.start).total_seconds() / coarsest
-    return any((last - first).total_seconds() < limit for first, last, _, _ in chart.solar_bands)
-
-
 def unknown_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
     """Bereiche ohne Aussage über die Absenkung; sie bleiben sichtbar, auch wenn sie schmal sind."""
     label = chart.wording.unknown_band_label
@@ -1037,10 +1030,3 @@ def unknown_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
         x, width = _span(first, last, chart, layout)
         bands.append(Band(x, width, label if _fits(label, width, layout) else ""))
     return tuple(bands)
-
-
-def heat_cells_for(chart: Chart, layout: Layout) -> tuple[tuple[float, float, int], ...]:
-    """Heizspur dieser Zeichnung als (x, Breite, Stufe); die Breite ist die der Zeilen."""
-    return tuple(
-        (*_span(first, last, chart, layout), level) for first, last, level in chart.heat_lane
-    )

@@ -1,72 +1,10 @@
-from decimal import Decimal
 
-from fastapi import Request
 
 from thermoctl.auth.passwords import PasswordTooShort
-from thermoctl.web import templates
 from thermoctl.web.forms import (
     FormError,
-    form_again,
     password_form_error,
 )
-
-
-def _request() -> Request:
-    return Request({"type": "http", "method": "GET", "path": "/test", "headers": []})
-
-
-def test_form_again_shows_values_and_field_errors() -> None:
-    response = form_again(
-        _request(),
-        "setup.html",
-        {"username": "eingegebener-name"},
-        FormError("password", "Das Passwort ist zu kurz."),
-    )
-
-    content = response.body.decode()
-    assert response.status_code == 200
-    assert 'value="eingegebener-name"' in content
-    assert "Das Passwort ist zu kurz." in content
-    assert 'class="form-control is-invalid"' in content
-
-
-def test_form_again_never_returns_the_password() -> None:
-    secret = "dieses-passwort-darf-nicht-zurück"
-    response = form_again(
-        _request(),
-        "setup.html",
-        {"username": "lino", "password": secret, "new_password": secret},
-    )
-
-    assert secret not in response.body.decode()
-    assert secret not in response.context.values()
-    assert secret not in response.context["values"].values()
-
-
-def test_form_macros_link_labels_and_fields() -> None:
-    template = templates.env.from_string(
-        """{% from 'form.html' import text_field, number_field, select_field, toggle %}
-        {{ text_field('name', 'Name') }}
-        {{ number_field('temperatur', 'Temperatur') }}
-        {{ select_field('modus', 'Modus', [('tag', 'Tag')]) }}
-        {{ toggle('aktiv', 'Aktiv') }}"""
-    )
-
-    content = template.render()
-    for field in ("name", "temperatur", "modus", "aktiv"):
-        assert f'for="{field}"' in content
-        assert f'id="{field}"' in content
-
-
-def test_delete_confirmation_shows_dependencies() -> None:
-    template = templates.env.from_string(
-        """{% from 'form.html' import delete_confirmation %}
-        {{ delete_confirmation('Zone löschen', 'Wirklich löschen?',
-                              '4 Schaltpunkte, 2 zugeordnete Geräte', '/zonen/1', '/zonen') }}"""
-    )
-
-    content = template.render()
-    assert "4 Schaltpunkte, 2 zugeordnete Geräte" in content
 
 
 def test_password_too_short_becomes_a_form_error_on_the_password_field() -> None:
@@ -106,31 +44,5 @@ def test_error_classes_survive_being_raised_through_multiple_layers() -> None:
         assert errors.value.notice == "meldung"
 
 
-def test_a_missing_temperature_shows_a_dash_not_an_empty_field() -> None:
-    """A zone without a reading has no temperature, and there is no stand-in.
-
-    Zero would read as freezing, an empty cell as a broken page. The dash says "not
-    known" and is the only honest answer.
-    """
-    from thermoctl.web import grad
-
-    assert grad(None) == "–"
-    assert grad(Decimal("21.5")) == "21,5"
-    assert grad(Decimal("21.5"), 2) == "21,50"
 
 
-def test_a_fixed_channel_value_is_shown_with_no_more_precision_than_it_has() -> None:
-    """`zahl_verlustfrei` backs the `fixed_number` field on `/controllers`
-    (`ControllerChannel.fixed_number` is `Numeric(12, 4)`) -- unlike `grad()`, it
-    must not round a value set with more than one decimal, or resubmitting the
-    form exactly as rendered would silently discard it.
-    """
-    from thermoctl.web import zahl_verlustfrei
-
-    assert zahl_verlustfrei(None) == "–"
-    assert zahl_verlustfrei(Decimal("3.125")) == "3,125"
-    assert zahl_verlustfrei(Decimal("3.1234")) == "3,1234"
-    assert zahl_verlustfrei(Decimal("3.1000")) == "3,1"
-    assert zahl_verlustfrei(Decimal("100.0000")) == "100"
-    assert zahl_verlustfrei(Decimal("0")) == "0"
-    assert zahl_verlustfrei(Decimal("-2.5")) == "-2,5"

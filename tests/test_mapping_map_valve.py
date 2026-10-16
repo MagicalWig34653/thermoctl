@@ -26,13 +26,12 @@ from tests.helpers import (
     create_zone,
     create_zone_state,
     role,
-    source,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
-from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.data_flow import EDGE_ACTUAL, EDGE_SETPOINT, EDGE_SWITCH, build_data_flow
 from thermoctl.domain.mapping_map import (
@@ -426,161 +425,19 @@ def _manager(client_als: ClientAls, zone: Zone) -> TestClient:
     return client_als([("device.manage", zone.id), ("device.read", zone.id)])
 
 
-def test_the_lines_drawn_decide_the_mode(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = _zone(session, "ziehen")
-    reading, regulating, controlled = _valve(session, "v-lesen"), _valve(session, "v-regelt"), _valve(session, "v-schaltet")
-    client = _manager(client_als, zone)
-
-    def z(slot: str) -> str:
-        return zone_port_id(zone.id, slot)
-
-    r = _connect(client, z("room_temperature"), property_port_id(reading.id, ACTUAL))
-    assert r.status_code == 200, r.json()
-    assert _mode(session, zone, reading) == MODE_READING_ONLY
-
-    assert _connect(client, z("actuator"), f"dev-{controlled.id}-thermostat").status_code == 200
-    assert _mode(session, zone, controlled) == MODE_CONTROLLED
-
-    # Sollwert zuerst: abgelehnt, nichts gespeichert. Danach beide Linien: das Ventil regelt selbst.
-    refused = _connect(client, property_port_id(regulating.id, SETPOINT_PROPERTY), z("setpoint"))
-    assert refused.status_code == 422 and "zusammen mit der Raumtemperatur" in refused.json()["reason"]
-    assert _mode(session, zone, regulating) is None
-    assert _connect(client, z("room_temperature"), property_port_id(regulating.id, ACTUAL)).status_code == 200
-    assert _mode(session, zone, regulating) == MODE_READING_ONLY
-    assert _connect(client, property_port_id(regulating.id, SETPOINT_PROPERTY), z("setpoint")).status_code == 200
-    assert _mode(session, zone, regulating) == MODE_SELF_REGULATING
-    events = session.scalars(select(AuditEvent.summary).where(AuditEvent.object_type == "zone_device")).all()
-    assert any("Betriebsart" in e and "Ventil regelt selbst" in e for e in events)
 
 
-def test_removing_a_line_steps_the_mode_back_and_the_last_line_releases_the_valve(
-    client_als: ClientAls, session: Session
-) -> None:
-    source(session)
-    zone = _zone(session, "entfernen")
-    valve = _valve(session, "v-zurueck")
-    _assign(session, zone, valve, MODE_SELF_REGULATING)
-    client = _manager(client_als, zone)
-
-    stepped = _disconnect(client, zone, "setpoint", valve)
-    assert stepped.status_code == 200 and "Nur Raumtemperatur melden" in stepped.json()["message"]
-    # Der Sollwert bleibt am Gerät stehen, und thermoctl fasst ihn nicht mehr an.
-    assert "Sollwert am Gerät bleibt, wie er zuletzt geschrieben wurde" in stepped.json()["message"]
-    assert "kein Zeitplan, kein Frostschutz bei offenem Fenster" in stepped.json()["message"]
-    assert _mode(session, zone, valve) == MODE_READING_ONLY
-
-    released = _disconnect(client, zone, "room_temperature", valve)
-    assert released.status_code == 200 and "behält seinen letzten Zustand" in released.json()["message"]
-    assert "Sollwert am Gerät bleibt" not in released.json()["message"]
-    assert _mode(session, zone, valve) is None
 
 
-def test_removing_room_temperature_from_a_regulating_valve_is_refused_with_the_reason(
-    client_als: ClientAls, session: Session
-) -> None:
-    source(session)
-    zone = _zone(session, "nicht-entfernen")
-    valve = _valve(session, "v-bleibt")
-    _assign(session, zone, valve, MODE_SELF_REGULATING)
-    refused = _disconnect(_manager(client_als, zone), zone, "room_temperature", valve)
-    assert refused.status_code == 422 and "immer zusammen mit der Raumtemperatur" in refused.json()["reason"]
-    assert _mode(session, zone, valve) == MODE_SELF_REGULATING
 
 
-def test_setpoint_alone_is_stored_where_the_device_has_no_actual_input(
-    client_als: ClientAls, session: Session
-) -> None:
-    source(session)
-    zone = _zone(session, "nur-sollwert")
-    valve = _valve(session, "v-nur-sw", actual=None)
-    client = _manager(client_als, zone)
-    assert _connect(client, zone_port_id(zone.id, "setpoint"), property_port_id(valve.id, SETPOINT_PROPERTY)).status_code == 200
-    assert _mode(session, zone, valve) == MODE_SELF_REGULATING
-    assert _disconnect(client, zone, "setpoint", valve).status_code == 200
-    assert _mode(session, zone, valve) is None
 
 
-def test_a_sensor_dragged_onto_the_actual_input_gets_the_explanation_from_the_server(
-    client_als: ClientAls, session: Session
-) -> None:
-    source(session)
-    zone = _zone(session, "sensor-ziehen")
-    sensor = _sensor(session, "multisensor-2")
-    valve = _valve(session, "v-sensor")
-    _assign(session, zone, valve, MODE_CONTROLLED)
-    client = _manager(client_als, zone)
-    refused = _connect(client, f"dev-{sensor.id}-temperature", property_port_id(valve.id, ACTUAL))
-    assert refused.status_code == 422 and refused.json()["reason"] == VIA_ZONE_REASON
 
 
-def test_heating_command_on_a_plain_switch_stays_controlled(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = _zone(session, "steckdose")
-    switch = create_device(session, "steckdose-1")
-    session.add(DeviceCapabilityLink(device_id=switch.id, capability_id=capability(session, "switch").id))
-    session.flush()
-    client = _manager(client_als, zone)
-    assert _connect(client, zone_port_id(zone.id, "actuator"), f"dev-{switch.id}-switch").status_code == 200
-    assert _mode(session, zone, switch) == MODE_CONTROLLED
-    assert _disconnect(client, zone, "actuator", switch).status_code == 200
-    assert _mode(session, zone, switch) is None
 
 
-def test_page_carries_the_legend_and_the_tooltip(client_als: ClientAls, session: Session) -> None:
-    zone = _zone(session, "seite")
-    _assign(session, zone, _valve(session, "v-seite"), MODE_READING_ONLY)
-    page = client_als([("device.read", zone.id)]).get("/devices/map")
-    assert page.status_code == 200
-    assert "Messwert der Messquelle dieser Zone, wird als Istwert ans Ventil geschrieben." in page.text
-    assert "data-map-valve-note" in page.text
 
 
-def test_a_legacy_row_without_a_drawn_line_is_refused_with_a_true_reason(
-    client_als: ClientAls, session: Session
-) -> None:
-    source(session)
-    zone = _zone(session, "altbestand")
-    valve = _valve(session, "v-alt", actual=None)
-    _assign(session, zone, valve, MODE_READING_ONLY)  # ohne Istwert-Eingang: keine Linie
-    refused = _connect(
-        _manager(client_als, zone), zone_port_id(zone.id, "setpoint"),
-        property_port_id(valve.id, SETPOINT_PROPERTY),
-    )
-    reason = refused.json()["reason"]
-    assert refused.status_code == 422
-    assert "keine Linie zeichnet" in reason and "Tabelle 'Verbindungen'" in reason
-    assert "Heizbefehl" not in reason  # keine Heizbefehl-Linie gezeichnet, also auch nicht behaupten
-    assert _mode(session, zone, valve) == MODE_READING_ONLY
 
 
-def test_a_mode_changed_between_graph_and_save_is_not_silently_overwritten(
-    client_als: ClientAls, session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Zwei gleichzeitige Anfragen: Die Betriebsart ändert sich, nachdem der Graph gebaut wurde."""
-    from thermoctl.web.shared import mapping_map as mapping_map_shared
-
-    source(session)
-    zone = _zone(session, "rennen")
-    valve = _valve(session, "v-rennen")
-    row = _assign(session, zone, valve, MODE_READING_ONLY)
-    session.commit()
-    client = _manager(client_als, zone)
-
-    original = mapping_map_shared.editable_graph
-
-    def graph_then_concurrent_change(*args: Any, **kwargs: Any) -> Any:
-        result = original(*args, **kwargs)
-        # die andere Anfrage (Heizbefehl) kommt zwischen Graphaufbau und Speichern durch
-        concurrent = session.get(ZoneDevice, row.id)
-        assert concurrent is not None
-        concurrent.thermostat_mode = MODE_CONTROLLED
-        session.commit()
-        return result
-
-    monkeypatch.setattr(mapping_map_shared, "editable_graph", graph_then_concurrent_change)
-    refused = _connect(client, zone_port_id(zone.id, "setpoint"), property_port_id(valve.id, SETPOINT_PROPERTY))
-
-    assert refused.status_code == 409
-    assert "inzwischen geändert" in refused.json()["reason"] and "neu laden" in refused.json()["reason"]
-    assert _mode(session, zone, valve) == MODE_CONTROLLED  # nichts überschrieben

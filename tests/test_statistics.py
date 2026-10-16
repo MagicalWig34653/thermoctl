@@ -60,6 +60,12 @@ def test_duration_comes_from_the_intervals(session: Session) -> None:
     assert result[zone.id].seconds_total == 120
 
 
+def test_without_any_zone_there_is_nothing_to_count(session: Session) -> None:
+    assert heating_periods(
+        session, [], START, START + timedelta(hours=1), cycle_seconds=60
+    ) == {}
+
+
 def test_the_last_measurement_point_does_not_count_indefinitely(session: Session) -> None:
     """After the last point, nobody knows what happened next -- it must not
     contribute anything."""

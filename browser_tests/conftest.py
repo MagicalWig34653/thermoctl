@@ -103,9 +103,8 @@ def browser() -> Iterator[Browser]:
 
 @pytest.fixture
 def context(browser: Browser, live_server: LiveServer) -> Iterator[BrowserContext]:
-    # Fixed light scheme: the CSS deliberately swaps colours under
-    # `[data-bs-theme="dark"]` (thermoctl.css), and a test asserting a specific
-    # computed colour must not depend on which theme the host happens to prefer.
+    # Fixed light scheme: a test asserting a specific computed colour must not depend
+    # on which theme the host happens to prefer.
     ctx = browser.new_context(base_url=live_server.base_url, color_scheme="light")
     yield ctx
     ctx.close()
@@ -127,21 +126,10 @@ def _record_console_error(sink: list[str], message: ConsoleMessage) -> None:
     exactly the class of bug this fixture exists to catch. Without this filter,
     every test that visits an intentionally-rejected page would fail on a "console
     error" that was never a defect.
-
-    htmx itself adds a second, equally unavoidable source of the same kind: any
-    event it fires with an ``error`` detail (``htmx:responseError``,
-    ``htmx:sendError``, ...) goes through ``console.error`` unconditionally, inside
-    htmx's own trigger function, before any application code sees the event --
-    there is no way to opt out of it from outside htmx.min.js. A boosted request a
-    test deliberately fails (`browser_tests/test_loading_indicator.py`, the loading
-    bar must disappear again after a failure) always produces exactly this line, on
-    purpose, and it is filtered here for the same reason as the line above.
     """
     if message.type != "error":
         return
     if message.text.startswith("Failed to load resource:"):
-        return
-    if message.text.startswith("Response Status Error Code "):
         return
     sink.append(f"[console] {message.text}")
 
@@ -165,6 +153,17 @@ def page(context: BrowserContext, console_errors: list[str]) -> Iterator[Page]:
     assert not console_errors, "Browserkonsole meldete Fehler:\n" + "\n".join(console_errors)
 
 
+def sign_in(page: Page, login_path: str, username: str, password: str) -> None:
+    """Meldet in der Svelte-Oberfläche an. `/login` leitet auf `/app/login` um; als
+    Beweis, dass die Anmeldung durch ist, gilt der Rumpf der Oberfläche mit der
+    Hauptnavigation (`#tc-main` gibt es nur angemeldet)."""
+    page.goto(login_path)
+    page.get_by_label("Benutzername").fill(username)
+    page.get_by_label("Passwort").fill(password)
+    page.get_by_role("button", name="Anmelden", exact=True).click()
+    page.get_by_role("button", name="Abmelden").or_(page.get_by_text("Abmelden")).first.wait_for()
+
+
 @pytest.fixture
 def admin_page(page: Page, live_server: LiveServer) -> Page:
     """A page already logged in as the administrator created at server start.
@@ -173,21 +172,7 @@ def admin_page(page: Page, live_server: LiveServer) -> Page:
     an authenticated page as a *precondition*, and repeating the login dance in
     each of them would make every one of them a login test by accident.
     """
-    page.goto("/login")
-    page.get_by_label("Benutzername").fill(live_server.admin_username)
-    page.get_by_label("Passwort").fill(live_server.admin_password)
-    page.get_by_role("button", name="Anmelden").click()
-    # Not `wait_for_url`: the login form has no `hx-post` of its own, but `hx-boost`
-    # on <body> still upgrades it to a fetch that follows the redirect and swaps the
-    # page in via `pushState` -- indistinguishable from a real navigation by URL
-    # alone. `.tc-topbar` only exists on the logged-in shells (`base_admin.html`,
-    # `base_tenant.html`), never on the login page's `base_plain.html`, so its
-    # presence is the actual proof of being past the login. Was `.tc-head` before
-    # v0.9.0's redesign replaced the single header bar with a sidebar/topbar
-    # split (`base_admin.html`) -- `.tc-topbar` is used here, not `.tc-sidebar`,
-    # because the sidebar collapses away on narrow viewports while the topbar
-    # stays visible at every width, same as `.tc-head` always was.
-    page.locator(".tc-topbar").wait_for()
+    sign_in(page, "/login", live_server.admin_username, live_server.admin_password)
     return page
 
 
@@ -224,13 +209,10 @@ def page_with_prefix(
 
 @pytest.fixture
 def admin_page_with_prefix(page_with_prefix: Page, live_server_with_prefix: LiveServer) -> Page:
-    page_with_prefix.goto("login")
-    page_with_prefix.get_by_label("Benutzername").fill(live_server_with_prefix.admin_username)
-    page_with_prefix.get_by_label("Passwort").fill(live_server_with_prefix.admin_password)
-    page_with_prefix.get_by_role("button", name="Anmelden").click()
-    # See the comment on `admin_page` above for why `.tc-topbar` replaces the
-    # former `.tc-head`.
-    page_with_prefix.locator(".tc-topbar").wait_for()
+    sign_in(
+        page_with_prefix, "login",
+        live_server_with_prefix.admin_username, live_server_with_prefix.admin_password,
+    )
     return page_with_prefix
 
 
@@ -274,15 +256,8 @@ def page_direct_via_prefixed_instance(
 def admin_page_direct_via_prefixed_instance(
     page_direct_via_prefixed_instance: Page, live_server_with_prefix: LiveServer
 ) -> Page:
-    page_direct_via_prefixed_instance.goto("login")
-    page_direct_via_prefixed_instance.get_by_label("Benutzername").fill(
-        live_server_with_prefix.admin_username
+    sign_in(
+        page_direct_via_prefixed_instance, "login",
+        live_server_with_prefix.admin_username, live_server_with_prefix.admin_password,
     )
-    page_direct_via_prefixed_instance.get_by_label("Passwort").fill(
-        live_server_with_prefix.admin_password
-    )
-    page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden").click()
-    # See the comment on `admin_page` above for why `.tc-topbar` replaces the
-    # former `.tc-head`.
-    page_direct_via_prefixed_instance.locator(".tc-topbar").wait_for()
     return page_direct_via_prefixed_instance

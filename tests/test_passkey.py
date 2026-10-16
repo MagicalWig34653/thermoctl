@@ -355,48 +355,10 @@ def test_a_foreign_passkey_cannot_be_removed(
     assert session.get(UserPasskey, entry.id) is not None
 
 
-def test_your_own_passkey_can_be_removed(
-    client_als, session: Session, mit_passkeys: None
-) -> None:
-    from thermoctl.db.models.identity import User as Konto
-
-    c = client_als([("zone.read", None)])
-    argumente = c.post("/passkey/registration/options", headers=_csrf(c)).json()
-    payload = WebAuthnDevice().register(argumente, ORIGIN)
-    payload["label"] = "Weg damit"
-    c.post("/passkey/registration/verify", json=payload, headers=_csrf(c))
-
-    entry = session.scalars(
-        select(UserPasskey).where(UserPasskey.label == "Weg damit")
-    ).one()
-    assert c.post(
-        f"/passkeys/{entry.id}/remove", headers=_csrf(c), follow_redirects=False
-    ).status_code == 303
-    assert session.get(UserPasskey, entry.id) is None
-    assert session.scalars(select(Konto)).all()
 
 
-def test_the_passkey_page_explains_a_missing_setup(client_als) -> None:
-    """Without a relying-party id, no button that could do nothing -- instead a
-    sentence saying what is missing."""
-    get_settings.cache_clear()
-    response = client_als([("zone.read", None)]).get("/passkeys")
-    assert response.status_code == 200
-    assert "THERMOCTL_PASSKEY_RP_ID" in response.text
 
 
-def test_the_login_page_offers_passkeys_only_when_set_up(
-    client: TestClient, user, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # `benutzer`: without one, /login redirects to setup, and the check below
-    # would be green without ever having seen the login form.
-    get_settings.cache_clear()
-    assert "passkey-login" not in client.get("/login").text
-
-    monkeypatch.setenv("THERMOCTL_PASSKEY_RP_ID", RP_ID)
-    get_settings.cache_clear()
-    assert "passkey-login" in client.get("/login").text
-    get_settings.cache_clear()
 
 
 def test_the_own_counter_check_catches_what_the_library_would_let_through(

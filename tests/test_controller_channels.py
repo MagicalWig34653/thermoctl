@@ -144,121 +144,12 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(secret, get_settings().secret_key.get_secret_value())}
 
 
-def test_the_controller_page_and_both_form_endpoints(client_als, session: Session) -> None:
-    _kinds(session)
-    zone = create_zone(session, "webzone")
-    device = create_device(session, "wandgeraet")
-    _assign(session, zone.id, device.id, "controller")
-    _property(session, device.id, readable=True)
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    response = client.get("/controllers")
-    assert response.status_code == 200 and "external_temperature" in response.text
-    response = client.post(
-        "/controllers/channel",
-        data={
-            "device_id": device.id,
-            "property_name": "external_temperature",
-            "direction": "write",
-            "kind": "fixed",
-            "fixed_number": "21,5",
-        },
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    response = client.post(
-        "/controllers/button",
-        data={"device_id": device.id, "action_code": "single_plus", "command": ""},
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
 
 
-def test_a_room_sensor_used_only_as_temperature_source_appears_as_a_source(
-    client_als, session: Session
-) -> None:
-    """A pure room-temperature sensor is attached to a zone only through
-    `zone.temperature_source_device_id` (see `domain/device_assignment.py`'s
-    `TEMPERATURE_SOURCE` and `set_temperature_source`) -- there is no `sensor` role
-    it could hold in `ZoneDevice`, `assign_device` never creates one for it.
-
-    `_devices_in()` used to join solely over `ZoneDevice`, so such a sensor could
-    never appear in the 'Temperaturquellen' pool that feeds a controller's write
-    channel, even though an actuator sharing the same zone did.
-    """
-    _kinds(session)
-    zone = create_zone(session, "wohnzimmer")
-    controller = create_device(session, "wandgeraet")
-    _assign(session, zone.id, controller.id, "controller")
-    sensor = create_device(session, "raumfuehler")
-    zone.temperature_source_device_id = sensor.id
-    session.flush()
-    _property(session, controller.id, readable=True)
-
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    response = client.get("/controllers")
-
-    assert response.status_code == 200
-    assert "raumfuehler" in response.text
 
 
-def test_a_room_sensor_can_be_picked_as_a_channel_source(
-    client_als, session: Session
-) -> None:
-    """The counterpart to the read above: submitting the form with such a sensor's
-    id must not be rejected by `_require_readable_device`, which used to run the
-    same `ZoneDevice`-only check and would 404 a device the page had just offered.
-    """
-    _kinds(session)
-    zone = create_zone(session, "kueche")
-    controller = create_device(session, "kuechenpanel")
-    _assign(session, zone.id, controller.id, "controller")
-    sensor = create_device(session, "kuechenfuehler")
-    zone.temperature_source_device_id = sensor.id
-    session.flush()
-    _property(session, controller.id)
-
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    response = client.post(
-        "/controllers/channel",
-        data={
-            "device_id": controller.id,
-            "property_name": "external_temperature",
-            "direction": "write",
-            "kind": "sensor_temperature",
-            "source_device_id": sensor.id,
-        },
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 303
 
 
-def test_the_controllers_page_with_no_visible_zone_shows_nothing(
-    client_als, session: Session
-) -> None:
-    """A principal with global `device.read` but not a single zone in the whole
-    installation must see an empty page, not an error -- and, above all, not a query
-    that falls back to every device unfiltered because the zone list was empty.
-
-    `_controllers` and `_devices_in` both special-case an empty zone list into an
-    empty result rather than letting `Zone.id.in_(())` run: an unguarded `IN ()` is
-    itself always empty on every backend this project targets, so the visible symptom
-    would be identical -- but relying on that would leave the one place in this view
-    that is supposed to guarantee "nothing outside the principal's zones" resting on
-    a database quirk instead of on a checked condition. Device names carry room and
-    occupant references (see the 2026-09-02 security review), so this path is
-    security-relevant even though nothing is left in the database to leak here.
-    """
-    _kinds(session)
-    client = client_als([("device.read", None)])
-
-    response = client.get("/controllers")
-
-    assert response.status_code == 200
-    assert "Noch kein Bediengerät ist einer sichtbaren Zone zugeordnet." in response.text
 
 
 def test_a_device_that_is_also_an_actuator_gets_no_write_channel(session: Session) -> None:
@@ -629,73 +520,10 @@ def test_the_last_value_of_a_property_is_kept_for_the_page(session: Session) -> 
     assert werte["local_temperature"][2] == MONDAY_EIGHT
 
 
-def test_a_rejected_channel_shows_the_reason_instead_of_a_blank_page(
-    client_als, session: Session
-) -> None:
-    """A rejected setting is not a fault of the service, but it must not vanish either.
-
-    Without the reason on the page the only symptom is a form that keeps resetting, and
-    the fault is looked for at the device.
-    """
-    from tests.helpers import source
-
-    source(session)
-    _kinds(session)
-    zone, device = _controller(session, "meldegeraet")
-    _property(session, device.id)
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    client.get("/controllers")
-
-    response = client.post(
-        "/controllers/channel",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "property_name": "external_temperature",
-              "direction": "write", "kind": "fixed", "fixed_number": "250"},
-    )
-
-    assert response.status_code == 400
-    assert "außerhalb des Wertebereichs" in response.text
 
 
-def test_a_button_binding_without_an_action_is_refused(client_als, session: Session) -> None:
-    from tests.helpers import source
-
-    source(session)
-    _kinds(session)
-    zone, device = _controller(session, "tastengeraet")
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    client.get("/controllers")
-
-    response = client.post(
-        "/controllers/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "", "command": "boost"},
-    )
-    assert response.status_code == 400
 
 
-def test_a_bad_step_width_shows_the_reason(client_als, session: Session) -> None:
-    """The same limit as everywhere: a setpoint carries one decimal, so a step does too."""
-    from tests.helpers import source
-    from thermoctl.db.models.lookup import CONTROLLER_COMMANDS, ControllerCommand
-
-    source(session)
-    _kinds(session)
-    for code, label in CONTROLLER_COMMANDS:
-        session.add(ControllerCommand(code=code, label=label))
-    session.flush()
-    zone, device = _controller(session, "schrittgeraet")
-    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    client.get("/controllers")
-
-    response = client.post(
-        "/controllers/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "single_plus",
-              "command": "setpoint_up", "step_k": "0,25"},
-    )
-    assert response.status_code == 400
-    assert "Nachkommastelle" in response.text
 
 
 def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Session) -> None:
@@ -950,50 +778,6 @@ async def test_a_device_that_became_an_actuator_is_no_longer_written_to(
     assert recorder.messages == []
 
 
-def test_the_edit_form_is_shown_only_to_a_principal_who_may_manage_the_zone(
-    client_als, session: Session
-) -> None:
-    """`controllers.html` decides whether to show the edit form (as opposed to the
-    read-only label) by checking `device.id in manageable_ids` -- but
-    `_context()` fills `manageable_ids` with *zone* ids (`device.manage` is a
-    zone-scoped permission; a controller device has no permission of its own).
-    A device id can never appear in a set of zone ids unless the two id spaces
-    collide by chance, so an administrator who may in fact manage the zone
-    practically never sees the edit forms ("Was ankommt", "Was hingeschickt
-    wird").
-
-    The fix must show the form exactly when the principal may manage a zone the
-    device sits in as a controller -- the same test `_managed_device()` (used by
-    both POST endpoints) already applies -- without widening what a POST accepts.
-    """
-    _kinds(session)
-    # Zwei ungenutzte Zonen zuerst angelegt: Zone- und Gerätetabelle zählen ihre
-    # Autoinkrement-Ids unabhängig voneinander hoch, und ohne diesen Vorlauf wäre
-    # `zone.id == device.id` reiner Zufall der Anlagereihenfolge -- der Test würde
-    # den Fehler dann nur zufällig treffen, je nachdem, welche andere Zone oder
-    # welches andere Gerät die Testsuite vorher in derselben Sitzung angelegt hat.
-    create_zone(session, "vorlaufzone-1")
-    create_zone(session, "vorlaufzone-2")
-    zone = create_zone(session, "formularzone")
-    device = create_device(session, "formulargeraet")
-    assert zone.id != device.id, "Vorlauf griff nicht -- der Test prüft dann nichts"
-    _assign(session, zone.id, device.id, "controller")
-    _property(session, device.id, readable=True)
-
-    manager = client_als([("device.read", zone.id), ("device.manage", zone.id)])
-    response = manager.get("/controllers")
-    assert response.status_code == 200
-    assert 'action="/controllers/channel"' in response.text, (
-        "Wer die Zone verwalten darf, bekommt hier keine Bearbeitungsform zu sehen"
-    )
-
-    reader = client_als([("device.read", zone.id)])
-    response = reader.get("/controllers")
-    assert response.status_code == 200
-    assert 'action="/controllers/channel"' not in response.text, (
-        "Wer die Zone nur lesen darf, sieht trotzdem die Bearbeitungsform"
-    )
-    assert "Nicht belegt" in response.text
 
 
 def test_the_post_endpoint_rejects_a_device_the_forged_request_names_regardless_of_the_form(
@@ -1026,28 +810,6 @@ def test_the_post_endpoint_rejects_a_device_the_forged_request_names_regardless_
     assert response.status_code == 404
 
 
-def test_the_controllers_page_shows_a_configured_channel(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """An existing channel has to appear on the page it was set up on.
-
-    The page builds its table from the channels; with none stored the loop never ran,
-    so nobody had checked that a saved channel is actually shown again afterwards --
-    the one thing that tells a user their setting was kept.
-    """
-    _kinds(session)
-    zone = create_zone(session, "anzeigezone-seite")
-    device = create_device(session, "seitenregler")
-    _assign(session, zone.id, device.id, "controller")
-    _property(session, device.id)
-    configure_channel(
-        session, device, "external_temperature", "write", "fixed", fixed_number=Decimal("20")
-    )
-    session.flush()
-
-    response = angemeldeter_client.get("/controllers")
-    assert response.status_code == 200
-    assert "external_temperature" in response.text
 def _channel_form(html: str, property_name: str, direction: str) -> str:
     """The `<form>` for exactly this property/direction combination.
 
@@ -1080,186 +842,12 @@ def _field_value(form_html: str, input_name: str) -> str:
     return value.group(1) if value else ""
 
 
-def test_a_saved_read_channel_keeps_its_kind_selected_after_reload(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """The bug report: the read-channel `kind` select had no `selected` binding and
-    always rendered its first option (`zone_setpoint`) -- regardless which kind was
-    actually stored. A channel configured as `operating_mode` would silently look
-    like `zone_setpoint` on reload, and the very next unrelated save (e.g. picking a
-    different zone) would write that wrong kind back, discarding the real one.
-    """
-    _kinds(session)
-    zone, device = _controller(session, "leseregler")
-    _read_channel(session, device, zone, "system_mode", "operating_mode")
-
-    response = angemeldeter_client.get("/controllers")
-    assert response.status_code == 200
-    form = _channel_form(response.text, "system_mode", "read")
-
-    assert _selected_option(form, "kind") == "operating_mode"
-    assert _selected_option(form, "zone_id") == str(zone.id)
 
 
-@pytest.mark.parametrize(
-    ("kind", "extra", "expect"),
-    [
-        ("sensor_temperature", {"source_device_id": "quelle"}, {"source_device_id": "quelle"}),
-        ("zone_setpoint", {"zone_id": "zone"}, {"zone_id": "zone"}),
-        (
-            "fixed",
-            {"fixed_text": "Boost", "fixed_number": "21,5"},
-            {"fixed_text": "Boost", "fixed_number": "21,5"},
-        ),
-    ],
-)
-def test_a_saved_write_channel_shows_every_field_after_reload(
-    angemeldeter_client: TestClient,
-    session: Session,
-    kind: str,
-    extra: dict[str, str],
-    expect: dict[str, str],
-) -> None:
-    """Every one of the five write-channel fields (`kind`, `source_device_id`,
-    `zone_id`, `fixed_text`, `fixed_number`) was missing its `selected`/`value`
-    binding -- all five were forgotten after the very next page load.
-    """
-    _kinds(session)
-    zone, device = _controller(session, f"schreibregler-{kind}")
-    source = create_device(session, f"quellgeraet-{kind}")
-    _assign(session, zone.id, source.id, "controller")
-    prop = _property(session, device.id, "boost_mode")
-
-    form_data: dict[str, object] = {
-        "device_id": device.id,
-        "property_name": prop.name,
-        "direction": "write",
-        "kind": kind,
-    }
-    for key, placeholder in extra.items():
-        form_data[key] = (
-            str(source.id)
-            if placeholder == "quelle"
-            else (str(zone.id) if placeholder == "zone" else placeholder)
-        )
-    if kind == "fixed":
-        # `fixed` is only accepted when the property allows the fixed value --
-        # a numeric property here, matching `fixed_number`.
-        prop.value_type = "numeric"
-        session.flush()
-    save = angemeldeter_client.post(
-        "/controllers/channel",
-        data=form_data,
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert save.status_code == 303, save.text
-
-    response = angemeldeter_client.get("/controllers")
-    assert response.status_code == 200
-    form = _channel_form(response.text, prop.name, "write")
-
-    assert _selected_option(form, "kind") == kind
-    if "source_device_id" in expect:
-        assert _selected_option(form, "source_device_id") == str(source.id)
-    if "zone_id" in expect:
-        assert _selected_option(form, "zone_id") == str(zone.id)
-    if "fixed_text" in expect:
-        assert _field_value(form, "fixed_text") == expect["fixed_text"]
-    if "fixed_number" in expect:
-        assert _field_value(form, "fixed_number") == expect["fixed_number"]
 
 
-@pytest.mark.parametrize("raw_value", [Decimal("3.125"), Decimal("3.1234")])
-def test_a_fixed_number_with_more_than_one_decimal_survives_an_unchanged_resubmit(
-    angemeldeter_client: TestClient, session: Session, raw_value: Decimal
-) -> None:
-    """`ControllerChannel.fixed_number` is `Numeric(12, 4)` -- a value set over the
-    REST API or MCP (not this form) can carry up to four decimal places. The field
-    used to render it with `grad()`'s fixed one place, so 3,125 became 3,1 on the
-    page; resubmitting the form exactly as rendered -- the same "form still matches
-    the database" property every other test on this page checks -- then rounded
-    the stored value down to one decimal, discarding the rest, with nothing on the
-    page ever suggesting a change had happened.
-    """
-    from sqlalchemy import select
-
-    from thermoctl.db.models.device import ControllerChannel
-
-    _kinds(session)
-    _zone, device = _controller(session, f"praezisionsregler-{raw_value}".replace(".", "_"))
-    prop = _property(session, device.id, "boost_level")
-    prop.value_type = "numeric"
-    session.flush()
-    configure_channel(session, device, prop.name, "write", "fixed", fixed_number=raw_value)
-
-    before = angemeldeter_client.get("/controllers")
-    assert before.status_code == 200
-    form = _channel_form(before.text, prop.name, "write")
-    kind = _selected_option(form, "kind")
-    fixed_number_field = _field_value(form, "fixed_number")
-    # Rendered with the value's actual precision -- not rounded to one place.
-    assert fixed_number_field == str(raw_value).replace(".", ",")
-
-    resubmit = angemeldeter_client.post(
-        "/controllers/channel",
-        data={
-            "device_id": device.id,
-            "property_name": prop.name,
-            "direction": "write",
-            "kind": kind,
-            "fixed_number": fixed_number_field,
-        },
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert resubmit.status_code == 303
-
-    session.expire_all()
-    channel = session.scalar(
-        select(ControllerChannel).where(ControllerChannel.device_id == device.id)
-    )
-    assert channel is not None
-    assert channel.fixed_number == raw_value
 
 
-def test_resubmitting_the_rendered_form_unchanged_keeps_the_configuration(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Submitting the form exactly as the page rendered it -- the values a browser
-    would send back without the user touching anything -- must not change the
-    stored channel. Before the fix, the missing `selected`/`value` bindings meant
-    the rendered form did *not* reflect the stored state, so this same round trip
-    silently overwrote `operating_mode` with the first option, `zone_setpoint`.
-    """
-    _kinds(session)
-    zone, device = _controller(session, "rundlaufregler")
-    _read_channel(session, device, zone, "system_mode", "operating_mode")
-
-    before = angemeldeter_client.get("/controllers")
-    form = _channel_form(before.text, "system_mode", "read")
-    kind = _selected_option(form, "kind")
-    zone_id = _selected_option(form, "zone_id")
-    assert kind == "operating_mode"
-
-    resubmit = angemeldeter_client.post(
-        "/controllers/channel",
-        data={
-            "device_id": device.id,
-            "property_name": "system_mode",
-            "direction": "read",
-            "kind": kind,
-            "zone_id": zone_id,
-        },
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert resubmit.status_code == 303
-
-    after = angemeldeter_client.get("/controllers")
-    form_after = _channel_form(after.text, "system_mode", "read")
-    assert _selected_option(form_after, "kind") == "operating_mode"
-    assert _selected_option(form_after, "zone_id") == str(zone.id)
 
 
 def test_switching_kind_clears_fields_that_no_longer_apply(session: Session) -> None:

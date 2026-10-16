@@ -117,14 +117,6 @@ BLANKET_ACTUATOR_DENIAL = re.compile(
 def _user_visible_sources(root: Path = ROOT) -> list[Path]:
     sources = list((root / "thermoctl").rglob("*.py"))
     sources += list((root / "thermoctl/web/templates").rglob("*.html"))
-    # Own scripts only: the vendored bundles under static/vendor/ are third-party code we
-    # did not author and whose comments and identifiers are not our claims to review.
-    static_dir = root / "thermoctl/web/static"
-    sources += [
-        path
-        for path in static_dir.glob("*.js")
-        if path.is_file()
-    ]
     sources += [root / "README.md", root / "CHANGELOG.md"]
     # `docs/glossar.md` ist ausgenommen: Es wird aus `thermoctl/data/glossar.json`
     # erzeugt, und `tests/test_glossary.py::test_docs_glossar_md_matches_the_source`
@@ -494,8 +486,8 @@ def test_effect_text_guard_covers_every_user_visible_source_category() -> None:
     assert "thermoctl/integrations/mqtt/publication.py" in sources
     assert "thermoctl/integrations/actuators.py" in sources
     assert "thermoctl/services/publishing.py" in sources
-    assert "thermoctl/web/control_views.py" in sources
-    assert "thermoctl/web/templates/control.html" in sources
+    assert "thermoctl/web/ui_api_operations.py" in sources
+    assert "thermoctl/web/templates/oauth_consent.html" in sources
     assert "docs/verlauf.md" not in sources
     assert not any("docs/superpowers" in source for source in sources)
 

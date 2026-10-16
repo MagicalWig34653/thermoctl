@@ -7,21 +7,17 @@ oder einer Abwesenheit etwas, das die Daten nicht belegen.
 """
 
 import dataclasses
-import re
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from thermoctl.domain.zone_history_chart import (
     TECHNICAL,
     Chart,
     Sample,
     build_chart,
-    hover_payload,
 )
 
 BERLIN = "Europe/Berlin"
 LABEL = "Sollwert vor Sonnenabsenkung"
-SCRIPT = Path(__file__).parents[1] / "thermoctl" / "web" / "static" / "zone_history.js"
 
 
 def _chart(scheduled: float | None) -> Chart:
@@ -56,12 +52,3 @@ def test_summary_text_carries_the_new_label_and_no_schedule_word() -> None:
     assert "Zeitplan" not in unknown.summary
 
 
-def test_the_script_default_for_the_hover_box_is_the_technical_label() -> None:
-    # Die technische Fassung schickt keinen Text für diese Stelle; das Skript liest ihn aus seinen
-    # Vorgaben. Die müssen also dieselbe Beschriftung tragen wie die Legende.
-    assert "scheduled" not in dict(TECHNICAL.hover)
-    assert "l" not in hover_payload(_chart(20.5), BERLIN)
-    match = re.search(r'scheduled:\s*"([^"]*)"', SCRIPT.read_text(encoding="utf-8"))
-    assert match is not None
-    assert match.group(1) == TECHNICAL.scheduled_label
-    assert "Zeitplan" not in match.group(1)

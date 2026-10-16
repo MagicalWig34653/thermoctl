@@ -4,11 +4,9 @@ import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_settings, create_shadow_decision, create_zone
-from thermoctl.db.models.operations import Setting
+from tests.helpers import create_shadow_decision, create_zone
 from thermoctl.domain.zone_history_chart import (
     DESKTOP,
     LAYOUTS,
@@ -385,102 +383,22 @@ def test_database_rows_become_exact_runs_and_a_solar_band(session: Session) -> N
 # --- Adapter --------------------------------------------------------------------------
 
 
-def test_partial_route_and_zone_isolation(
-    client_als, tenant_client, client: TestClient, session: Session
-) -> None:
-    own = create_zone(session, "eigenerverlauf")
-    foreign = create_zone(session, "fremderverlauf")
-    anonymous = client.get(f"/zones/{own.id}/history", follow_redirects=False)
-    assert anonymous.status_code in (303, 401) and "zone-history" not in anonymous.text
-    user = client_als([("zone.manage", own.id)])
-    response = user.get(f"/zones/{own.id}/history?period=3d", headers={"HX-Request": "true"})
-    assert response.status_code == 200
-    assert 'id="zone-history"' in response.text
-    assert "Keine Verlaufsdaten" in response.text
-    assert "<html" not in response.text
-    assert user.get(f"/zones/{foreign.id}/history").status_code == 404
-    # Auch die ungültige Eingabe verrät nichts über eine fremde Zone: erst Recht, dann Zeitraum.
-    assert user.get(f"/zones/{foreign.id}/history?period=ungültig").status_code == 404
-    assert client_als([]).get(f"/zones/{own.id}/history").status_code == 404
-    assert (
-        tenant_client([("zone.manage", own.id)]).get(f"/zones/{own.id}/history").status_code == 403
-    )
 
 
-def test_invalid_periods_are_rejected_without_a_server_error(client_als, session: Session) -> None:
-    zone = create_zone(session, "zeitraum")
-    user = client_als([("zone.manage", zone.id)])
-    for bad in ("ungültig", "", "24H", "1d", "24h;drop", "x" * 5000, "%00", "../etc"):
-        response = user.get(f"/zones/{zone.id}/history", params={"period": bad})
-        assert response.status_code == 422, bad
-    assert user.get(f"/zones/{zone.id}/history?period=24h").status_code == 200
-    assert user.get(f"/zones/{zone.id}/history?period=7d").status_code == 200
-    assert user.get(f"/zones/{zone.id}/history").status_code == 200
 
 
-def test_page_places_the_chart_above_the_form_with_accessible_summary(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "verlauf")
-    setting = session.get(Setting, 1)
-    if setting is None:
-        setting = create_settings(session)
-    setting.timezone = "America/New_York"
-    row = create_shadow_decision(session, zone)
-    row.decided_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
-    row.temperature_c = Decimal("19.5")
-    row.setpoint_c = Decimal("18.5")
-    row.scheduled_setpoint_c = Decimal("20.5")
-    row.solar_setback_k = Decimal("2.0")
-    session.flush()
-    response = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}")
-    html = response.text
-    assert response.status_code == 200
-    assert html.index('id="zone-history"') < html.index('<form method="post" action="/zones/')
-    assert html.count('role="img"') == len(LAYOUTS)
-    assert 'aria-describedby="zone-history-summary"' in html
-    assert re.search(r'id="zone-history-summary"[^>]*>Ist 19,5 °C bis 19,5 °C\.', html)
-    assert "Sonnenabsenkung 2 Minuten." in html
-    assert 'hx-get="/zones/' in html
-    assert "tc-history-heat" not in html
 
 
-def test_the_chart_escapes_the_zone_name(client_als, session: Session) -> None:
-    zone = create_zone(session, "xssverlauf")
-    zone.display_name = '"><script>alert(1)</script>'
-    row = create_shadow_decision(session, zone)
-    row.decided_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
-    row.setpoint_c = Decimal("20.0")
-    session.flush()
-    response = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history")
-    assert "<script>alert" not in response.text
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
 
 
-def test_every_layout_draws_inside_its_own_view_box(client_als, session: Session) -> None:
-    zone = create_zone(session, "boxen")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for index in range(360):
-        solar = index >= 60
-        row = create_shadow_decision(session, zone)
-        row.decided_at = now - timedelta(minutes=360 - index)
-        row.temperature_c = Decimal("22.0")
-        row.setpoint_c = Decimal("18.0" if solar else "20.5")
-        row.scheduled_setpoint_c = Decimal("20.5")
-        row.solar_setback_k = Decimal("2.5") if solar else None
-        row.would_heat = index % 3 == 0
-    session.flush()
-    html = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history").text
-    boxes = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)"(.*?)</svg>', html, re.S)
-    assert len(boxes) == len(LAYOUTS)
-    # Die Beschriftung des Bandes erscheint nur dort, wo es breit genug ist (Breite 25 %
-    # des Fensters: auf den beiden breiten Zeichnungen ja, auf den schmalen nein).
-    assert html.count("Sonnenabsenkung 2,5 K</text>") == 2
-    for width, height, body in boxes:
-        for x in re.findall(r'\bx="(-?[\d.]+)"', body):
-            assert 0 <= float(x) <= int(width)
-        for y in re.findall(r'\by="(-?[\d.]+)"', body):
-            assert 0 <= float(y) <= int(height)
-        for d in re.findall(r' d="([^"]*)"', body):
-            for number in re.findall(r"[-\d.]+", d):
-                assert -1 <= float(number) <= max(int(width), int(height))
+
+
+def test_touching_setpoint_runs_are_joined_by_a_vertical_edge() -> None:
+    start = datetime(2026, 10, 9, 4)
+    samples = [
+        _sample(start + timedelta(seconds=i * 37), effective=18.5 if i >= 10 else 20.5)
+        for i in range(30)
+    ]
+    chart = build_chart(samples, start, start + timedelta(hours=24), BERLIN)
+    path = step_path(chart.effective_runs, chart, DESKTOP)
+    assert path.count("M") == 1 and path.count(" V") == 1

@@ -27,7 +27,7 @@ def test_with_a_user_it_is_no_longer_needed(session: Session, user) -> None:
 
 
 def test_setup_without_a_token_is_rejected(client: TestClient, session: Session) -> None:
-    response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
+    response = client.post("/ui-api/setup", json={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
                                           "timezone": "Europe/Berlin", "setup_token": ""})
     assert response.status_code == 403
@@ -36,7 +36,7 @@ def test_setup_without_a_token_is_rejected(client: TestClient, session: Session)
 
 def test_setup_with_the_wrong_token_is_rejected(client: TestClient, session: Session) -> None:
     create_setup_token(session)
-    response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
+    response = client.post("/ui-api/setup", json={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
                                           "timezone": "Europe/Berlin",
                                           "setup_token": "erraten"})
@@ -47,11 +47,10 @@ def test_setup_with_the_wrong_token_is_rejected(client: TestClient, session: Ses
 def test_setup_creates_the_administrator_groups_and_settings(client: TestClient,
                                                            session: Session) -> None:
     marker = create_setup_token(session)
-    response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
+    response = client.post("/ui-api/setup", json={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
-                                          "timezone": "Europe/Berlin", "setup_token": marker},
-                          follow_redirects=False)
-    assert response.status_code == 303
+                                          "timezone": "Europe/Berlin", "setup_token": marker})
+    assert response.status_code == 200
     assert session.query(User).count() == 1
     assert {g.name for g in session.query(AccessGroup)} == {
         "Verwaltung", "Bedienung", "Nur lesen", "Integration", "Wohnung"
@@ -70,10 +69,9 @@ def test_setup_leaves_the_first_user_in_the_admin_interface(
     """
     marker = create_setup_token(session)
     client.post(
-        "/setup",
-        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
-              "timezone": "Europe/Berlin", "setup_token": marker},
-        follow_redirects=False,
+        "/ui-api/setup",
+        json={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
+              "timezone": "Europe/Berlin", "setup_token": marker}
     )
     user_record = session.query(User).one()
     assert principal_for_user(session, user_record).ui_profile is WebUiProfile.ADMIN
@@ -90,10 +88,9 @@ def test_the_tenant_template_group_carries_no_permission_at_all(
     """
     marker = create_setup_token(session)
     client.post(
-        "/setup",
-        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
-              "timezone": "Europe/Berlin", "setup_token": marker},
-        follow_redirects=False,
+        "/ui-api/setup",
+        json={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
+              "timezone": "Europe/Berlin", "setup_token": marker}
     )
     tenant_group = session.query(AccessGroup).filter_by(name="Wohnung").one()
     assert tenant_group.ui_profile == WebUiProfile.TENANT.value
@@ -106,8 +103,8 @@ def test_setup_token_can_only_be_used_once(client: TestClient, session: Session)
     marker = create_setup_token(session)
     data = {"username": "a", "display_name": "A", "password": "passwort-lang-genug",
              "timezone": "Europe/Berlin", "setup_token": marker}
-    client.post("/setup", data=data)
-    second = client.post("/setup", data={**data, "username": "b"})
+    client.post("/ui-api/setup", json=data)
+    second = client.post("/ui-api/setup", json={**data, "username": "b"})
     # Exactly 404, not "some error": setup is permanently closed after this,
     # not merely forbidden — anyone requesting it should not learn that it
     # ever existed at all. An `in (403, 404)` would not have noticed a switch
@@ -123,12 +120,12 @@ def test_setup_is_closed_after_completion(client: TestClient, session: Session,
     assert client.get("/ui-api/setup").status_code == 404
     form = {"username": "x", "display_name": "X", "password": "passwort-lang-genug",
             "timezone": "Europe/Berlin", "setup_token": "egal"}
-    assert client.post("/setup", data=form).status_code == 404
+    assert client.post("/ui-api/setup", json=form).status_code == 404
 
 
 def test_the_first_user_is_an_administrator(client: TestClient, session: Session) -> None:
     marker = create_setup_token(session)
-    client.post("/setup", data={"username": "lino", "display_name": "Lino",
+    client.post("/ui-api/setup", json={"username": "lino", "display_name": "Lino",
                                 "password": "passwort-lang-genug",
                                 "timezone": "Europe/Berlin", "setup_token": marker})
     from thermoctl.domain.authz import has_permission, principal_for_user
@@ -146,34 +143,6 @@ def test_setup_token_does_not_appear_in_plaintext_in_the_database(session: Sessi
     assert session.query(SetupToken).one().token_hash != marker
 
 
-def test_setup_with_a_too_short_password_returns_to_the_form(
-    client: TestClient, session: Session
-) -> None:
-    """PasswordTooShort must not reach the caller as a 500 -- it is an input
-    error, not a service fault. Fields already filled in (except the
-    password) are kept in the form."""
-    marker = create_setup_token(session)
-    response = client.post(
-        "/setup",
-        data={"username": "lino", "display_name": "Lino", "password": "zukurz",
-              "timezone": "Europe/Berlin", "setup_token": marker},
-    )
-    assert response.status_code == 200
-    assert "mindestens" in response.text
-    assert 'value="lino"' in response.text
-    assert "zukurz" not in response.text
-    assert session.query(User).count() == 0
-    assert session.query(AccessGroup).count() == 0
-
-    second_attempt = client.post(
-        "/setup",
-        data={"username": "lino", "display_name": "Lino",
-              "password": "passwort-lang-genug", "timezone": "Europe/Berlin",
-              "setup_token": marker},
-        follow_redirects=False,
-    )
-    assert second_attempt.status_code == 303
-    assert session.query(User).count() == 1
 
 
 def test_setup_is_also_possible_only_once_in_the_domain(session: Session) -> None:
@@ -240,11 +209,9 @@ def test_post_login_without_a_user_is_not_redirected(
 
     monkeypatch.setattr("thermoctl.web.shared.login.sleep", ohne_wartezeit)
     response = client.post(
-        "/login",
-        data={"username": "gibtsnicht", "password": "falsch-aber-lang"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "gibtsnicht", "password": "falsch-aber-lang"}
     )
-    assert response.status_code != 303
+    assert response.status_code == 401
     assert "Benutzername oder Passwort falsch" in response.text
 
 
@@ -292,16 +259,3 @@ def test_a_fresh_setup_token_still_works(session: Session) -> None:
     assert benutzer.username == "lino"
 
 
-def test_setup_with_an_unknown_timezone_returns_to_the_form(
-    client: TestClient, session: Session
-) -> None:
-    marker = create_setup_token(session)
-    response = client.post(
-        "/setup",
-        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
-              "timezone": "Mars/Olympus", "setup_token": marker},
-        follow_redirects=False,
-    )
-    assert response.status_code == 200
-    assert "Diese Zeitzone ist nicht bekannt." in response.text
-    assert session.query(User).count() == 0

@@ -147,17 +147,17 @@ def test_reading_and_writing_setpoints_like_the_domain(
     row = session.get(ZoneSetpoint, (zone.id, mode.id))
     assert row is not None and row.temperature_c == Decimal("21.5")
 
-    web_client = client_als([("setpoint.write", web_zone.id)])
+    create_settings(session)
+    web_client = client_als([("zone.read", web_zone.id), ("setpoint.write", web_zone.id)])
     http_session = web_client.cookies[COOKIE_NAME]
     csrf = csrf_token(http_session, get_settings().secret_key.get_secret_value())
     assert (
-        web_client.post(
-            f"/zones/{web_zone.id}/setpoints",
-            data={f"setpoint_{mode.id}": "21.5"},
+        web_client.put(
+            f"/ui-api/rooms/{web_zone.id}/modes/{mode.id}/setpoint",
+            json={"temperature_c": "21.5"},
             headers={CSRF_HEADER: csrf},
-            follow_redirects=False,
         ).status_code
-        == 303
+        == 200
     )
     web_row = session.get(ZoneSetpoint, (web_zone.id, mode.id))
     assert web_row is not None

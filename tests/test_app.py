@@ -118,38 +118,16 @@ def test_forbidden_is_answered_globally_as_403(
 
 
 def test_static_files_are_served(client: TestClient) -> None:
-    response = client.get("/static/vendor/bootstrap/bootstrap.min.css")
+    response = client.get("/static/favicon.svg")
     assert response.status_code == 200
-    response = client.get("/static/vendor/htmx/htmx.min.js")
+    response = client.get("/static/vendor/swagger-ui/swagger-ui-bundle.js")
     assert response.status_code == 200
 
 
-def test_the_login_page_includes_the_stylesheet(client_with_user: TestClient) -> None:
-    response = client_with_user.get("/login")
-    assert "/static/vendor/bootstrap/bootstrap.min.css" in response.text
 
 
-def test_the_login_page_contains_no_navigation_bar(client_with_user: TestClient) -> None:
-    response = client_with_user.get("/login")
-    assert response.status_code == 200
-    assert "<nav" not in response.text
 
 
-def test_the_header_bar_carries_blur_for_every_browser() -> None:
-    """Safari still needs the prefix to this day; without it the bar is
-    simply transparent there and the text underneath is hard to read.
-
-    Now lives in the stylesheet instead of as a style attribute in the
-    template -- styling does not belong in markup, and as an attribute it
-    could neither be overridden nor adapted for the dark scheme.
-    """
-    from pathlib import Path
-
-    stylesheet = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "static" / "thermoctl.css"
-    ).read_text(encoding="utf-8")
-    assert "backdrop-filter: blur(" in stylesheet
-    assert "-webkit-backdrop-filter: blur(" in stylesheet
 
 
 def test_lifespan_creates_a_setup_token_when_setup_is_missing(

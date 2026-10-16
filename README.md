@@ -4,7 +4,9 @@
 Zeitplänen, konfiguriert über eine Weboberfläche, ansprechbar zusätzlich über eine
 REST-Schnittstelle und einen MCP-Server.
 
-Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
+Die Weboberfläche ist eine Svelte-Anwendung unter `/app` (Daten über `/ui-api`, das
+Wandtablett über `/kiosk-api`); alte Adressen wie `/zones` oder `/login` leiten dorthin um.
+Es gibt **zwei Sichten**. Welche jemand bekommt, hängt an
 seiner Gruppe: die **Anlagensicht** für Verwaltung und Technik — Zonen, Geräte, Betrieb,
 Protokolle, Rechte —, oder die **Wohnungssicht** für die Bewohner eines einzelnen Raums:
 nur die eigenen Räume, in Alltagssprache, mit Temperatur, Wochenplan, Heizzeit, „für eine
@@ -39,7 +41,7 @@ jederzeit widerrufbaren Kiosk-Token:
 
 Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
 ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
-sich vollständig über die Oberfläche pflegen — Geräte per Ziehen und Ablegen. Für jede Zone
+sich vollständig über die Oberfläche pflegen — Geräte über die Zuordnungskarte. Für jede Zone
 wird protokolliert, **was geschaltet würde und warum**.
 
 Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein Thermostat
@@ -178,8 +180,9 @@ Token sind wie Zugangsdaten zu schützen.
 ### Browsertests
 
 Eine zweite, unabhängige Suite unter `browser_tests/` prüft im echten Browser (Playwright),
-was ein HTTP-Test nicht sehen kann: geladenes CSS, Fehler in der Browserkonsole, den
-Zeitplan-Editor, den PI-Schalter, das Kiosk-Dashboard. Sie startet einen echten Server gegen
+was ein HTTP-Test nicht sehen kann: Anmeldung und Abmeldung der Svelte-Oberfläche, nirgends ein
+404 auf Assets (auch hinter dem Ingress-Präfix), die Kiosk-Einlösung und die serverseitige
+OAuth-Zustimmung. Fehler in der Browserkonsole lassen jeden Test scheitern. Sie startet einen echten Server gegen
 eine eigene, frische SQLite-Datenbank und läuft **nicht** in der gewöhnlichen Suite und
 **nicht** in der CI — ausschließlich lokal, auf Wunsch, mit beliebig vielen Tests.
 
@@ -235,10 +238,9 @@ entstehen die PNGs standardmäßig im ignorierten `var/bilder/`; gleichnamige Bi
 ersetzt. `--doku` schreibt stattdessen ausschließlich die als `documented` gekennzeichneten
 Ansichten nach `docs/bilder/` (und ignoriert dabei `--ausgabe`) -- nur diese Bilder werden
 versioniert. Demodaten werden relativ zum Laufzeitpunkt angelegt, damit Messwerte frisch
-bleiben. HTTP- und Browserfehler brechen den Lauf ab. Die Routenabdeckung und ein
-gefilterter Probelauf werden von `browser_tests/test_screenshots.py` geprüft, der Abgleich
+bleiben. HTTP- und Browserfehler brechen den Lauf ab. Der Abgleich
 zwischen `documented`-Kennzeichen und den tatsächlich in der Dokumentation eingebundenen
-Bildern von `tests/test_docs_current.py`.
+Bildern prüft `tests/test_docs_current.py`.
 
 ## Noch nicht enthalten
 

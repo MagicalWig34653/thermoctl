@@ -1,5 +1,7 @@
 # Löschplan Alt-Oberfläche (Jinja/HTMX)
 
+**Status 2026-10-17: umgesetzt / entfernt** (Worktree `ui/delete-legacy`, nicht gemergt). Abweichungen vom Plan: `tenant_views._home_notice` wurde als `home_notice` nach `web/shared/home_notice.py` verschoben (die SPA nutzt es); `base_plain.html` ist ohne Bootstrap/HTMX neu geschrieben, `base_core/base_admin/base_tenant`, `empty.html` und `passkeys.html` entfielen mit den Alt-Seiten; `GET /passkeys` und `POST /passkeys/{id}/remove` entfielen (Weiterleitung auf `/app/konto`); `forms.py` behält nur `FormError`/`password_form_error`; `POST /logout` entfiel ersatzlos (die SPA nutzt `/ui-api/logout`). Der Rest des Dokuments beschreibt den Plan vor dem Löschen.
+
 Stand: Worktree `ui/cutover-redirects`, nach dem Verschieben der gemeinsam genutzten Helfer nach `thermoctl/web/shared/`. Dieses Dokument verändert nichts; es sagt, was der Löschschritt entfernen darf, was bleibt und was vorher noch fehlt.
 
 ## 1. Zusammenfassung

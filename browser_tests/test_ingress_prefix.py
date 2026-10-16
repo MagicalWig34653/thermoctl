@@ -1,22 +1,10 @@
-"""The whole interface, run through `INGRESS_PREFIX` -- the Home Assistant Ingress case.
+"""Die Oberfläche hinter `INGRESS_PREFIX` (Home-Assistant-Ingress) und direkt.
 
-Every fixture here (`live_server_with_prefix`, `page_with_prefix`, `admin_page_with_prefix`
-in `conftest.py`) is the same machinery the rest of this suite uses, started with
-`THERMOCTL_ROOT_PATH` set and fronted by `browser_tests/_ingress_proxy.py` -- a small
-stand-in for Home Assistant's own Ingress proxy that strips the prefix before the
-request ever reaches thermoctl, exactly like the real thing. A bare `page.goto("/login")`
-against `page_with_prefix` therefore actually crosses the proxy at
-`.../api/hassio_ingress/A1b2C3d4e5/login`.
-
-This file does not re-derive what already has full HTTP-level coverage in
-`tests/test_ingress_prefix.py` (redirect targets, cookie `Path=`, rendered `href`
-values as text). What only a real browser can show, and what this file checks
-instead: that navigating the *rendered* prefixed links actually works, that htmx's
-boosted forms and redirects land where the address bar shows, that the stylesheet
-still applies, and that the schedule editor's pointer-driven drag -- the most
-JavaScript-heavy surface in the project -- still reaches the server correctly
-when every URL it builds at runtime carries a prefix neither `schedule.js` nor
-`thermoctl.css` know about by name.
+Die Fixtures (`conftest.py`) starten dieselbe Anwendung mit `THERMOCTL_ROOT_PATH` und
+setzen `_ingress_proxy.py` davor, der den Präfix wie Home Assistant abschneidet. Geprüft
+wird, was nur ein Browser zeigt: Alle Assets der Hülle laden unter dem Präfix (keine
+404), Anmeldung, Abmeldung und Navigation bleiben unter dem Präfix, und derselbe laufende
+Prozess antwortet gleichzeitig ohne Präfix.
 """
 
 from __future__ import annotations
@@ -24,261 +12,56 @@ from __future__ import annotations
 import re
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Response, expect
 
-from browser_tests import seed
 from browser_tests.conftest import INGRESS_PREFIX, LiveServer
 
 pytestmark = pytest.mark.browser
 
-_PREFIXED_URL = re.compile(re.escape(INGRESS_PREFIX) + r"(/.*)?$")
+
+def _collect_failed(page: Page) -> list[str]:
+    failed: list[str] = []
+
+    def on_response(response: Response) -> None:
+        if response.status >= 400 and "/ui-api/" not in response.url:
+            failed.append(f"{response.status} {response.url}")
+
+    page.on("response", on_response)
+    return failed
 
 
-def test_direct_access_works_alongside_ingress_on_the_same_running_instance(
-    admin_page_with_prefix: Page,
-    admin_page_direct_via_prefixed_instance: Page,
-    live_server_with_prefix: LiveServer,
-) -> None:
-    """The actual point of this task: one running process, `THERMOCTL_ROOT_PATH`
-    configured for Ingress, reachable *both* ways at once -- not only each in its own
-    test (every other test in this file only ever opens one or the other), but here,
-    with both browser contexts open side by side against the identical instance.
-
-    `admin_page_with_prefix` is already signed in through the stripping proxy
-    (`X-Ingress-Path` included, `conftest.py`); `admin_page_direct_via_prefixed_
-    instance` signs in independently against `live_server_with_prefix.direct_base_url`
-    -- the same process's own port, no proxy, no header. Two entirely separate
-    `BrowserContext`s (separate cookie jars) so this proves the server side handles
-    both concurrently, not merely that a single browser profile can juggle two paths.
-    """
-    assert admin_page_with_prefix.url.startswith(live_server_with_prefix.base_url)
-    assert admin_page_direct_via_prefixed_instance.url == live_server_with_prefix.direct_base_url
-
-    # The Ingress-side page: every local link still carries the prefix.
-    admin_page_with_prefix.get_by_role("link", name="Zonen", exact=True).click()
-    # Seit v0.9.0 traegt auch die Kopfzeile `.tc-topbar` einen `<h1>` mit dem
-    # Seitentitel (`.tc-pagetitle`) -- ein ungefiltertes `get_by_role("heading")`
-    # faende deshalb zwei Treffer. `#tc-main` grenzt auf die eigentliche Seite ein,
-    # dieselbe Stelle, die vorher schon die einzige war.
-    expect(
-        admin_page_with_prefix.locator("#tc-main").get_by_role("heading", name="Zonen")
-    ).to_be_visible()
-    assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
-
-    # The direct-side page, navigated *after* the above, against the same server:
-    # still no prefix anywhere -- one request having resolved a prefix does not leak
-    # into the next.
-    admin_page_direct_via_prefixed_instance.get_by_role(
-        "link", name="Zonen", exact=True
-    ).click()
-    expect(
-        admin_page_direct_via_prefixed_instance.locator("#tc-main")
-        .get_by_role("heading", name="Zonen")
-    ).to_be_visible()
-    assert admin_page_direct_via_prefixed_instance.url.endswith("/zones")
-    assert INGRESS_PREFIX not in admin_page_direct_via_prefixed_instance.url
-
-    # And the Ingress-side session is still exactly where it was -- the two contexts
-    # (separate cookie jars, separate logins) did not disturb one another.
-    assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
-
-
-def test_the_stylesheet_applies_on_direct_access_to_the_same_ingress_configured_instance(
-    page_direct_via_prefixed_instance: Page,
-) -> None:
-    """Mirrors `test_the_stylesheet_still_applies_under_the_prefix` below, against the
-    same running, Ingress-configured instance but the direct address -- the static
-    file must still resolve correctly with no prefix once a request without
-    `X-Ingress-Path` reaches it, not just when the whole process has no prefix
-    configured at all (already covered by `test_stylesheet.py`).
-    """
-    page_direct_via_prefixed_instance.goto("login")
-    expect(
-        page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden")
-    ).to_be_visible()
-    # Geprüft wird eine Gestaltungsvariable, kein Farbwert -- siehe die Begründung
-    # in `browser_tests/test_stylesheet.py`: ein fester Farbwert scheitert bei jeder
-    # gewollten Farbanpassung und damit aus dem falschen Grund.
-    warmth = page_direct_via_prefixed_instance.evaluate(
-        "() => getComputedStyle(document.documentElement)"
-        ".getPropertyValue('--warmth').trim()"
-    )
-    assert warmth, (
-        "Die Gestaltungsvariable `--warmth` ist leer -- thermoctl.css scheint beim "
-        "direkten Zugriff auf die Ingress-konfigurierte Instanz nicht geladen zu "
-        "sein. Sie steht ausschließlich in dieser Datei."
-    )
-
-
-def test_login_reaches_the_dashboard_under_the_prefix(
+def test_legacy_path_and_assets_work_under_the_prefix(
     page_with_prefix: Page, live_server_with_prefix: LiveServer
 ) -> None:
-    page_with_prefix.goto("login")
-    assert page_with_prefix.url == f"{live_server_with_prefix.base_url}login"
-
-    page_with_prefix.get_by_label("Benutzername").fill(live_server_with_prefix.admin_username)
-    page_with_prefix.get_by_label("Passwort").fill(live_server_with_prefix.admin_password)
-    page_with_prefix.get_by_role("button", name="Anmelden").click()
-
-    # Anker seit v0.9.0 die Kopfzeile `.tc-topbar` statt der entfallenen
-    # `.tc-head` -- dieselbe Aussage ("angemeldet, Anlagenhuelle sichtbar"),
-    # nur an einem Element, das (anders als die Seitenleiste) auf jeder
-    # Bildschirmbreite sichtbar bleibt.
-    expect(page_with_prefix.locator(".tc-topbar")).to_be_visible()
-    expect(page_with_prefix).to_have_url(live_server_with_prefix.base_url)
+    failed = _collect_failed(page_with_prefix)
+    page_with_prefix.goto("zones")  # Altpfad: Umleitung unter den Präfix
+    expect(page_with_prefix.get_by_label("Benutzername")).to_be_visible()
+    expect(page_with_prefix).to_have_url(
+        re.compile(re.escape(INGRESS_PREFIX) + r"/app/uebersicht/raeume")
+    )
+    assert failed == [], failed
 
 
-def test_logout_leads_back_to_a_working_login_page_under_the_prefix(
+def test_login_navigation_and_logout_stay_under_the_prefix(
     admin_page_with_prefix: Page,
 ) -> None:
-    admin_page_with_prefix.get_by_role("button", name="Browsertest-Verwaltung").click()
-    admin_page_with_prefix.get_by_role("button", name="Abmelden").click()
-
-    expect(admin_page_with_prefix.get_by_label("Benutzername")).to_be_visible()
-    expect(admin_page_with_prefix.get_by_label("Passwort")).to_be_visible()
-    assert _PREFIXED_URL.search(admin_page_with_prefix.url)
-    assert admin_page_with_prefix.url.endswith("/login")
-
-
-def test_a_boosted_navigation_link_stays_under_the_prefix(admin_page_with_prefix: Page) -> None:
-    # `hx-boost` on <body> intercepts this click and swaps the page in via
-    # `pushState` -- an HTTP test never runs that path at all; it can only check
-    # that the rendered `href` carries the prefix (`tests/test_ingress_prefix.py`),
-    # not that the browser actually ends up there after clicking.
-    admin_page_with_prefix.get_by_role("link", name="Zonen", exact=True).click()
-    # Siehe Kommentar oben: `#tc-main` statt eines ungefilterten `get_by_role`,
-    # das seit v0.9.0 auch die Kopfzeile treffen wuerde.
-    expect(
-        admin_page_with_prefix.locator("#tc-main").get_by_role("heading", name="Zonen")
-    ).to_be_visible()
-    assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
+    page = admin_page_with_prefix
+    failed = _collect_failed(page)
+    assert re.search(re.escape(INGRESS_PREFIX) + r"/app", page.url), page.url
+    page.get_by_role("link", name="Geräte").first.click()
+    expect(page).to_have_url(re.compile(re.escape(INGRESS_PREFIX) + r"/app/geraete"))
+    page.get_by_text("Abmelden").first.click()
+    expect(page.get_by_label("Benutzername")).to_be_visible()
+    assert failed == [], failed
 
 
-def test_the_stylesheet_still_applies_under_the_prefix(page_with_prefix: Page) -> None:
-    """The second historical incident (missing stylesheet, see `CLAUDE.md`) --
-    checked again here because `href="{{ url_prefix }}/static/thermoctl.css"` is a
-    different code path from the unprefixed one `test_stylesheet.py` already covers,
-    and a wrong prefix computation would 404 exactly this link and silently fall
-    back to Bootstrap's own colours.
-    """
-    page_with_prefix.goto("login")
-    expect(page_with_prefix.get_by_role("button", name="Anmelden")).to_be_visible()
-    # Gestaltungsvariable statt Farbwert, siehe `browser_tests/test_stylesheet.py`.
-    warmth = page_with_prefix.evaluate(
-        "() => getComputedStyle(document.documentElement)"
-        ".getPropertyValue('--warmth').trim()"
-    )
-    assert warmth, (
-        "Die Gestaltungsvariable `--warmth` ist leer -- thermoctl.css scheint unter "
-        "dem Präfix nicht geladen zu sein. Ein falsch berechnetes Präfix würde genau "
-        "diesen Verweis mit 404 beantworten."
-    )
-
-
-def test_kiosk_dashboard_works_end_to_end_under_the_prefix(
-    admin_page_with_prefix: Page, live_server_with_prefix: LiveServer, browser
+def test_direct_access_works_alongside_ingress_on_the_same_instance(
+    admin_page_with_prefix: Page,
+    admin_page_direct_via_prefixed_instance: Page,
 ) -> None:
-    with live_server_with_prefix.session() as session:
-        zone = seed.create_schedule_zone(session, "Kiosk-unter-Präfix")
-        session.commit()
-        zone_display_name = zone.display_name
-
-    admin_page_with_prefix.goto("kiosk-tokens")
-    admin_page_with_prefix.get_by_label("Name").fill("Präfix-Tablet")
-    admin_page_with_prefix.get_by_text(zone_display_name, exact=False).click()
-    admin_page_with_prefix.get_by_role("button", name="Ausstellen").click()
-    entry = admin_page_with_prefix.locator("#new-kiosk-token")
-    expect(entry).to_be_visible()
-    match = re.search(r"/kiosk/(\S+)", entry.inner_text())
-    assert match, f"Kein Kiosk-Token in {entry.inner_text()!r} gefunden."
-    plaintext = match.group(1)
-
-    kiosk_context = browser.new_context(
-        base_url=live_server_with_prefix.base_url, color_scheme="light"
-    )
-    kiosk_errors: list[str] = []
-    from browser_tests.conftest import _record_console_error
-
-    kiosk_page = kiosk_context.new_page()
-    kiosk_page.on("console", lambda message: _record_console_error(kiosk_errors, message))
-    try:
-        kiosk_page.goto(f"kiosk/{plaintext}")
-        # Scoped to the tile, not the whole page: since the panel view, the zone's
-        # name also sits in its (invisible, until opened) detail layer further down
-        # the same document (kiosk.html) -- `get_by_text` on the whole page would
-        # match both and fail on ambiguity.
-        expect(
-            kiosk_page.locator(".kiosk-tile", has_text=zone_display_name)
-        ).to_be_visible()
-        assert kiosk_page.url == f"{live_server_with_prefix.base_url}kiosk"
-        assert not kiosk_errors, "Browserkonsole meldete Fehler:\n" + "\n".join(kiosk_errors)
-    finally:
-        kiosk_context.close()
-
-
-@pytest.fixture
-def schedule_zone_id_under_prefix(live_server_with_prefix: LiveServer) -> int:
-    with live_server_with_prefix.session() as session:
-        zone = seed.create_schedule_zone(session, "Zeitplan-unter-Präfix")
-        session.commit()
-        return zone.id
-
-
-def _drag(page: Page, start: tuple[float, float], end: tuple[float, float]) -> None:
-    # Identical to `test_schedule_editor.py`'s own `_drag` -- see there for why each
-    # of these steps (the round trip after `down()`, several intermediate `steps`)
-    # is needed for schedule.js to recognise this as a drag rather than a click.
-    page.mouse.move(*start)
-    page.mouse.down()
-    page.evaluate("() => document.body.offsetHeight")
-    page.mouse.move(*end, steps=8)
-    page.evaluate("() => document.body.offsetHeight")
-    page.mouse.up()
-
-
-def test_a_pointer_drag_in_the_schedule_editor_reaches_the_server_under_the_prefix(
-    admin_page_with_prefix: Page, schedule_zone_id_under_prefix: int
-) -> None:
-    """The most JavaScript-heavy surface in the project (see `test_schedule_editor.py`),
-    run once under a prefix: `schedule.js` never mentions a path itself, but every
-    `hx-post`/`hx-get` it drives is rendered by the server with `{{ url_prefix }}`
-    already baked in (`thermoctl/web/templates/schedule.html`) -- a pointer gesture
-    that fires against the wrong (un-prefixed) target would look identical to a
-    passing test right up until htmx's request 404s, which only a real round trip
-    through the DOM and the network can catch. Same gesture and the same assertions
-    as `test_schedule_editor.py::test_painting_a_new_block_creates_it_...`, just
-    against `admin_page_with_prefix` instead of `admin_page`.
-    """
-    admin_page_with_prefix.goto(f"zones/{schedule_zone_id_under_prefix}/schedule")
-
-    mode_radios = admin_page_with_prefix.locator('input[name="paint_tool"][type="radio"]')
-    chosen_radio = mode_radios.nth(3)
-    chosen_id = chosen_radio.get_attribute("id")
-    assert chosen_id
-    admin_page_with_prefix.locator(f'label[for="{chosen_id}"]').click()
-    expect(chosen_radio).to_be_checked()
-
-    tuesday = admin_page_with_prefix.locator('.schedule-day[data-weekday="2"]')
-    expect(tuesday.locator(".schedule-draggable")).to_have_count(0)
-
-    # Gleicher Grund wie in test_schedule_editor.py: Die 24-Stunden-Vorschau ueber
-    # dem Raster schiebt die Spalte nach unten, und Zeigerpunkte rechnen gegen das
-    # Sichtfenster.
-    tuesday.scroll_into_view_if_needed()
-    box = tuesday.bounding_box()
-    assert box is not None
-    x = box["x"] + box["width"] / 2
-    _drag(
-        admin_page_with_prefix,
-        (x, box["y"] + box["height"] * 0.2),
-        (x, box["y"] + box["height"] * 0.3),
-    )
-
-    # The gesture ends in an htmx request; if it had gone to the wrong (un-prefixed)
-    # URL it would 404 and the page would simply stop responding -- these two blocks
-    # appearing is the actual proof the request landed on the real server, not just
-    # that the click handler fired.
-    expect(admin_page_with_prefix.locator("[data-gesture-error]")).to_have_count(0)
-    tuesday = admin_page_with_prefix.locator('.schedule-day[data-weekday="2"]')
-    expect(tuesday.locator(".schedule-draggable")).to_have_count(2)
-    expect(admin_page_with_prefix.locator(f"#{chosen_id}")).to_be_checked()
+    direct = admin_page_direct_via_prefixed_instance
+    assert INGRESS_PREFIX not in direct.url
+    direct.get_by_role("link", name="Geräte").first.click()
+    expect(direct).to_have_url(re.compile(r"/app/geraete"))
+    assert INGRESS_PREFIX not in direct.url
+    assert INGRESS_PREFIX in admin_page_with_prefix.url

@@ -6,15 +6,13 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_settings, create_zone, role, source
+from tests.helpers import capability, create_device, create_zone, role
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
-from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.mapping_map import (
     SAME_SIDE,
     TECHNICAL_REASON,
@@ -313,159 +311,25 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(cookie, get_settings().secret_key.get_secret_value())}
 
 
-def test_page_answers_lists_connections_and_is_visible_zone_filtered(client_als: ClientAls, session: Session) -> None:
-    create_settings(session)
-    mine = create_zone(session, "meine")
-    other = create_zone(session, "fremde")
-    sensor = _sensor(session, "fuehler3")
-    mine.temperature_source_device_id = sensor.id
-    session.flush()
-    page = client_als([("device.read", mine.id)]).get("/devices/map")
-    assert page.status_code == 200
-    assert "Entwurf" in page.text and "Meine" in page.text and "Fremde" not in page.text
-    assert f'data-connection-row="conn-{mine.id}-temperature_source-{sensor.id}"' in page.text
-    assert other.display_name not in page.text
-    # Jeder Anschluss sagt, ob er Ausgang oder Eingang ist, und trägt den Hinweis dazu.
-    assert 'data-dir="out"' in page.text and 'data-dir="in"' in page.text
-    assert "Ausgang: liefert Temperatur" in page.text and "Eingang: nimmt Temperatur an" in page.text
-    assert "technische Werte zeigen" in page.text and "Automatisch anordnen" in page.text
 
 
-def test_page_marks_technical_ports_and_stored_zone_ports(client_als: ClientAls, session: Session) -> None:
-    create_settings(session)
-    zone = create_zone(session, "markiert")
-    sensor = _sensor(session, "fuehler-m")
-    page = client_als([("device.read", zone.id)]).get("/devices/map").text
-    def tag(port_id: str) -> str:
-        start = page.index(f'data-port="{port_id}"')
-        return page[page.rindex("<button", 0, start) : page.index("</button>", start)]
-
-    assert "data-technical" in tag(f"dev-{sensor.id}-battery") and "tc-prow-technical" in page
-    assert "data-technical" not in tag(f"dev-{sensor.id}-temperature")
-    assert "data-stored" in tag(zone_port_id(zone.id, "actuator"))
-    assert "data-stored" not in tag(f"dev-{sensor.id}-temperature")
 
 
-def test_page_needs_a_right_and_is_closed_to_tenants_and_anonymous(
-    client_als: ClientAls, tenant_client: ClientAls, client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "zu")
-    assert client.get("/devices/map", follow_redirects=False).status_code in (303, 401)
-    assert tenant_client([("device.read", zone.id)]).get("/devices/map").status_code == 403
-    page = client_als([("zone.read", zone.id)]).get("/devices/map")
-    assert "Zu</div>" not in page.text
 
 
 def _connect(client: TestClient, first: str, second: str) -> Any:
     return client.post("/devices/map/connect", headers=_csrf(client), data={"from_id": first, "to_id": second})
 
 
-def test_connect_stores_a_temperature_source_in_either_drag_direction(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "speichern")
-    sensor = _sensor(session, "fuehler4")
-    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
-    target = zone_port_id(zone.id, "temperature_source")
-    response = _connect(client, target, f"dev-{sensor.id}-temperature")  # vom Eingang aus gezogen
-    assert response.status_code == 200 and response.json() == {"ok": True}
-    session.refresh(zone)
-    assert zone.temperature_source_device_id == sensor.id
-    assert session.scalar(select(AuditEvent.id).where(AuditEvent.object_type == "zone_temperature_source"))
-    second = _sensor(session, "fuehler4b")
-    refused = _connect(client, f"dev-{second.id}-temperature", target)
-    assert refused.status_code == 422 and "nur eine Verbindung" in refused.json()["reason"]
-    session.refresh(zone)
-    assert zone.temperature_source_device_id == sensor.id
 
 
-def test_connect_assigns_an_actuator_from_the_zone_output_and_disconnect_removes_it(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "aktor")
-    valve = _thermostat(session, "ventil4")
-    role(session, "actuator")
-    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
-    heat = zone_port_id(zone.id, "actuator")
-    ok = _connect(client, heat, f"dev-{valve.id}-thermostat")
-    assert ok.status_code == 200
-    assert session.scalar(select(ZoneDevice.id).where(ZoneDevice.zone_id == zone.id)) is not None
-    again = _connect(client, f"dev-{valve.id}-thermostat", heat)  # andere Ziehrichtung, gleiche Verbindung
-    assert again.status_code == 422 and "bereits verbunden" in again.json()["reason"]
-    gone = client.post("/devices/map/disconnect", headers=_csrf(client),
-                       data={"connection_id": f"conn-{zone.id}-actuator-{valve.id}"})
-    assert gone.status_code == 200
-    assert session.scalar(select(ZoneDevice.id).where(ZoneDevice.zone_id == zone.id)) is None
 
 
-def test_the_old_wrong_direction_is_refused_and_changes_nothing(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "abgelehnt")
-    sensor = _sensor(session, "fuehler5")
-    valve = _thermostat(session, "ventil5")
-    role(session, "actuator")
-    client = client_als([("device.manage", zone.id)])
-    # Messwert auf den Heizbefehl-Ausgang, Ventil auf die Messquelle, Ausgang auf Ausgang.
-    for first, second in (
-        (f"dev-{sensor.id}-temperature", zone_port_id(zone.id, "actuator")),
-        (f"dev-{valve.id}-thermostat", zone_port_id(zone.id, "temperature_source")),
-        (f"dev-{sensor.id}-humidity", zone_port_id(zone.id, "temperature_source")),
-        (f"dev-{sensor.id}-battery", zone_port_id(zone.id, "temperature_source")),
-    ):
-        response = _connect(client, first, second)
-        assert response.status_code == 422 and response.json()["ok"] is False and response.json()["reason"], (first, second)
-    assert session.scalar(select(ZoneDevice.id)) is None
-    session.refresh(zone)
-    assert zone.temperature_source_device_id is None
 
 
-def test_device_to_device_is_judged_by_the_rules_and_then_not_stored(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "eingang")
-    sensor = _sensor(session, "fuehler7")
-    display = create_device(session, "anzeige")
-    session.add(ZoneDevice(zone_id=zone.id, device_id=display.id, device_role_id=role(session, "controller").id))
-    session.add(DeviceProperty(device_id=display.id, name="ext", value_type="numeric", unit="°C",
-                               is_readable=True, is_writable=True))
-    session.flush()
-    client = client_als([("device.manage", zone.id)])
-    prop = f"dev-{display.id}-prop-ext"
-    ok_kind = _connect(client, f"dev-{sensor.id}-temperature", prop)
-    assert ok_kind.status_code == 422 and "nicht gespeichert" in ok_kind.json()["reason"]
-    wrong_kind = _connect(client, f"dev-{sensor.id}-humidity", prop)
-    assert wrong_kind.status_code == 422 and "liefert Luftfeuchte" in wrong_kind.json()["reason"]
 
 
-def test_foreign_zones_unknown_ports_and_missing_csrf_are_refused(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    mine = create_zone(session, "meine2")
-    foreign = create_zone(session, "fremde2")
-    sensor = _sensor(session, "fuehler6")
-    device = f"dev-{sensor.id}-temperature"
-    reader = client_als([("device.read", mine.id)])
-    assert _connect(reader, device, zone_port_id(mine.id, "temperature_source")).status_code == 404
-    manager = client_als([("device.manage", mine.id)])
-    assert _connect(manager, device, zone_port_id(foreign.id, "temperature_source")).status_code == 404
-    assert _connect(manager, device, "input-1-x").status_code == 404
-    assert manager.post("/devices/map/connect", data={"from_id": device, "to_id": zone_port_id(mine.id, "temperature_source")}).status_code in (400, 403)
-    session.refresh(mine)
-    assert mine.temperature_source_device_id is None
 
 
-def test_disconnect_of_a_foreign_or_unknown_connection_is_refused(client_als: ClientAls, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "loesen")
-    sensor = _sensor(session, "fuehler8")
-    zone.temperature_source_device_id = sensor.id
-    session.flush()
-    client = client_als([("device.manage", zone.id)])
-    assert client.post("/devices/map/disconnect", headers=_csrf(client), data={"connection_id": "conn-0-x-0"}).status_code == 404
-    done = client.post("/devices/map/disconnect", headers=_csrf(client),
-                       data={"connection_id": f"conn-{zone.id}-temperature_source-{sensor.id}"})
-    assert done.status_code == 200
-    session.refresh(zone)
-    assert zone.temperature_source_device_id is None
 
 
-def test_script_is_served_locally_and_registered(client: TestClient) -> None:
-    assert client.get("/static/mapping_map.js").status_code == 200
-    assert "mapping_map.js" in client.get("/static/page_scripts.js").text

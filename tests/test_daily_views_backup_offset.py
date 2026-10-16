@@ -90,27 +90,8 @@ def _stored(session: Session, assignment_id: int) -> Decimal | None:
     return row.temperature_backup_offset_k
 
 
-def test_a_stored_backup_offset_is_shown_in_its_input(session: Session, client_als) -> None:
-    zone, assignment_id = _setup(session)
-    client = client_als([("zone.manage", zone.id), ("device.manage", zone.id)])
-
-    page = client.get(f"/zones/{zone.id}/parameters")
-
-    assert page.status_code == 200
-    assert _browser_form(page.text)[f"backup_offset_{assignment_id}"] == "-1.50"
 
 
-def test_saving_without_touching_the_backup_offset_keeps_it(session: Session, client_als) -> None:
-    zone, assignment_id = _setup(session)
-    client = client_als([("zone.manage", zone.id), ("device.manage", zone.id)])
-    form = _browser_form(client.get(f"/zones/{zone.id}/parameters").text)
-
-    response = client.post(
-        f"/zones/{zone.id}/parameters", data=form, headers=_csrf(client), follow_redirects=True
-    )
-
-    assert response.status_code == 200
-    assert _stored(session, assignment_id) == Decimal("-1.50")
 
 
 def test_without_device_manage_the_offsets_are_hidden_and_untouched(
@@ -130,27 +111,5 @@ def test_without_device_manage_the_offsets_are_hidden_and_untouched(
     assert _stored(session, assignment_id) == Decimal("-1.50")
 
 
-def test_a_rejected_save_redisplays_the_typed_backup_offset(session: Session, client_als) -> None:
-    zone, assignment_id = _setup(session)
-    client = client_als([("zone.manage", zone.id), ("device.manage", zone.id)])
-    form = _browser_form(client.get(f"/zones/{zone.id}/parameters").text)
-    form[f"backup_offset_{assignment_id}"] = "2.25"
-    form["hysteresis_k"] = "-1"  # wird abgelehnt, die Seite wird neu gerendert
-
-    response = client.post(f"/zones/{zone.id}/parameters", data=form, headers=_csrf(client))
-
-    assert _browser_form(response.text)[f"backup_offset_{assignment_id}"] == "2.25"
-    assert _stored(session, assignment_id) == Decimal("-1.50")
 
 
-def test_an_explicitly_changed_backup_offset_is_saved(session: Session, client_als) -> None:
-    zone, assignment_id = _setup(session)
-    client = client_als([("zone.manage", zone.id), ("device.manage", zone.id)])
-    form = _browser_form(client.get(f"/zones/{zone.id}/parameters").text)
-    form[f"backup_offset_{assignment_id}"] = "0,75"
-
-    client.post(
-        f"/zones/{zone.id}/parameters", data=form, headers=_csrf(client), follow_redirects=True
-    )
-
-    assert _stored(session, assignment_id) == Decimal("0.75")

@@ -40,7 +40,6 @@ from thermoctl.domain.solar_setback import SUNSHINE_THRESHOLD_W_M2
 from thermoctl.domain.temperature_source_health import ECHO_INDEPENDENCE_DELAY
 
 ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES = ROOT / "thermoctl" / "web" / "templates"
 
 
 def _entry(entry_id: str = "alpha", **changes: Any) -> dict[str, Any]:
@@ -451,78 +450,19 @@ def test_the_echo_delay_in_the_text_is_the_one_the_code_uses() -> None:
     assert f"{int(ECHO_INDEPENDENCE_DELAY.total_seconds() // 60)} Minuten" in text
 
 
-# --------------------------------------------------------------------------------------
-# Verweise aus der Oberfläche
-# --------------------------------------------------------------------------------------
-
-_HELP_CALL = re.compile(r"glossar_hilfe\(\s*[\"']([^\"']+)[\"']\s*\)")
-_GLOSSARY_HREF = re.compile(r"/glossar#([a-z0-9-]+)")
 
 
-def _template_references() -> dict[str, set[str]]:
-    """Template-Datei -> Kennungen, auf die sie per Hilfe-Symbol oder Anker verweist."""
-    found: dict[str, set[str]] = {}
-    for path in sorted(TEMPLATES.glob("*.html")):
-        text = path.read_text(encoding="utf-8")
-        ids = set(_HELP_CALL.findall(text)) | set(_GLOSSARY_HREF.findall(text))
-        if ids:
-            found[path.name] = ids
-    return found
 
 
-def test_every_anchor_referenced_from_the_interface_hits_an_existing_entry() -> None:
-    references = _template_references()
-    known = default_glossary().ids()
-    dead = {
-        template: sorted(ids - known) for template, ids in references.items() if ids - known
-    }
-    assert not dead, f"Verweise auf Glossareinträge, die es nicht gibt: {dead}"
 
 
-def test_the_scanner_finds_the_help_icons_so_the_test_above_is_not_blind() -> None:
-    """Zwischen fünf und acht Stellen sind vorgesehen (Auftrag); weniger hieße, dass
-    der Scanner nichts mehr erkennt."""
-    references = _template_references()
-    places = sum(
-        len(_HELP_CALL.findall((TEMPLATES / name).read_text("utf-8"))) for name in references
-    )
-    assert places >= 5, f"nur {places} Hilfe-Symbole gefunden: {references}"
-    assert {"parameter.html", "settings.html", "control.html"} <= set(references)
 
 
-def test_the_help_function_rejects_an_unknown_id_instead_of_linking_into_the_void() -> None:
-    from thermoctl.web import glossary_help
-
-    with pytest.raises(KeyError, match="gibt-es-nicht"):
-        glossary_help({"url_prefix": ""}, "gibt-es-nicht")  # type: ignore[arg-type]
 
 
-def test_the_help_function_builds_an_accessible_link_that_honours_the_url_prefix() -> None:
-    from thermoctl.web import glossary_help
-
-    html = glossary_help({"url_prefix": "/api/hassio_ingress/abc"}, "hysterese")  # type: ignore[arg-type]
-    assert 'href="/api/hassio_ingress/abc/glossar#hysterese"' in html
-    assert 'aria-label="Erklärung zu Hysterese im Glossar (öffnet in neuem Tab)"' in html
-    assert 'target="_blank"' in html
-    assert 'rel="noopener"' in html
 
 
-def test_the_help_function_works_without_a_prefix() -> None:
-    from thermoctl.web import glossary_help
 
-    html = glossary_help({}, "pi-regelung")  # type: ignore[arg-type]
-    assert 'href="/glossar#pi-regelung"' in html
-    assert "PI-Regelung (Beta)" in html
-
-
-def test_the_help_function_escapes_the_term(monkeypatch: pytest.MonkeyPatch) -> None:
-    import thermoctl.web as web
-
-    hostile = parse_glossary(_data(_entry("feind", term="<b>x</b>")))
-    monkeypatch.setattr(web, "default_glossary", lambda: hostile)
-    html = web.glossary_help({"url_prefix": ""}, "feind")  # type: ignore[arg-type]
-    assert "<b>" not in html
-    assert "&lt;b&gt;x&lt;/b&gt;" in html
 
 
 # --------------------------------------------------------------------------------------

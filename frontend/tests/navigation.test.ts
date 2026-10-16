@@ -78,19 +78,13 @@ test('Sichtbarkeit kommt nur aus der Server-Navigation', () => {
   assert.deepEqual(events[0].links.map((l) => l.path), ['/audit', '/changes']);
 });
 
-test('unbekannter Pfad landet nach Server-Abschnitt im Bereich und bleibt verlinkbar', () => {
+test('ein Server-Pfad ohne Abbildung erscheint in keinem Bereich', () => {
   const areas = buildVisibleAreas([
     { path: '/neu-analyse', label: 'Neu', section: 'analysis' },
     { path: '/neu-zugang', label: 'Zugang', section: 'access' },
-    { path: '/neu-rest', label: 'Rest', section: 'unbekannt' },
-    { path: '/account', label: 'Mehr', section: 'tenant' },
   ]);
-  const extra = (id: string) => areas.find((a) => a.id === id)?.extraLinks.map((l) => l.path);
-  assert.deepEqual(extra('auswertung'), ['/neu-analyse']);
-  assert.deepEqual(extra('personen'), ['/neu-zugang']);
-  assert.deepEqual(extra('uebersicht'), ['/neu-rest']);
-  // /account gehört zum Konto, nicht in einen Bereich
-  assert.ok(areas.every((a) => !a.extraLinks.some((l) => l.path === '/account')));
+  assert.deepEqual(areas.map((a) => a.id), ['uebersicht']);
+  assert.ok(areas.every((a) => a.pages.every((p) => !p.links.some((l) => l.path.startsWith('/neu')))));
 });
 
 test('Einstellungssuche findet Seiten und Begriffe, nur im sichtbaren Teil', () => {

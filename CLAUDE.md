@@ -45,7 +45,7 @@ nachgezogen, die sie beschreibt — nicht hinterher, sonst verfällt sie.
 | Persistenz | SQLAlchemy + Alembic |
 | Datenbank | Nutzerwahl beim Setup: SQLite (Standard) oder MariaDB |
 | Frontend | Svelte 5 + TypeScript, shadcn-svelte/Bits UI, Tailwind; gebaut mit Vite (Node/npm nur zur Build-Zeit), Quelle `frontend/`, Ausgabe als statische Dateien nach `thermoctl/web/static/app/`, ausgeliefert vom Python-Container (siehe Änderung 2026-10-15 unten) |
-| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: Weboberfläche (Svelte-Frontend gegen den Session-JSON-Vertrag `/ui-api`; bis zur Ablösung noch HTMX-Views), REST-API, MCP-Server |
+| Schnittstellen | Drei dünne Adapter über gemeinsamer Domänenlogik: Weboberfläche (Svelte-SPA unter `/app` gegen den Session-JSON-Vertrag `/ui-api`, dazu `/kiosk-api` für das Wandtablett mit eigenem Cookie), REST-API, MCP-Server |
 | Betrieb | Eigener Docker-Container |
 | Home Assistant | Optionale Integration per MQTT, **keine** Voraussetzung |
 
@@ -54,10 +54,16 @@ HTMX, Bootstrap — server-gerendert, kein Build-Schritt, kein npm" ist überhol
 Weboberfläche wird mit Svelte 5 + TypeScript, shadcn-svelte/Bits UI und Tailwind (Vite) neu
 gebaut. Es bleibt bei einem Container: Node läuft nur in einer Build-Stufe von
 `docker/Dockerfile` und in der CI (`npm ci`, `npm run check`, `npm test`, `npm run build`); das
-Endabbild enthält kein Node. Die Jinja/HTMX/Bootstrap-Oberfläche bleibt bis zur Ablösung
-bestehen und wird seitenweise ersetzt. Folgen: Das „kein npm" gilt nicht mehr; die
+Endabbild enthält kein Node. Folgen: Das „kein npm" gilt nicht mehr; die
 Abhängigkeiten stehen mit Version und Lizenz in `frontend/HERKUNFT.md`. Alles andere in der
 Tabelle bleibt unverändert.
+
+**Umgesetzt am 2026-10-17:** Die Jinja/HTMX/Bootstrap-Oberfläche ist entfernt. Es gibt nur noch die
+Svelte-SPA (`/app`, Daten über `/ui-api`, Kiosk über `/kiosk-api`). Serverseitig gerendert bleiben
+bewusst nur die OAuth-Zustimmung (`/oauth/consent`, Clickjacking-Schutz und absolute Weiterleitung),
+die Kiosk-Einlösung (`GET /kiosk/{token}`, setzt das Cookie) samt Hinweisseite für ein ungültiges
+Token und die Hinweisseite „Seite veraltet"; die alten GET-Pfade leiten auf die SPA um
+(`thermoctl/web/legacy_redirects.py`). Stand und Abweichungen: `docs/STATUS.md`.
 
 Begründungen und verworfene Alternativen zu diesen Entscheidungen sind nicht Teil dieses
 Repositories. Wenn eine dieser Entscheidungen im Weg steht, das ansprechen — nicht
@@ -173,8 +179,8 @@ Tests und Reviews gerutscht — eine fehlende Startseite, auf die Anmeldung und 
 zeigten, und eine Oberfläche ohne eingebundenes Stylesheet. Beide Male fand es der
 Projektinhaber beim ersten Öffnen der Seite. Der Grund ist strukturell: Das Verfahren prüft,
 ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_smoke_test.py`
-fängt inzwischen die häufigsten Fälle — jede Seite antwortet, Weiterleitungen führen
-irgendwohin, jeder Verweis in einer Vorlage ist erreichbar. Ersetzt aber nicht, die Anwendung
+fängt inzwischen die häufigsten Fälle — jeder alte Pfad endet in der SPA-Hülle, Weiterleitungen führen
+irgendwohin, der Kiosk-Einstieg landet auf einer Ansicht. Ersetzt aber nicht, die Anwendung
 nach einem sichtbaren Teilschritt einmal wirklich zu öffnen.
 
 ### Praktisches zur Agentenarbeit

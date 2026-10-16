@@ -245,15 +245,14 @@ def test_unknown_paths_are_not_swallowed(client: TestClient) -> None:
     assert client.get("/authorize", headers=HTML, follow_redirects=False).status_code == 404
 
 
-def test_post_routes_of_legacy_pages_are_not_touched(client: TestClient) -> None:
-    # Schreib-POSTs bleiben bis zum Löschschritt: ohne Sitzung wie bisher "Nicht angemeldet".
-    response = client.post("/zones/1/devices/detach", headers=HTML, follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/app/login"
-
-
-def test_logout_stays_a_post_and_leaves_through_the_login(client: TestClient) -> None:
-    assert client.get("/logout", follow_redirects=False).status_code == 405
+def test_the_old_form_posts_and_logout_are_gone(client: TestClient) -> None:
+    """Die Schreib-POSTs der alten Oberfläche gibt es nicht mehr; Abmelden läuft über
+    `/ui-api/logout`. Ein Altpfad antwortet nur auf GET (mit der Weiterleitung)."""
+    for path in ("/zones/1/devices/detach", "/logout"):
+        assert client.post(path, headers=HTML, follow_redirects=False).status_code in (404, 405)
+    assert client.post("/zones", headers=HTML, follow_redirects=False).status_code == 405
+    assert client.post("/login", headers=HTML, follow_redirects=False).status_code == 405
+    assert client.get("/logout", follow_redirects=False).status_code == 404
 
 
 # --- /login: return_to nur über safe_return_to ----------------------------------------
@@ -398,14 +397,6 @@ def test_not_logged_in_handler_under_the_prefix(client_with_prefix: TestClient) 
     response = client_with_prefix.get("/__geschuetzt", headers=HTML, follow_redirects=False)
     assert response.headers["location"] == (
         f"{PREFIX}/app/login?return_to={quote('/__geschuetzt', safe='')}"
-    )
-    htmx = client_with_prefix.get(
-        "/__geschuetzt",
-        headers={"HX-Request": "true", "HX-Current-URL": f"http://h{PREFIX}/oauth/consent?r=1"},
-        follow_redirects=False,
-    )
-    assert htmx.headers["HX-Redirect"] == (
-        f"{PREFIX}/app/login?return_to={quote('/oauth/consent?r=1', safe='')}"
     )
 
 

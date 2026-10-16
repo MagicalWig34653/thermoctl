@@ -7,7 +7,6 @@ by an excluded entry would still show up in that dropdown and make the assertion
 meaningless. `device_name` appears nowhere but the result rows.
 """
 
-import re
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -47,138 +46,26 @@ def _entry(
     return entry
 
 
-def test_device_commands_requires_audit_read(client_als) -> None:
-    assert client_als([("zone.read", None)]).get("/device-commands").status_code == 403
-    assert client_als([("audit.read", None)]).get("/device-commands").status_code == 200
 
 
-def test_from_actually_filters(client_als, session: Session) -> None:
-    create_settings(session)
-    _entry(session, device_name="zu-alt", at=datetime(2026, 8, 1, 23, 59))
-    _entry(session, device_name="im-zeitraum", at=datetime(2026, 8, 2))
-    response = client_als([("audit.read", None)]).get(
-        "/device-commands?from_date=2026-08-02"
-    )
-    assert "im-zeitraum" in response.text
-    assert "zu-alt" not in response.text
 
 
-def test_to_filters_inclusive_of_the_whole_day(client_als, session: Session) -> None:
-    create_settings(session)
-    _entry(session, device_name="noch-enthalten", at=datetime(2026, 8, 2, 23, 59, 59))
-    _entry(session, device_name="zu-neu", at=datetime(2026, 8, 3))
-    response = client_als([("audit.read", None)]).get(
-        "/device-commands?to_date=2026-08-02"
-    )
-    assert "noch-enthalten" in response.text
-    assert "zu-neu" not in response.text
 
 
-def test_zone_filter_matches_the_name_snapshot_of_a_deleted_zone(
-    client_als, session: Session
-) -> None:
-    """The filter has to work on the snapshot, not a join to `zone` -- otherwise a
-    deleted zone's entries could no longer be found by name at all."""
-    create_settings(session)
-    zone = create_zone(session, "überlebende-zone")
-    _entry(session, device_name="am-leben", zone_name=zone.display_name, zone_id=zone.id)
-    _entry(session, device_name="verwaist", zone_name="gelöschte-zone", zone_id=None)
-    response = client_als([("audit.read", None)]).get(
-        f"/device-commands?zone={zone.display_name}"
-    )
-    assert "am-leben" in response.text
-    assert "verwaist" not in response.text
 
 
-def test_outcome_filter_actually_filters(client_als, session: Session) -> None:
-    create_settings(session)
-    _entry(session, device_name="lief-durch", outcome_code="executed")
-    _entry(session, device_name="wurde-unterdrückt", outcome_code="suppressed")
-    response = client_als([("audit.read", None)]).get(
-        "/device-commands?outcome=suppressed"
-    )
-    assert "wurde-unterdrückt" in response.text
-    assert "lief-durch" not in response.text
 
 
-def test_error_and_reason_are_shown(client_als, session: Session) -> None:
-    create_settings(session)
-    _entry(
-        session,
-        device_name="fehlerventil",
-        outcome_code="failed",
-        error="MQTT-Client hat die Veröffentlichung abgewiesen",
-        reason="Ist 19,2 unter Soll 21,0 minus Hysterese",
-    )
-    response = client_als([("audit.read", None)]).get("/device-commands")
-    assert "MQTT-Client hat die Veröffentlichung abgewiesen" in response.text
-    assert "Ist 19,2 unter Soll 21,0 minus Hysterese" in response.text
 
 
-def test_pagination_returns_the_second_page(client_als, session: Session) -> None:
-    create_settings(session)
-    for number in range(51):
-        _entry(
-            session,
-            device_name=f"eintrag-{number:02}",
-            at=datetime(2026, 8, 15, 12, number),
-        )
-    response = client_als([("audit.read", None)]).get("/device-commands?page=2")
-    assert "eintrag-00" in response.text
-    assert "eintrag-50" not in response.text
 
 
-def test_to_before_from_shows_a_message_and_keeps_the_values(client_als) -> None:
-    response = client_als([("audit.read", None)]).get(
-        "/device-commands?from_date=2026-08-20&to_date=2026-08-10"
-    )
-    assert response.status_code == 200
-    assert "darf nicht vor dem Von-Datum liegen" in response.text
-    assert 'value="2026-08-20"' in response.text
-    assert 'value="2026-08-10"' in response.text
 
 
-def test_unreadable_filter_values_show_messages_instead_of_422(client_als) -> None:
-    response = client_als([("audit.read", None)]).get(
-        "/device-commands?from_date=gestern&page=zwei"
-    )
-    assert response.status_code == 200
-    assert "Bitte ein gültiges Datum eingeben" in response.text
-    assert "Seitennummer muss eine ganze Zahl sein" in response.text
 
 
-def test_the_time_shown_is_local_not_utc(client_als, session: Session) -> None:
-    """`timezone` defaults to Europe/Berlin in `create_settings`; in August that is
-    UTC+2, so 12:00 UTC must read 14:00 in both the cell and its tooltip."""
-    create_settings(session)
-    _entry(session, device_name="zeitzonenventil", at=datetime(2026, 8, 15, 12, 0, 0))
-    response = client_als([("audit.read", None)]).get("/device-commands")
-    assert "15.08.2026 14:00:00" in response.text
-    assert 'title="15.08.2026 14:00:00"' in response.text
-    assert "2026-08-15 12:00:00 UTC" not in response.text
 
 
-def test_the_rendered_filter_form_actually_filters(client_als, session: Session) -> None:
-    """Submits the filter form as rendered, instead of hand-building the query
-    string -- so a renamed `name=` attribute in the template would be caught here."""
-    create_settings(session)
-    _entry(session, device_name="renderformventil", outcome_code="suppressed")
-    _entry(session, device_name="anderes-ventil", outcome_code="executed")
-    client = client_als([("audit.read", None)])
-    page = client.get("/device-commands")
-
-    form = re.search(
-        r'<form method="get" action="/device-commands"[^>]*>(.*?)</form>',
-        page.text,
-        re.S,
-    )
-    assert form is not None
-    field_names = set(re.findall(r'name="([^"]+)"', form.group(1)))
-    assert field_names == {"from_date", "to_date", "zone", "outcome"}
-
-    response = client.get("/device-commands", params={"outcome": "suppressed"})
-    assert "renderformventil" in response.text
-    assert "anderes-ventil" not in response.text
 
 
 def _absenkung(session: Session, zone_name: str) -> Zone:
@@ -207,91 +94,16 @@ def _absenkung(session: Session, zone_name: str) -> Zone:
     return zone
 
 
-def test_absenkung_entries_are_shown_with_kind_text_and_labels(
-    client_als, session: Session
-) -> None:
-    create_settings(session)
-    _absenkung(session, "sonnenzimmer")
-    response = client_als([("audit.read", None)]).get("/device-commands?zone=sonnenzimmer")
-    assert response.status_code == 200
-    assert ">Absenkung<" in response.text
-    assert (
-        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in response.text
-    )
-    assert "Sonnenabsenkung beendet: wirksam wieder 20,5 °C" in response.text
-    assert "Absenkung beginnt" in response.text
-    assert "Absenkung beendet" in response.text
-    assert "Regelung (Sonnenabsenkung)" in response.text
-    # Kein Gerät beteiligt: Platzhalter statt leerer Zelle.
-    assert re.search(r'data-label="Gerät">\s*–\s*</td>', response.text)
 
 
-def test_the_page_does_not_call_the_value_before_the_setback_a_schedule(
-    client_als, session: Session
-) -> None:
-    """Der Hinweistext der Seite und die Einträge sagen "Sollwert vor Absenkung" -- der
-    Wert folgt auch einer Übersteuerung oder Abwesenheit, nicht nur dem Zeitplan."""
-    create_settings(session)
-    _absenkung(session, "sonnenzimmer-wortlaut")
-    page = client_als([("audit.read", None)]).get("/device-commands?zone=sonnenzimmer-wortlaut")
-    assert page.status_code == 200
-    assert "Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in page.text
-    assert "Zeitplan-Sollwert" not in page.text
-    assert "niedrigeren Wert als den Zeitplan" not in page.text
-    assert "Zeitplan 20,5 °C" not in page.text
 
 
-def test_absenkung_entries_need_audit_read_like_every_other_entry(
-    client_als, session: Session
-) -> None:
-    create_settings(session)
-    _absenkung(session, "sonnenzimmer-recht")
-    response = client_als([("zone.read", None)]).get("/device-commands")
-    assert response.status_code == 403
-    assert "Sonnenabsenkung" not in response.text
 
 
-def test_the_outcome_filter_hides_absenkung_entries(client_als, session: Session) -> None:
-    create_settings(session)
-    _absenkung(session, "sonnenzimmer-filter")
-    _entry(session, device_name="ausgefuehrtes-ventil", outcome_code="executed")
-    response = client_als([("audit.read", None)]).get("/device-commands?outcome=executed")
-    assert "ausgefuehrtes-ventil" in response.text
-    assert "Sollwert vor Absenkung 20,5 °C, wirksam" not in response.text
-    assert "wirksam wieder" not in response.text
 
 
-def test_the_zone_filter_offers_a_zone_that_only_has_absenkung_entries(
-    client_als, session: Session
-) -> None:
-    """Eine Zone ohne jeden Gerätebefehl, aber mit Absenkungswechseln, muss in der
-    Auswahl stehen -- sonst sind ihre Einträge nur über eine von Hand getippte URL
-    erreichbar. Der Wert der Option muss die Einträge auch wirklich finden."""
-    create_settings(session)
-    zone = _absenkung(session, "nur-sonne")
-    _entry(session, device_name="anderes-ventil", zone_name="Wohnzimmer")
-    client = client_als([("audit.read", None)])
-
-    page = client.get("/device-commands")
-    assert f'<option value="{zone.display_name}"' in page.text
-    assert '<option value="Wohnzimmer"' in page.text
-
-    filtered = client.get("/device-commands", params={"zone": zone.display_name})
-    assert (
-        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in filtered.text
-    )
-    assert "anderes-ventil" not in filtered.text
-    assert f'<option value="{zone.display_name}" selected' in filtered.text
 
 
-def test_the_zone_filter_lists_a_zone_with_commands_and_absenkung_only_once(
-    client_als, session: Session
-) -> None:
-    create_settings(session)
-    zone = _absenkung(session, "beides")
-    _entry(session, device_name="beides-ventil", zone_name=zone.display_name, zone_id=zone.id)
-    page = client_als([("audit.read", None)]).get("/device-commands")
-    assert page.text.count(f'<option value="{zone.display_name}"') == 1
 
 
 def test_a_zone_that_never_had_an_absenkung_is_not_offered_by_the_shadow_log(

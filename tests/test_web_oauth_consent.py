@@ -1,12 +1,9 @@
-import secrets
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy.orm import Session
 
-from tests.helpers import user_with_permissions
 from thermoctl.auth.csrf import csrf_token
-from thermoctl.auth.passwords import hash_password
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
@@ -150,54 +147,8 @@ def test_tenant_with_token_self_can_consent(tenant_client, session: Session) -> 
     assert c.get(f"/oauth/consent?request={request_id}").status_code == 200
 
 
-def test_login_returns_to_consent(client, session: Session, monkeypatch) -> None:
-    user = user_with_permissions(session, "consent-login", [("token.self", None)])
-    password = secrets.token_urlsafe(18)
-    user.password_hash = hash_password(password)
-    request_id = _request(session)
-    response = client.get(f"/oauth/consent?request={request_id}", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/login?return_to=")
-    login_page = client.get(response.headers["location"])
-    assert 'name="return_to"' in login_page.text
-
-    async def no_delay(_seconds):
-        return None
-
-    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
-    result = client.post(
-        "/login",
-        data={
-            "username": user.username,
-            "password": password,
-            "return_to": f"/oauth/consent?request={request_id}",
-        },
-        follow_redirects=False,
-    )
-    assert result.status_code == 303
-    assert result.headers["location"] == f"/oauth/consent?request={request_id}"
 
 
-def test_login_rejects_external_return_target(client, session: Session, monkeypatch) -> None:
-    user = user_with_permissions(session, "consent-safe-login", [("token.self", None)])
-    password = secrets.token_urlsafe(18)
-    user.password_hash = hash_password(password)
-
-    async def no_delay(_seconds):
-        return None
-
-    monkeypatch.setattr("thermoctl.web.shared.login.sleep", no_delay)
-    response = client.post(
-        "/login",
-        data={
-            "username": user.username,
-            "password": password,
-            "return_to": "https://client.example/steal",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
 
 
 def test_consent_pages_cannot_be_framed(client_als, session: Session) -> None:
@@ -343,49 +294,19 @@ def _form_field_token(c) -> dict[str, str]:
     return {"csrf_token": _csrf(c)["X-CSRF-Token"]}
 
 
-def test_consent_form_is_not_boosted_and_carries_csrf_field(client_als, session: Session) -> None:
+def test_consent_form_is_a_plain_form_and_carries_csrf_field(client_als, session: Session) -> None:
     """Die Zustimmung führt zu einer fremden Adresse und muss ein echter Seitenwechsel sein."""
     c = client_als([("token.self", None), ("zone.read", None)])
     request_id = _request(session)
     body = c.get(f"/oauth/consent?request={request_id}").text
     post_form = body[body.index('<form method="post"') :]
     post_form = post_form[: post_form.index("</form>")]
-    assert 'hx-boost="false"' in post_form.split(">", 1)[0]
+    assert "hx-" not in post_form
     assert 'name="csrf_token"' in post_form
 
 
-def test_htmx_submit_gets_hx_redirect_not_cross_origin_303(client_als, session: Session) -> None:
-    c = client_als([("token.self", None), ("zone.read", None)])
-    request_id = _request(session)
-    response = c.post(
-        "/oauth/consent",
-        data={"request": request_id, "action": "allow", "permission": "zone.read"},
-        headers={**_csrf(c), "HX-Request": "true", "HX-Boosted": "true"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 200
-    assert "location" not in response.headers
-    target = urlsplit(response.headers["HX-Redirect"])
-    assert (target.scheme, target.netloc, target.path) == ("https", "client.example", "/callback")
-    query = parse_qs(target.query)
-    assert query["state"] == ["opaque"]
-    assert len(query["code"]) == 1
 
 
-def test_htmx_deny_gets_hx_redirect(client_als, session: Session) -> None:
-    c = client_als([("token.self", None)])
-    request_id = _request(session)
-    response = c.post(
-        "/oauth/consent",
-        data={"request": request_id, "action": "deny"},
-        headers={**_csrf(c), "HX-Request": "true", "HX-Boosted": "true"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 200
-    assert "location" not in response.headers
-    query = parse_qs(urlsplit(response.headers["HX-Redirect"]).query)
-    assert query["error"] == ["access_denied"]
-    assert query["state"] == ["opaque"]
 
 
 def test_plain_form_post_with_field_token_redirects_with_303(client_als, session: Session) -> None:

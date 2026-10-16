@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -24,7 +23,6 @@ from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.device_assignment import (
-    REQUIRED_CAPABILITY,
     CapabilityMissing,
     detach_device,
     set_temperature_source,
@@ -248,203 +246,20 @@ def test_detaching_names_the_device_and_role_in_the_audit_entry(session: Session
     assert actuator.label in entry.summary
 
 
-def test_the_page_shows_assignments_and_the_temperature_source(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "anzeige")
-    device = create_device(session, "thermostat")
-    zone.temperature_source_device_id = device.id
-    _assign(session, zone.id, device.id, "controller")
-
-    response = client_als([("device.read", zone.id)]).get(
-        f"/zones/{zone.id}/devices"
-    )
-
-    assert response.status_code == 200
-    assert "thermostat" in response.text
-    assert "controller" in response.text
-    assert "Gerät tauschen" not in response.text
 
 
-def test_a_duplicate_role_shows_an_understandable_message(client_als, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "doppelt")
-    device = create_device(session, "kontakt")
-    devicesrolle = role(session, "window_contact")
-    _assign(session, zone.id, device.id, "window_contact")
-    client = client_als([("device.manage", zone.id)])
-
-    response = client.post(
-        f"/zones/{zone.id}/devices/assign",
-        data={"device_id": device.id, "role_id": devicesrolle.id},
-        headers=_csrf(client),
-    )
-
-    assert response.status_code == 200
-    assert "in dieser Rolle bereits zugeordnet" in response.text
 
 
-def test_the_writing_routes_and_their_permissions(client_als, session: Session) -> None:
-    source(session)
-    eigene = create_zone(session, "eigene")
-    fremde = create_zone(session, "fremde")
-    old = create_device(session, "weg")
-    new_link = create_device(session, "hin")
-    client = client_als([("device.manage", eigene.id)])
-    head = _csrf(client)
-
-    zuordnen = client.post(
-        f"/zones/{eigene.id}/devices/assign",
-        data={"device_id": old.id, "role_id": role(session, "actuator").id},
-        headers=head,
-        follow_redirects=False,
-    )
-    assert zuordnen.status_code == 303
-    assignment = session.scalar(
-        select(ZoneDevice).where(ZoneDevice.zone_id == eigene.id)
-    )
-    assert assignment is not None
-
-    temperature_source = client.post(
-        f"/zones/{eigene.id}/devices/source",
-        data={"device_id": old.id},
-        headers=head,
-        follow_redirects=False,
-    )
-    assert temperature_source.status_code == 303
-    assert eigene.temperature_source_device_id == old.id
-
-    swap = client.post(
-        f"/zones/{eigene.id}/devices/swap",
-        data={"old_device_id": old.id, "new_device_id": new_link.id},
-        headers=head,
-        follow_redirects=False,
-    )
-    assert swap.status_code == 303
-    new_assignment = session.scalar(
-        select(ZoneDevice).where(
-            ZoneDevice.zone_id == eigene.id, ZoneDevice.device_id == new_link.id
-        )
-    )
-    assert new_assignment is not None
-
-    # The identifier lives in the body, not in the path: hx-boost reads a form's
-    # `action` once, so the table and the drag-out use the same endpoint.
-    lösen = client.post(
-        f"/zones/{eigene.id}/devices/detach",
-        data={"assignment_id": str(new_assignment.id)},
-        headers=head,
-        follow_redirects=False,
-    )
-    assert lösen.status_code == 303
-    assert session.get(ZoneDevice, new_assignment.id) is None
-
-    assert client.get(f"/zones/{fremde.id}/devices").status_code == 404
-    assert client.post(
-        f"/zones/{fremde.id}/devices/source",
-        data={"device_id": new_link.id},
-        headers=head,
-    ).status_code == 404
 
 
-def test_invalid_input_when_assigning(client_als, session: Session) -> None:
-    """Every error path of the assignment page — until now only the success case
-    was covered."""
-    source(session)
-    zone = create_zone(session, "zone-fehlerwege")
-    device = create_device(session, "vorhanden")
-    client = client_als([("device.manage", None), ("device.read", None)])
-    head = _csrf(client)
-
-    # Unknown device, unknown role, no data at all.
-    for data in (
-        {"device_id": "999999", "role_id": str(role(session, "actuator").id)},
-        {"device_id": str(device.id), "role_id": "999999"},
-        {"device_id": "", "role_id": ""},
-        {"device_id": "kein Geraet", "role_id": "1"},
-    ):
-        response = client.post(f"/zones/{zone.id}/devices/assign", data=data, headers=head)
-        assert response.status_code == 200, data
-        assert session.scalar(
-            select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
-        ) is None, data
 
 
-def test_the_temperature_source_can_be_detached_again(client_als, session: Session) -> None:
-    """An empty field means 'no measurement source' — the zone then counts as having no source."""
-    source(session)
-    zone = create_zone(session, "zone-source-removed")
-    device = create_device(session, "quelle-weg")
-    client = client_als([("device.manage", None), ("device.read", None)])
-    head = _csrf(client)
-    client.post(
-        f"/zones/{zone.id}/devices/source", data={"device_id": str(device.id)},
-        headers=head,
-    )
-    assert zone.temperature_source_device_id == device.id
-    response = client.post(
-        f"/zones/{zone.id}/devices/source", data={"device_id": ""},
-        headers=head, follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert zone.temperature_source_device_id is None
 
 
-def test_an_unknown_temperature_source_has_no_effect(client_als, session: Session) -> None:
-    source(session)
-    zone = create_zone(session, "zone-source-unknown")
-    client = client_als([("device.manage", None), ("device.read", None)])
-    response = client.post(
-        f"/zones/{zone.id}/devices/source", data={"device_id": "999999"},
-        headers=_csrf(client),
-    )
-    assert response.status_code == 200
-    assert zone.temperature_source_device_id is None
 
 
-def test_a_swap_with_nonsensical_devices_reports_understandably(
-    client_als, session: Session
-) -> None:
-    """Three cases: the same device, an unknown device, a device with no assignment."""
-    source(session)
-    zone = create_zone(session, "zone-tausch-unsinn")
-    eines = create_device(session, "eines")
-    anderes = create_device(session, "anderes")
-    client = client_als([("device.manage", None), ("device.read", None)])
-    head = _csrf(client)
-
-    for data in (
-        {"old_device_id": str(eines.id), "new_device_id": str(eines.id)},
-        {"old_device_id": str(eines.id), "new_device_id": "999999"},
-        {"old_device_id": str(eines.id), "new_device_id": str(anderes.id)},
-    ):
-        response = client.post(f"/zones/{zone.id}/devices/swap", data=data, headers=head)
-        assert response.status_code == 200, data
-        assert session.scalar(
-            select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
-        ) is None, data
 
 
-def test_a_foreign_assignment_cannot_be_detached(client_als, session: Session) -> None:
-    """An assignment belonging to another zone yields 404, not 403."""
-    source(session)
-    eigene = create_zone(session, "eigene-lösen")
-    fremde = create_zone(session, "fremde-lösen")
-    device = create_device(session, "fremdgerät")
-    foreign_assignment = ZoneDevice(
-        zone_id=fremde.id, device_id=device.id,
-        device_role_id=role(session, "actuator").id,
-    )
-    session.add(foreign_assignment)
-    session.flush()
-    client = client_als([("device.manage", None), ("device.read", None)])
-    response = client.post(
-        f"/zones/{eigene.id}/devices/detach",
-        data={"assignment_id": str(foreign_assignment.id)},
-        headers=_csrf(client),
-    )
-    assert response.status_code == 404
-    assert session.get(ZoneDevice, foreign_assignment.id) is not None
 
 
 def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
@@ -474,25 +289,6 @@ def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
     assert session.get(ZoneDevice, assignment.id) is not None
 
 
-def test_drop_targets_only_with_device_manage(client_als, session: Session) -> None:
-    """Dragging is a second way of operating the same change -- it must depend on
-    the same permission check as the forms. A drop target that is visible and
-    may not be used is an invitation to a 403."""
-    zone = create_zone(session, "ziehzone")
-    # Without a device there is nothing to drag -- the cards are built from the list.
-    create_device(session, "ziehbares-geraet")
-
-    darf = client_als([("device.read", None), ("device.manage", zone.id), ("zone.read", None)])
-    page = darf.get(f"/zones/{zone.id}/devices")
-    assert page.status_code == 200
-    assert 'data-target="temperature_source"' in page.text
-    assert "tc-draggable" in page.text
-
-    read_only = client_als([("device.read", None), ("zone.read", None)])
-    page = read_only.get(f"/zones/{zone.id}/devices")
-    assert page.status_code == 200
-    assert "data-target=" not in page.text
-    assert "tc-draggable" not in page.text
 
 
 def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) -> None:
@@ -703,42 +499,8 @@ def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
     assert zone.temperature_source_device_id == kombi.id
 
 
-def test_the_view_shows_the_reason_instead_of_an_error(client_als, session: Session) -> None:
-    """A 500 would be the worst answer here: the user did nothing wrong except
-    the wrong thing, and they should learn what was missing."""
-    zone = create_zone(session, "ansichtszone")
-    sensor = _with_capability(session, "ansichts-sensor", "temperature")
-    c = client_als([("device.read", None), ("device.manage", None), ("zone.read", None)])
-    response = c.post(
-        f"/zones/{zone.id}/devices/assign",
-        data={"device_id": str(sensor.id), "role_id": str(role(session, "actuator").id)},
-        headers=_csrf(c),
-    )
-    assert response.status_code == 200
-    assert "Schaltausgang" in response.text
 
 
-def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) -> None:
-    """Without it, a device could be dragged in, but not out again -- the way in
-    and the way out would be two different actions."""
-    from thermoctl.db.models.device import ZoneDevice
-
-    zone = create_zone(session, "kennungszone")
-    device = create_device(session, "kennungsgerät")
-    assignment = ZoneDevice(
-        zone_id=zone.id, device_id=device.id, device_role_id=role(session, "actuator").id
-    )
-    session.add(assignment)
-    zone.temperature_source_device_id = device.id
-    session.flush()
-
-    client = client_als(
-        [("device.read", None), ("device.manage", None), ("zone.read", None)]
-    )
-    page = client.get(f"/zones/{zone.id}/devices")
-    assert f'data-assignment="{assignment.id}"' in page.text
-    assert 'data-source="yes"' in page.text
-    assert 'data-target="detach"' in page.text
 
 
 def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: Session) -> None:
@@ -789,34 +551,6 @@ def _controller_commands(session: Session) -> None:
     session.flush()
 
 
-def test_the_page_shows_the_buttons_that_actually_arrived(client_als, session: Session) -> None:
-    """Nothing guessed: how a device names its buttons is decided by Zigbee2MQTT.
-
-    Without this list, someone would have to read their model's datasheet -- and
-    with a typo the button would silently do nothing.
-    """
-    import json
-
-    from thermoctl.services.ingest import process_message
-
-    _controller_commands(session)
-    zone = create_zone(session, "tastenzone")
-    device = create_device(session, "wandschalter")
-    _assign(session, zone.id, device.id, "controller")
-    process_message(
-        session,
-        f"zigbee2mqtt/{device.external_id}",
-        json.dumps({"action": "button_1_single"}).encode(),
-        base="zigbee2mqtt",
-        received_at=datetime(2026, 8, 31, 8, 0),
-    )
-
-    response = client_als([("device.read", zone.id)]).get(f"/zones/{zone.id}/devices")
-
-    assert response.status_code == 200
-    assert "Tastenbelegung" in response.text
-    assert "button_1_single" in response.text
-    assert "Nächste Schaltung vorziehen" in response.text
 
 
 def test_without_a_controller_there_is_no_button_binding_section(
@@ -833,185 +567,16 @@ def test_without_a_controller_there_is_no_button_binding_section(
     assert "Tastenbelegung" not in response.text
 
 
-def test_a_button_can_be_bound_and_released_again(
-    client_als, session: Session
-) -> None:
-    from thermoctl.db.models.device import ControllerBinding
-
-    source(session)
-    _controller_commands(session)
-    zone = create_zone(session, "belegzone")
-    device = create_device(session, "schalter")
-    _assign(session, zone.id, device.id, "controller")
-    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
-    client.get(f"/zones/{zone.id}/devices")
-
-    response = client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={
-            "device_id": str(device.id),
-            "action_code": "single_plus",
-            "command": "setpoint_up",
-            "step_k": "1,0",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    binding = session.scalars(select(ControllerBinding)).one()
-    # Comma as usual in the form, period in the database.
-    assert binding.step_k == Decimal("1.0")
-
-    client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "single_plus", "command": ""},
-        follow_redirects=False,
-    )
-    assert session.scalars(select(ControllerBinding)).all() == []
 
 
-def test_unusable_button_bindings_are_refused(client_als, session: Session) -> None:
-    source(session)
-    _controller_commands(session)
-    zone = create_zone(session, "fehlzone")
-    device = create_device(session, "fehlschalter")
-    _assign(session, zone.id, device.id, "controller")
-    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
-    client.get(f"/zones/{zone.id}/devices")
-
-    ohne_aktion = client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "", "command": "boost"},
-    )
-    assert ohne_aktion.status_code == 400
-
-    krumme_number = client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={
-            "device_id": str(device.id), "action_code": "single_plus",
-            "command": "setpoint_up", "step_k": "warm",
-        },
-    )
-    assert "Zahl sein" in krumme_number.text
-
-    zu_genau = client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={
-            "device_id": str(device.id), "action_code": "single_plus",
-            "command": "setpoint_up", "step_k": "0,25",
-        },
-    )
-    assert "Nachkommastelle" in zu_genau.text
 
 
-def test_button_binding_needs_device_manage(client_als, session: Session) -> None:
-    _controller_commands(session)
-    zone = create_zone(session, "rechtezone")
-    device = create_device(session, "rechteschalter")
-    _assign(session, zone.id, device.id, "controller")
-    client = client_als([("device.read", zone.id)])
-    client.get(f"/zones/{zone.id}/devices")
-
-    response = client.post(
-        f"/zones/{zone.id}/devices/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "single_plus", "command": "boost"},
-    )
-    assert response.status_code == 404
 
 
-def test_a_detach_request_with_a_nonsensical_id_is_a_not_found(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """The id travels in the form body, so it can be anything.
-
-    Answered with 404, not 400: whether an assignment exists is not something an
-    unparsable id should be able to tell apart from a missing one.
-    """
-    zone = create_zone(session, "löszone")
-    session.flush()
-    response = angemeldeter_client.post(
-        f"/zones/{zone.id}/devices/detach",
-        data={"assignment_id": "keine Zahl"},
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert response.status_code == 404
 
 
-def test_a_temperature_source_that_cannot_measure_comes_back_at_the_field(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """The same check as in the domain, shown where the user made the choice.
-
-    A valve as a temperature source would look like a complete plant and never
-    deliver a reading -- so the form has to come back with the reason on the field
-    rather than accepting it and failing silently in winter.
-    """
-    zone = create_zone(session, "quellzone")
-    valve = _with_capability(session, "ventil-ohne-fühler", "switch")
-    session.flush()
-
-    response = angemeldeter_client.post(
-        f"/zones/{zone.id}/devices/source",
-        data={"device_id": str(valve.id)},
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert response.status_code == 200
-    assert "misst keine Temperatur" in response.text
 
 
-def test_a_thermostat_can_be_dragged_onto_the_actuator_slot(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """A radiator thermostat has to be droppable, not just acceptable.
-
-    The domain has taken `switch` **or** `thermostat` for the actuator slot since the
-    WT-A03E work. The page said `data-requires="switch"`, and the drag script compared
-    against that one word -- so a TRV card was refused in the browser before the
-    domain ever saw it, and the drop simply did nothing. Nothing was wrong on the
-    server; the assignment was unreachable.
-
-    Checked from the rendered page rather than against a fixed string: the requirement
-    now comes out of `REQUIRED_CAPABILITY`, and this asserts that it arrives complete.
-    """
-    zone = create_zone(session, "thermostatzone-ziehen")
-    trv = _with_capability(session, "wt-a03e", "thermostat")
-    session.flush()
-
-    page = angemeldeter_client.get(f"/zones/{zone.id}/devices")
-    assert page.status_code == 200
-
-    required = re.search(
-        r'data-target="actuator"[^>]*data-requires="([^"]*)"', page.text
-    )
-    assert required is not None, "Die Aktor-Spalte nennt keine Anforderung"
-    assert set(required.group(1).split()) == set(REQUIRED_CAPABILITY["actuator"][0])
-    assert "thermostat" in required.group(1)
-
-    # And the card really carries the capability the slot asks for.
-    card = re.search(rf'data-device="{trv.id}"[^>]*data-can="([^"]*)"', page.text)
-    assert card is not None, "Das Thermostatventil steht nicht im Vorrat"
-    assert "thermostat" in card.group(1)
-
-    # The drop posts this form; it must be accepted.
-    response = angemeldeter_client.post(
-        f"/zones/{zone.id}/devices/assign",
-        data={"device_id": str(trv.id), "role_id": str(role(session, "actuator").id)},
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert response.status_code in (200, 303)
-    assert session.scalar(
-        select(ZoneDevice).where(
-            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == trv.id
-        )
-    ) is not None
 
 
 def _thermostat_in_zone(session: Session, zone_name: str) -> tuple[object, object]:
@@ -1045,54 +610,8 @@ def _post_mode(client: TestClient, zone: Zone, assignment: ZoneDevice, mode: str
     )
 
 
-def test_a_thermostat_can_be_switched_through_all_three_modes(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Every transition, and the audit entry that says who decided it.
-
-    Physically consequential: outside `controlled` thermoctl no longer switches this
-    valve at all, so the change has to be findable afterwards.
-    """
-    zone, assignment = _thermostat_in_zone(session, "regelzone")
-    assert assignment.thermostat_mode == "controlled"
-
-    for mode in ("self_regulating", "reading_only", "controlled"):
-        response = _post_mode(angemeldeter_client, zone, assignment, mode)
-        assert response.status_code == 303
-        session.refresh(assignment)
-        assert assignment.thermostat_mode == mode
-
-    entries = list(
-        session.scalars(
-            select(AuditEvent)
-            .where(
-                AuditEvent.object_type == "zone_device",
-                AuditEvent.object_id == str(assignment.id),
-                AuditEvent.action == "update",
-            )
-            .order_by(AuditEvent.id)
-        )
-    )
-    assert [entry.summary for entry in entries] == [
-        f"'regelzone-ventil' in '{zone.display_name}': Betriebsart 'Ventil regelt selbst'",
-        f"'regelzone-ventil' in '{zone.display_name}': Betriebsart 'Nur Raumtemperatur melden'",
-        f"'regelzone-ventil' in '{zone.display_name}': Betriebsart 'thermoctl schaltet'",
-    ]
-    assert "nie einen Sollwert" in (entries[1].detail or "")
 
 
-def test_an_unknown_thermostat_mode_is_refused(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """A missing field used to mean "off"; with three modes it means nothing, and a
-    made-up code must not land in the column."""
-    zone, assignment = _thermostat_in_zone(session, "unbekanntzone")
-    assert _post_mode(angemeldeter_client, zone, assignment, "bogus").status_code == 400
-    assert _post_mode(angemeldeter_client, zone, assignment, None).status_code == 400
-    session.refresh(assignment)
-    assert assignment.thermostat_mode == "controlled"
-    with pytest.raises(ValueError, match="Betriebsart"):
-        set_thermostat_mode(session, zone, assignment, "bogus", actor_id=None)
 
 
 def test_a_plain_switch_cannot_be_told_to_regulate_itself(session: Session) -> None:
@@ -1152,31 +671,6 @@ def test_switching_the_regulation_mode_to_what_it_already_is_writes_nothing(
     assert session.query(AuditEvent).count() == before
 
 
-def test_the_regulation_mode_needs_an_assignment_of_this_zone(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """The id comes out of a form, so it can name anything -- including a valve in
-    someone else's zone."""
-    zone, _assignment = _thermostat_in_zone(session, "eigenezone")
-    _other, foreign = _thermostat_in_zone(session, "fremdezone")
-
-    unparsable = angemeldeter_client.post(
-        f"/zones/{zone.id}/devices/regulation",
-        data={"assignment_id": "keine-zahl", "thermostat_mode": "self_regulating"},
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert unparsable.status_code == 404
-
-    other_zone = angemeldeter_client.post(
-        f"/zones/{zone.id}/devices/regulation",
-        data={"assignment_id": str(foreign.id), "thermostat_mode": "self_regulating"},
-        headers=_csrf(angemeldeter_client),
-        follow_redirects=False,
-    )
-    assert other_zone.status_code == 404
-    session.refresh(foreign)
-    assert foreign.thermostat_mode == "controlled"
 
 
 def test_an_assignment_of_another_zone_is_refused_in_the_domain(session: Session) -> None:
@@ -1190,51 +684,5 @@ def test_an_assignment_of_another_zone_is_refused_in_the_domain(session: Session
     assert foreign.thermostat_mode == "controlled"
 
 
-def test_the_regulation_switch_is_rendered_with_its_own_id_and_a_fallback(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Two things the page must get right, and both are invisible until they are wrong.
-
-    The id has to be unique per row: with a shared one every label would point at the
-    first switch, and clicking the third row's text would flip the first zone's valve.
-
-    And the form needs a `<noscript>` button. The switch applies itself through
-    JavaScript; without it, it would move under the finger and change nothing.
-    """
-    zone, assignment = _thermostat_in_zone(session, "renderzone")
-    page = angemeldeter_client.get(f"/zones/{zone.id}/devices")
-    assert page.status_code == 200
-
-    for code in ("controlled", "self_regulating", "reading_only"):
-        assert f'id="thermostat-mode-{assignment.id}-{code}"' in page.text
-        assert f'for="thermostat-mode-{assignment.id}-{code}"' in page.text
-    assert "nie einen Sollwert" in page.text
-    assert "data-submit-on-change" in page.text
-    assert "<noscript>" in page.text
 
 
-def test_a_button_of_a_foreign_controller_cannot_be_bound(
-    client_als, session: Session
-) -> None:
-    """`device.manage` for one zone must not reach a controller of other zones: a binding
-    fires in every zone the controller hangs in (`controller_zones`)."""
-    from thermoctl.db.models.device import ControllerBinding
-
-    source(session)
-    _controller_commands(session)
-    mine = create_zone(session, "meine")
-    foreign = create_zone(session, "fremde")
-    device = create_device(session, "fremdschalter")
-    _assign(session, foreign.id, device.id, "controller")
-    client = client_als([("device.manage", mine.id), ("device.read", mine.id)])
-    client.get(f"/zones/{mine.id}/devices")
-
-    response = client.post(
-        f"/zones/{mine.id}/devices/button",
-        headers=_csrf(client),
-        data={"device_id": str(device.id), "action_code": "single_plus", "command": "setpoint_up"},
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert session.scalars(select(ControllerBinding)).all() == []

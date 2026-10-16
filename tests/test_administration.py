@@ -197,6 +197,19 @@ def test_a_group_without_the_management_permission_can_be_deleted(session: Sessi
     assert session.get(AccessGroup, dispensable.id) is None
 
 
+def test_an_admin_group_can_be_deleted_when_no_administrator_exists_at_all(
+    session: Session,
+) -> None:
+    """Die Sperre schützt den letzten Administrator; ohne einen gibt es nichts zu schützen."""
+    from tests.helpers import ensure_permission
+
+    ensure_permission(session, "user.manage", zone_scoped=False)
+    group = create_group(session, name="Leere Verwaltung", description=None, actor_id=None)
+    set_group_permissions(session, group, {("user.manage", None)}, actor_id=None)
+    delete_group(session, group, actor_id=None)
+    assert session.get(AccessGroup, group.id) is None
+
+
 def test_setting_a_password_changes_the_hash_and_logs_it(session: Session) -> None:
     from thermoctl.auth.passwords import verify_password
 

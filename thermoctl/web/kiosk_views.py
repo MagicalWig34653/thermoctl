@@ -1,25 +1,19 @@
-"""The kiosk dashboard: a wall tablet's view of the plant.
+"""Die Einlösung eines Kiosk-Tokens: `GET /kiosk/{token}`.
 
-`GET /kiosk/{token}` is meant to be opened exactly once, from the address an admin
-handed out on `/kiosk-tokens` -- the tablet bookmarks it. From then on the plaintext
-lives only in a cookie (`thermoctl/auth/kiosk.py`), and every further visit goes
-through the bare `/kiosk`, which resolves that cookie instead. This is also why the
-entry route redirects rather than rendering directly: a bookmark that always redirects
-to the cookie-backed page never needs to carry the token in a `Referer` header either.
-
-Every read and every write below goes through the same domain functions and the same
-`Principal`/`visible_zones`/`has_permission` machinery as the logged-in UI
-(`thermoctl/web/start_views.py`, `thermoctl/web/daily_views.py`) -- a kiosk token is
-just a `Principal` with a narrower `grants` set, not a parallel access path.
+Die Adresse wird genau einmal geöffnet -- von dem Link, den ein Verwalter unter
+„Kiosk-Tokens“ ausgegeben hat; das Wandtablett merkt sie sich als Lesezeichen. Danach
+liegt der Klartext nur noch in einem Cookie (`thermoctl/auth/kiosk.py`), und die
+Kioskansicht der Oberfläche (`/app/kiosk`) liest ihre Daten über `/kiosk-api` mit
+diesem Cookie. Deshalb leitet die Einlösung um, statt selbst etwas anzuzeigen: Ein
+Lesezeichen, das immer weiterleitet, trägt das Token auch nie in einem `Referer`.
+Ein ungültiges Token bekommt die schlichte Hinweisseite `kiosk_invalid.html`.
 """
 
 from datetime import datetime
 from typing import Annotated
-from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.csrf import csrf_token
@@ -28,25 +22,11 @@ from thermoctl.auth.kiosk import (
     KIOSK_COOKIE_NAME,
     KIOSK_CSRF_COOKIE_NAME,
     kiosk_csrf_protection,
-    kiosk_token_from_cookie,
 )
 from thermoctl.auth.tokens import resolve_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.lookup import SensorStatus
-from thermoctl.db.models.operations import Setting
-from thermoctl.db.models.override import ZoneOverride
-from thermoctl.db.models.state import ShadowDecision, ZoneState
-from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import has_permission, principal_for_token, require, visible_zones
-from thermoctl.domain.modes import DomainError
-from thermoctl.domain.principal import Principal
-from thermoctl.domain.remote_control import RemoteControlError, set_setpoint
-from thermoctl.domain.remote_control import boost as domain_boost
-from thermoctl.domain.schedule import cancel_override, resolved_setpoint
-from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.web import templates
-from thermoctl.web.shared.kiosk import THERMOSTAT_STEP
 from thermoctl.web.urls import cookie_path, prefixed
 
 router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_schema=False)
@@ -56,24 +36,6 @@ router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_sch
 # the project. Capped below by the token's own `expires_at`, if it has one.
 _KIOSK_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 365
 
-# The two-level panel layout versus the original, scrolling one-level
-# dashboard -- a tablet's screen size decides this on its own most of the time
-# (`?ansicht=auto`, resolved client-side by width, see `kiosk_panel.js`), but an
-# installer wiring up a specific panel gets a fixed override in the bookmarked
-# address. Kept in its own cookie, deliberately separate from `KIOSK_COOKIE_NAME`:
-# it is a display preference, not a credential, and must never be mistaken for one
-# or affect what `principal_for_token` resolves.
-ANSICHT_COOKIE_NAME = "thermoctl_kiosk_ansicht"
-_ANSICHT_VALUES = frozenset({"auto", "panel", "tafel"})
-
-
-def _normalize_ansicht(value: str | None) -> str:
-    """Unknown or missing input falls back to `auto`, never an error -- a stray
-    query string or a cookie from a future version with a value this build does
-    not know yet must not break the dashboard a wall tablet depends on."""
-    return value if value in _ANSICHT_VALUES else "auto"
-
-
 def _kiosk_cookie_max_age_s(expires_at: datetime | None) -> int:
     if expires_at is None:
         return _KIOSK_COOKIE_MAX_AGE_S
@@ -81,34 +43,9 @@ def _kiosk_cookie_max_age_s(expires_at: datetime | None) -> int:
     return max(remaining, 0)
 
 
-def _kiosk_csrf(request: Request) -> str:
-    """The CSRF token belonging to this tablet's kiosk cookie.
-
-    Taken from the cookie the browser already sent rather than recomputed from the
-    plaintext: this way the page cannot hand out a token for a different credential
-    than the one the request actually carries.
-    """
-    plaintext = request.cookies.get(KIOSK_COOKIE_NAME)
-    if plaintext is None:  # pragma: no cover - _dashboard only runs with a valid cookie
-        return ""
-    return csrf_token(plaintext, get_settings().secret_key.get_secret_value())
-
-
 def _invalid_page(request: Request) -> Response:
     return templates.TemplateResponse(
         request, "kiosk_invalid.html", {}, status_code=status.HTTP_401_UNAUTHORIZED
-    )
-
-
-def _zone_or_none(session: Session, principal: Principal, zone_id: int) -> Zone | None:
-    """The zone if this token may see it -- `None` for anything else, unfindable.
-
-    Deliberately not a 403: a zone this token has no `zone.read` grant for should
-    look exactly like a zone that does not exist. `visible_zones` is the same
-    function every other adapter uses to decide what is even visible.
-    """
-    return next(
-        (z for z in visible_zones(session, principal, "zone.read") if z.id == zone_id), None
     )
 
 
@@ -147,212 +84,3 @@ async def kiosk_entry(
         path=cookie_path(request),
     )
     return response
-
-
-def _dashboard(
-    request: Request, session: Session, principal: Principal, *,
-    error: str | None = None, error_zone_id: str | None = None, ansicht: str = "auto",
-) -> Response:
-    zones = visible_zones(session, principal, "zone.read")
-    zone_ids = [zone.id for zone in zones]
-    now = utcnow()
-    settings = session.get(Setting, 1)
-
-    zustaende = {
-        zone_id: (state, sensorstatus)
-        for zone_id, state, sensorstatus in session.execute(
-            select(ZoneState.zone_id, ZoneState, SensorStatus)
-            .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
-            .where(ZoneState.zone_id.in_(zone_ids))
-        )
-    }
-    would_heat_je_zone: dict[int, bool] = {}
-    for decision in session.scalars(
-        select(ShadowDecision)
-        .where(ShadowDecision.zone_id.in_(zone_ids))
-        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
-    ):
-        would_heat_je_zone.setdefault(decision.zone_id, decision.would_heat)
-
-    # Same query `start_views.py` runs for the logged-in start page: the running
-    # override, if any, per zone -- so the cancel button can be shown exactly where
-    # there is something to cancel, and nowhere else.
-    running_overrides: dict[int, ZoneOverride] = {}
-    for entry in session.scalars(
-        select(ZoneOverride)
-        .where(
-            ZoneOverride.zone_id.in_(zone_ids),
-            ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= now,
-            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
-        )
-        .order_by(ZoneOverride.created_at.desc())
-    ):
-        running_overrides.setdefault(entry.zone_id, entry)
-
-    return templates.TemplateResponse(
-        request,
-        "kiosk.html",
-        {
-            "now": now,
-            "timezone": settings.timezone if settings is not None else None,
-            "zones": zones,
-            "zustaende": zustaende,
-            "setpoints": {zone.id: resolved_setpoint(session, zone, now) for zone in zones},
-            # Auftrag 8b: same banner as the start/tenant pages and the control
-            # page -- `None` for every zone that has never seen a sensor failure.
-            "emergency_banners": {
-                zone.id: zone_emergency_view(session, zone, now, settings).banner
-                for zone in zones
-            },
-            "would_heat_je_zone": would_heat_je_zone,
-            "control_zone_ids": {
-                zone.id for zone in zones if has_permission(principal, "setpoint.write", zone.id)
-            },
-            "running_overrides": running_overrides,
-            # `override.cancel` on purpose, not `override.create`: cancelling does
-            # not add any new power over the plant -- it only falls back to the
-            # schedule -- but it may undo an override someone *else* set, and
-            # `override.cancel` ("Fremde Übersteuerung aufheben") is exactly the
-            # permission that already exists for that on the start page.
-            "cancel_zone_ids": {
-                zone.id for zone in zones if has_permission(principal, "override.cancel", zone.id)
-            },
-            "error": error,
-            "error_zone_id": error_zone_id,
-            # Goes into the forms as a hidden field. The buttons are plain HTML and
-            # send no header of their own -- see `kiosk_csrf_protection`.
-            "csrf": _kiosk_csrf(request),
-            # `auto` / `panel` / `tafel` -- see `ANSICHT_COOKIE_NAME` above. Read into
-            # `data-ansicht` on <body>; everything past that (resolving `auto` by
-            # screen width, opening and closing the detail layer) is the template's
-            # and `kiosk_panel.js`'s job, not this adapter's.
-            "ansicht": ansicht,
-        },
-    )
-
-
-@router.get("/kiosk")
-async def kiosk_dashboard(
-    request: Request,
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    token = kiosk_token_from_cookie(request, session)
-    if token is None:
-        return _invalid_page(request)
-    principal = principal_for_token(session, token)
-
-    # `None` (no `ansicht` in the query string) means "use whatever was chosen
-    # before" -- read the cookie and leave it untouched, which is what makes the
-    # self-refresh (`hx-get` with no query string at all) and the plain `/kiosk`
-    # bookmark keep showing the view a tablet was set up with. An explicit value,
-    # even an unrecognised one that normalizes to `auto`, is a deliberate choice
-    # made through the address bar and is written back to the cookie so it survives
-    # past this one request.
-    requested = request.query_params.get("ansicht")
-    if requested is None:
-        ansicht = _normalize_ansicht(request.cookies.get(ANSICHT_COOKIE_NAME))
-    else:
-        ansicht = _normalize_ansicht(requested)
-
-    response = _dashboard(
-        request, session, principal,
-        error=request.query_params.get("error"),
-        error_zone_id=request.query_params.get("zone_id"),
-        ansicht=ansicht,
-    )
-    if requested is not None:
-        settings = get_settings()
-        response.set_cookie(
-            ANSICHT_COOKIE_NAME, ansicht,
-            max_age=_kiosk_cookie_max_age_s(token.expires_at),
-            httponly=True, samesite="lax", secure=settings.secure_cookies,
-            path=cookie_path(request),
-        )
-    return response
-
-
-@router.post("/kiosk/zones/{zone_id}/setpoint")
-async def kiosk_adjust_setpoint(
-    zone_id: int,
-    request: Request,
-    session: Annotated[Session, Depends(get_session)],
-    direction: Annotated[str, Form()] = "",
-) -> Response:
-    token = kiosk_token_from_cookie(request, session)
-    if token is None:
-        return _invalid_page(request)
-    principal = principal_for_token(session, token)
-    zone = _zone_or_none(session, principal, zone_id)
-    if zone is None:
-        return _invalid_page(request)
-    require(principal, "setpoint.write", zone.id)
-
-    if direction not in ("up", "down"):
-        return _dashboard(
-            request, session, principal,
-            error="Unbekannte Richtung.", error_zone_id=str(zone_id),
-        )
-
-    now = utcnow()
-    current = resolved_setpoint(session, zone, now).temperature_c
-    updated = current + (THERMOSTAT_STEP if direction == "up" else -THERMOSTAT_STEP)
-    try:
-        set_setpoint(session, zone, updated, now, token_id=principal.token_id, source="kiosk")
-    except DomainError as exc:
-        query = urlencode({"error": exc.notice, "zone_id": zone_id})
-        return RedirectResponse(
-            prefixed(request, f"/kiosk?{query}"), status_code=status.HTTP_303_SEE_OTHER
-        )
-    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/kiosk/zones/{zone_id}/boost")
-async def kiosk_boost(
-    zone_id: int,
-    request: Request,
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    token = kiosk_token_from_cookie(request, session)
-    if token is None:
-        return _invalid_page(request)
-    principal = principal_for_token(session, token)
-    zone = _zone_or_none(session, principal, zone_id)
-    if zone is None:
-        return _invalid_page(request)
-    require(principal, "override.create", zone.id)
-
-    try:
-        domain_boost(session, zone, utcnow(), token_id=principal.token_id, source="kiosk")
-    except RemoteControlError as exc:
-        query = urlencode({"error": str(exc), "zone_id": zone_id})
-        return RedirectResponse(
-            prefixed(request, f"/kiosk?{query}"), status_code=status.HTTP_303_SEE_OTHER
-        )
-    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/kiosk/zones/{zone_id}/override/cancel")
-async def kiosk_cancel_override(
-    zone_id: int,
-    request: Request,
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    """Ends a running override -- whichever one is running, boost included.
-
-    A boost is an override like any other (`domain/remote_control.py::boost`); this
-    is the one place in the kiosk that can undo it. Same permission as the start
-    page's equivalent button, `override.cancel` -- see the reasoning where
-    `cancel_zone_ids` is built in `_dashboard` above.
-    """
-    token = kiosk_token_from_cookie(request, session)
-    if token is None:
-        return _invalid_page(request)
-    principal = principal_for_token(session, token)
-    zone = _zone_or_none(session, principal, zone_id)
-    if zone is None:
-        return _invalid_page(request)
-    require(principal, "override.cancel", zone.id)
-
-    cancel_override(session, zone)
-    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)

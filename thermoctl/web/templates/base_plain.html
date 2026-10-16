@@ -4,64 +4,62 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}thermoctl{% endblock %}</title>
-    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css?v={{ asset_version }}">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css?v={{ asset_version }}">
     {#
-    Das Farbschema folgt dem Betriebssystem, und zwar allein. Ein eigener Umschalter war
-    eine dritte Einstellung für etwas, das jedes Geraet schon kennt -- und er ging beim
-    nächsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
-    darauf hört; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
-    Früher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
-    nicht, das dunkle Schema war damit nie aktiv.
+    Die Hülle der wenigen Seiten, die der Server selbst ausliefert (OAuth-Zustimmung,
+    ungültiger Kiosk-Token, veraltete Seite). Alles Übrige ist die Svelte-Oberfläche
+    unter /app. Bewusst ohne Fremdcode und ohne Skripte: ein eigener kleiner Stil,
+    der dem Farbschema des Systems folgt.
     #}
-    <script>
-        (function () {
-            var abfrage = window.matchMedia("(prefers-color-scheme: dark)");
-            function setzen() {
-                document.documentElement.setAttribute(
-                    "data-bs-theme", abfrage.matches ? "dark" : "light");
-            }
-            setzen();
-            // Ohne das bliebe eine geöffnete Seite hell, wenn das System abends
-            // umschaltet.
-            abfrage.addEventListener("change", setzen);
-        })();
-    </script>
-    {# Siehe base.html: Skripte gehören in den Kopf, den hx-boost nie austauscht. #}
-    <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js?v={{ asset_version }}"></script>
-    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js?v={{ asset_version }}"></script>
-    <script defer src="{{ url_prefix }}/static/loading_indicator.js?v={{ asset_version }}"></script>
-    <script defer src="{{ url_prefix }}/static/page_scripts.js?v={{ asset_version }}"></script>
-    <script>
-        document.addEventListener("htmx:configRequest", function (ereignis) {
-            const eintrag = document.cookie.split("; ").find(function (wert) {
-                return wert.startsWith("thermoctl_csrf=");
-            });
-            if (eintrag) {
-                ereignis.detail.headers["X-CSRF-Token"] = decodeURIComponent(eintrag.split("=")[1]);
-            }
-        });
-    </script>
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
+    <style>
+        :root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --fg: #1d2329;
+                --quiet: #5c6670; --line: #d5dae0; --accent: #b4410f; --accent-fg: #fff;
+                --warn-bg: #fff4d6; --warn-fg: #5b4300; --bad-bg: #fde4e4; --bad-fg: #6e1414; }
+        @media (prefers-color-scheme: dark) {
+            :root { --bg: #14171a; --panel: #1d2227; --fg: #e8ebee; --quiet: #9aa4ae;
+                    --line: #384049; --accent: #e8743f; --accent-fg: #14171a;
+                    --warn-bg: #3d3210; --warn-fg: #f3dd9a; --bad-bg: #4a1c1c; --bad-fg: #f5c2c2; }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: flex; align-items: center; background: var(--bg);
+               color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+        main { width: 100%; max-width: 38rem; margin: 0 auto; padding: 2rem 1rem; }
+        .brand { text-align: center; margin-bottom: 1.25rem; }
+        .brand strong { font-size: 1.35rem; }
+        .quiet { color: var(--quiet); font-size: .875rem; margin: .25rem 0 0; }
+        .panel { background: var(--panel); border: 1px solid var(--line); border-radius: .75rem; padding: 1.5rem; }
+        h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+        h2, legend { font-size: 1.1rem; margin: 0 0 .25rem; }
+        fieldset { border: 0; padding: 0; margin: 1rem 0 0; }
+        label { display: block; margin: .25rem 0; }
+        select { font: inherit; padding: .4rem; border: 1px solid var(--line); border-radius: .4rem;
+                 background: var(--panel); color: inherit; }
+        .btn { display: inline-block; font: inherit; padding: .5rem 1rem; border-radius: .4rem; cursor: pointer;
+               border: 1px solid var(--line); background: transparent; color: inherit; text-decoration: none;
+               min-height: 2.5rem; margin: .5rem .5rem 0 0; }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+        .alert { border-radius: .5rem; padding: .75rem 1rem; margin: 1rem 0; }
+        .alert-warning { background: var(--warn-bg); color: var(--warn-fg); }
+        .alert-danger { background: var(--bad-bg); color: var(--bad-fg); }
+        .text-warning { color: var(--warn-fg); }
+        .text-muted { color: var(--quiet); }
+        small { color: var(--quiet); }
+        footer { text-align: center; color: var(--quiet); font-size: .875rem; margin-top: 1.5rem; }
+        a { color: var(--accent); }
+        .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .actions .btn { margin: .5rem 0 0; }
+    </style>
 </head>
-{#
-Keine Navigationsleiste: Wer hier steht, ist nicht angemeldet und kann nirgends hin. Ein
-Menü voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern eine
-Einladung zum Danebengreifen.
-#}
-<body class="d-flex align-items-center py-5" style="min-height: 100vh" data-url-prefix="{{ url_prefix }}">
-{# Siehe base.html: rein optisch, `loading_indicator.js` steuert die Sichtbarkeit. #}
-<div id="tc-loading-bar" class="tc-loading-bar" aria-hidden="true"></div>
-<main class="w-100 m-auto px-3" style="max-width: 23rem">
-    <div class="text-center mb-4">
-        <span class="tc-marker" style="font-size: 1.35rem">thermoctl</span>
-        <p class="t-quiet small mb-0 mt-1">{% block subtitle %}Heizungssteuerung{% endblock %}</p>
+<body data-url-prefix="{{ url_prefix }}">
+<main>
+    <div class="brand">
+        <strong>thermoctl</strong>
+        <p class="quiet">{% block subtitle %}Heizungssteuerung{% endblock %}</p>
     </div>
-    <div class="tc-panel p-4">
+    <div class="panel">
         {% block content %}{% endblock %}
     </div>
-    {% block passkey %}{% endblock %}
-    <footer class="text-center t-quiet small mt-4">
+    <footer>
         thermoctl steht unter der AGPL-3.0. Quelltext:
         <a href="https://github.com/MagicalWig34653/thermoctl">github.com/MagicalWig34653/thermoctl</a>
     </footer>

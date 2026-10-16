@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_settings, create_zone, user_with_permissions
+from tests.helpers import create_zone, user_with_permissions
 from thermoctl.db.models.identity import AccessGroup, UserAccessGroup
 from thermoctl.domain.administration import AdministrationError, set_group_ui_profile
 from thermoctl.domain.authz import principal_for_user
@@ -28,16 +28,6 @@ from thermoctl.web.navigation import visible_navigation
 Client = Callable[[list[tuple[str, int | None]]], TestClient]
 
 
-def _with_csrf(client: TestClient) -> dict[str, str]:
-    """Kopfzeile mit gültigem CSRF-Token -- dieselbe Hilfe wie in
-    `tests/test_admin_views.py`; ändernde Anfragen werden sonst als veraltete Seite
-    abgewiesen."""
-    from thermoctl.auth.csrf import csrf_token
-    from thermoctl.auth.sessions import COOKIE_NAME
-    from thermoctl.config import get_settings
-
-    secret = client.cookies[COOKIE_NAME]
-    return {"X-CSRF-Token": csrf_token(secret, get_settings().secret_key.get_secret_value())}
 
 
 @pytest.fixture(autouse=True)
@@ -154,165 +144,29 @@ def test_an_administrator_still_sees_the_plant_navigation(session: Session) -> N
 # -- Der Wächter an den Routen ------------------------------------------------
 
 
-ADMIN_PAGES = [
-    "/settings",
-    "/control",
-    "/users",
-    "/groups",
-    "/interfaces",
-    "/relay-wear",
-    "/statistics",
-    "/audit",
-    "/device-commands",
-    "/devices",
-    "/zones",
-    "/modes",
-    "/controllers",
-    "/vacation",
-    "/kiosk-tokens",
-    "/tokens",
-]
 
 
-@pytest.mark.parametrize("path", ADMIN_PAGES)
-def test_a_tenant_cannot_open_an_admin_page_even_with_the_permission(
-    tenant_client: Client, session: Session, path: str
-) -> None:
-    """Der eigentliche Riegel: nicht die ausgeblendete Verknüpfung, sondern die Route.
-
-    Die Rechte sind hier absichtlich vollständig vergeben. Ein 403, das nur aus einem
-    fehlenden Recht käme, würde diesen Test bestehen lassen, ohne dass der Wächter
-    überhaupt existiert -- deshalb bekommt der Mieter hier alles, was die Seiten
-    verlangen, und muss trotzdem abgewiesen werden.
-    """
-    create_settings(session)
-    client = tenant_client(
-        [
-            ("zone.read", None), ("zone.manage", None), ("device.read", None),
-            ("device.manage", None), ("user.manage", None), ("group.manage", None),
-            ("token.self", None), ("token.manage", None), ("audit.read", None),
-            ("setting.manage", None), ("mode.manage", None), ("setpoint.write", None),
-            ("schedule.manage", None), ("control.arm", None), ("vacation.manage", None),
-        ]
-    )
-    assert client.get(path).status_code == 403
 
 
-def test_an_administrator_reaches_the_same_pages(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Die Gegenprobe. Ohne sie könnte der Wächter alles abweisen und der Test oben
-    trotzdem grün sein."""
-    create_settings(session)
-    for path in ADMIN_PAGES:
-        assert angemeldeter_client.get(path).status_code == 200, path
 
 
-def test_the_guard_does_not_replace_the_permission_check(
-    client_als: Client, session: Session
-) -> None:
-    """Ein Administratorprofil ohne das nötige Recht bleibt draußen.
-
-    Das ist die andere Richtung derselben Trennung: der Wächter lässt das Profil
-    durch, die Rechteprüfung im Endpunkt weist trotzdem ab.
-    """
-    create_settings(session)
-    assert client_als([("zone.read", None)]).get("/users").status_code == 403
 
 
-def test_the_profile_cannot_be_switched_from_the_client(
-    tenant_client: Client, session: Session
-) -> None:
-    """Weder Abfrageparameter noch Kopfzeile noch Cookie ändern das Profil.
-
-    Das Profil kommt aus der Gruppe des angemeldeten Benutzers und aus sonst nichts.
-    """
-    create_settings(session)
-    client = tenant_client([("user.manage", None), ("zone.read", None)])
-    assert client.get("/users?ui_profile=admin").status_code == 403
-    assert client.get("/users", headers={"X-UI-Profile": "admin"}).status_code == 403
-    client.cookies.set("ui_profile", "admin")
-    assert client.get("/users").status_code == 403
-    client.cookies.delete("ui_profile")
 
 
 # -- Die Gruppenverwaltung ----------------------------------------------------
 
 
-def test_the_group_page_offers_the_interface_choice(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    page = angemeldeter_client.get("/groups").text
-    assert 'name="ui_profile"' in page
-    assert "Wohnung (Mieter)" in page
 
 
-def test_a_group_can_be_switched_to_the_tenant_interface(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    group = AccessGroup(name="Wohnung Nord")
-    session.add(group)
-    session.flush()
-    response = angemeldeter_client.post(
-        f"/groups/{group.id}/ui-profile", data={"ui_profile": "tenant"},
-        headers=_with_csrf(angemeldeter_client), follow_redirects=False,
-    )
-    assert response.status_code == 303
-    session.refresh(group)
-    assert group.ui_profile == "tenant"
 
 
-def test_a_new_group_can_be_created_as_a_tenant_group(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    angemeldeter_client.post(
-        "/groups", data={"name": "Wohnung Süd", "description": "", "ui_profile": "tenant"},
-        headers=_with_csrf(angemeldeter_client), follow_redirects=False,
-    )
-    created = session.query(AccessGroup).filter_by(name="Wohnung Süd").one()
-    assert created.ui_profile == "tenant"
 
 
-def test_creating_a_group_with_a_taken_name_keeps_the_chosen_interface(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Der Fehlerfall darf die Auswahl nicht verschlucken -- sonst legt man die
-    Gruppe beim zweiten Versuch versehentlich als Anlagengruppe an."""
-    create_settings(session)
-    session.add(AccessGroup(name="Doppelt"))
-    session.flush()
-    page = angemeldeter_client.post(
-        "/groups", data={"name": "Doppelt", "description": "", "ui_profile": "tenant"},
-        headers=_with_csrf(angemeldeter_client),
-    ).text
-    assert 'value="tenant"\n                            selected' in page or (
-        'value="tenant" selected' in page
-    )
 
 
-def test_an_unknown_profile_value_from_the_form_creates_an_admin_group(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    angemeldeter_client.post(
-        "/groups", data={"name": "Krumm", "description": "", "ui_profile": "gibt-es-nicht"},
-        headers=_with_csrf(angemeldeter_client), follow_redirects=False,
-    )
-    assert session.query(AccessGroup).filter_by(name="Krumm").one().ui_profile == "admin"
 
 
-def test_switching_a_group_that_does_not_exist_is_a_404(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    response = angemeldeter_client.post(
-        "/groups/999999/ui-profile", data={"ui_profile": "tenant"},
-        headers=_with_csrf(angemeldeter_client),
-    )
-    assert response.status_code == 404
 
 
 def test_the_last_administration_group_cannot_become_a_tenant_group(
@@ -340,26 +194,6 @@ def test_setting_the_profile_a_group_already_has_changes_nothing(
     assert group.ui_profile == "admin"
 
 
-def test_the_page_explains_why_the_last_admin_group_stays_an_admin_group(
-    angemeldeter_client: TestClient, session: Session
-) -> None:
-    """Die Absage der Domäne muss auf der Seite ankommen, nicht als 500.
-
-    Sonst klickt jemand auf „Übernehmen“, es passiert nichts Sichtbares, und die
-    Gruppe steht danach noch genauso da wie vorher — ohne dass irgendwo stünde,
-    warum.
-    """
-    create_settings(session)
-    only_group = session.query(AccessGroup).filter(
-        AccessGroup.name.like("gruppe-web-%")
-    ).one()
-    page = angemeldeter_client.post(
-        f"/groups/{only_group.id}/ui-profile", data={"ui_profile": "tenant"},
-        headers=_with_csrf(angemeldeter_client),
-    )
-    assert page.status_code == 200
-    session.refresh(only_group)
-    assert only_group.ui_profile == "admin"
 
 
 # -- Der Wächtertest über alle HTML-Routen -------------------------------------
@@ -503,8 +337,6 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/ui-api/rooms/{zone_id}/report"): "beide Oberflächen, report.create je Zone",
     ("GET", "/ui-api/glossary"): "reiner Erklärtext für beide Oberflächen, nur Anmeldung",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
-    ("POST", "/account/password"): "eigenes Konto",
-    ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
     # OAuth-Zustimmung stellt einen Zugang ausschließlich für den angemeldeten
     # Nutzer aus. Beide Profile dürfen das mit dem Recht token.self; der Endpunkt
     # prüft dieses Recht unabhängig vom Profil.
@@ -512,12 +344,8 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/oauth/consent"): "eigene OAuth-Zustimmung mit token.self",
     # Anmeldung, Abmeldung und Einrichtung stehen vor jedem Profil.
     ("GET", "/login"): "vor der Anmeldung gibt es kein Profil",
-    ("POST", "/login"): "vor der Anmeldung gibt es kein Profil",
-    ("POST", "/logout"): "muss aus jeder Oberfläche gehen",
     ("GET", "/setup"): "Erstinbetriebnahme, es gibt noch keine Gruppe",
-    ("POST", "/setup"): "Erstinbetriebnahme, es gibt noch keine Gruppe",
     ("GET", "/passkeys"): "eigenes Konto",
-    ("POST", "/passkeys/{passkey_id}/remove"): "eigenes Konto",
     ("POST", "/passkey/authentication/options"): "vor der Anmeldung",
     ("POST", "/passkey/authentication/verify"): "vor der Anmeldung",
     ("POST", "/passkey/registration/options"): "eigenes Konto",
@@ -525,9 +353,6 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     # Der Kiosk ist ein eigener Zugangsweg mit eigenem Principal und eigener Hülle.
     ("GET", "/kiosk"): "eigener Zugangsweg, eigener Principal",
     ("GET", "/kiosk/{plaintext}"): "eigener Zugangsweg, eigener Principal",
-    ("POST", "/kiosk/zones/{zone_id}/boost"): "eigener Zugangsweg",
-    ("POST", "/kiosk/zones/{zone_id}/override/cancel"): "eigener Zugangsweg",
-    ("POST", "/kiosk/zones/{zone_id}/setpoint"): "eigener Zugangsweg",
     # Die Kioskansicht der Svelte-Oberfläche: eigener Router, eigener Principal (Kiosk-Cookie),
     # eigene CSRF-Prüfung; Rechte und Umfang prüft jeder Endpunkt über den Token-Principal.
     ("GET", "/kiosk-api/state"): "eigener Zugangsweg, eigener Principal",
@@ -537,11 +362,6 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     # Die Alltagsaktionen an einer Zone. Beide Oberflächen brauchen sie, und sie
     # sind vollständig über zonenbezogene Rechte abgesichert; ein Profil-Wächter
     # davor würde nichts absichern, was die Rechteprüfung nicht schon absichert.
-    ("POST", "/zones/{zone_id}/thermostat"): "zonenbezogenes setpoint.write",
-    ("POST", "/zones/{zone_id}/override"): "zonenbezogenes override.create",
-    ("POST", "/zones/{zone_id}/override/cancel"): "zonenbezogenes override.cancel",
-    ("POST", "/zones/{zone_id}/jump-next"): "zonenbezogenes override.create",
-    ("POST", "/zones/{zone_id}/report"): "zonenbezogenes report.create",
     # Personen, Zugänge (`ui_api_access`): Profilprüfung vor der Rechteprüfung im Endpunkt.
     ("GET", "/ui-api/access/users"):
         "Profilprüfung im Endpunkt (Anlagensicht), user.manage",

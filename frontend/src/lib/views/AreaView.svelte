@@ -3,7 +3,7 @@
   import type { VisibleArea } from '$lib/navigation';
   import { appHref } from '$lib/paths';
   import { useApp } from '$lib/context';
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  import NotFound from '$lib/components/NotFound.svelte';
 
   let { area }: { area: VisibleArea } = $props();
   const { prefix, session } = useApp();
@@ -51,8 +51,6 @@
   </section>
 {/if}
 
-{#if area.extraLinks.length}
-  <Placeholder title="Weitere Seiten" links={area.extraLinks} />
-{:else if !area.pages.length}
-  <Placeholder title={area.label} links={[{ path: '/', label: 'Bisherige Übersicht' }]} />
+{#if !area.pages.length && area.id !== 'uebersicht'}
+  <NotFound />
 {/if}

@@ -32,17 +32,18 @@ class NavigationItem:
     in_bottom_navigation: bool = False
 
 
-# This is the single navigation-to-permission contract.  The template renders this
-# table instead of repeating permission codes.  Endpoint checks deliberately remain
-# security boundaries in the views; the guardian test compares those checks with this
-# table, so either side changing alone makes the suite fail instead of silently drifting.
+# This is the single navigation-to-permission contract.  `/ui-api/bootstrap` hands the
+# visible part of this table to the Svelte app instead of repeating permission codes.
+# Endpoint checks deliberately remain security boundaries in the `/ui-api` handlers named
+# by `endpoint`; the guardian test compares those checks with this table, so either side
+# changing alone makes the suite fail instead of silently drifting.
 NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
     # -- Hauptbereich: was im täglichen Betrieb gebraucht wird -------------------
     NavigationItem(
         "/zones",
         "Zonen",
         "zone.read",
-        "thermoctl.web.zone_views.zone_list_view",
+        "thermoctl.web.ui_api_rooms.list_rooms",
         "any_zone",
         "main",
         in_bottom_navigation=True,
@@ -51,7 +52,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/devices",
         "Geräte",
         "device.read",
-        "thermoctl.web.device_views.device_overview",
+        "thermoctl.web.ui_api_devices.show_devices",
         section="main",
         in_bottom_navigation=True,
     ),
@@ -59,7 +60,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/control",
         "Betrieb",
         "zone.read",
-        "thermoctl.web.control_views.show_control",
+        "thermoctl.web.ui_api_operations.show_operation",
         section="main",
     ),
     # -- Analyse -----------------------------------------------------------------
@@ -67,14 +68,14 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/statistics",
         "Heizstatistik",
         "zone.read",
-        "thermoctl.web.control_views.show_statistics",
+        "thermoctl.web.ui_api_reports.show_heating_time",
         section="analysis",
     ),
     NavigationItem(
         "/zones/history",
         "Zonenverläufe",
         "zone.manage",
-        "thermoctl.web.zone_views.zone_history_overview",
+        "thermoctl.web.ui_api_reports.show_history",
         "any_zone",
         "analysis",
     ),
@@ -82,7 +83,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/zones/data-flow",
         "Datenfluss",
         "zone.manage",
-        "thermoctl.web.zone_views.data_flow_overview",
+        "thermoctl.web.ui_api_devices.show_data_flow",
         "any_zone",
         "analysis",
     ),
@@ -90,28 +91,28 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/relay-wear",
         "Relaisverschleiß",
         "audit.read",
-        "thermoctl.web.control_views.show_relay_wear",
+        "thermoctl.web.ui_api_reports.show_relay_wear",
         section="analysis",
     ),
     NavigationItem(
         "/audit",
         "Protokoll",
         "audit.read",
-        "thermoctl.web.audit_views.audit_list",
+        "thermoctl.web.ui_api_reports.show_audit",
         section="analysis",
     ),
     NavigationItem(
         "/device-commands",
         "Schaltprotokoll",
         "audit.read",
-        "thermoctl.web.device_commands_views.device_command_list",
+        "thermoctl.web.ui_api_devices.show_device_commands",
         section="analysis",
     ),
     NavigationItem(
         "/changes",
         "Änderungsprotokoll",
         "audit.read",
-        "thermoctl.web.changes_views.change_list",
+        "thermoctl.web.ui_api_reports.show_changes",
         section="analysis",
     ),
     # -- System ------------------------------------------------------------------
@@ -119,35 +120,35 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/settings",
         "Regelvorgaben",
         "zone.read",
-        "thermoctl.web.control_views.show_settings",
+        "thermoctl.web.ui_api_operations.show_settings",
         section="system",
     ),
     NavigationItem(
         "/modes",
         "Sollwert-Modi",
         "mode.manage",
-        "thermoctl.web.mode_views.mode_list",
+        "thermoctl.web.ui_api_schedule.list_modes",
         section="system",
     ),
     NavigationItem(
         "/vacation",
         "Urlaub",
         "zone.read",
-        "thermoctl.web.vacation_views.show_vacation",
+        "thermoctl.web.ui_api_schedule.show_vacation",
         section="system",
     ),
     NavigationItem(
         "/interfaces",
         "Schnittstellen",
         "setting.manage",
-        "thermoctl.web.control_views.show_interfaces",
+        "thermoctl.web.ui_api_operations.show_interfaces",
         section="system",
     ),
     NavigationItem(
         "/controllers",
         "Bediengeräte",
         "device.read",
-        "thermoctl.web.controller_views.controllers",
+        "thermoctl.web.ui_api_devices.show_controllers",
         "any_zone",
         "system",
     ),
@@ -155,7 +156,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/devices/map",
         "Zuordnungskarte",
         "device.read",
-        "thermoctl.web.mapping_map_views.mapping_map",
+        "thermoctl.web.ui_api_devices.show_map",
         "any_zone",
         "system",
     ),
@@ -164,28 +165,28 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/users",
         "Benutzer",
         "user.manage",
-        "thermoctl.web.admin_views.user_list",
+        "thermoctl.web.ui_api_access.list_users",
         section="access",
     ),
     NavigationItem(
         "/groups",
         "Gruppen",
         "group.manage",
-        "thermoctl.web.admin_views.group_list",
+        "thermoctl.web.ui_api_access.list_groups",
         section="access",
     ),
     NavigationItem(
         "/tokens",
         "API-Tokens",
         "token.self",
-        "thermoctl.web.admin_views.token_list",
+        "thermoctl.web.ui_api_access.list_tokens",
         section="access",
     ),
     NavigationItem(
         "/kiosk-tokens",
         "Kiosk-Tokens",
         "token.manage",
-        "thermoctl.web.kiosk_admin_views.kiosk_token_list",
+        "thermoctl.web.ui_api_access.list_kiosk_tokens",
         section="access",
     ),
     # -- Mieteroberfläche ----------------------------------------------------------
@@ -193,7 +194,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/schedule",
         "Zeitplan",
         "zone.read",
-        "thermoctl.web.tenant_views.show_tenant_schedule",
+        "thermoctl.web.ui_api_schedule.show_schedule",
         "any_zone",
         "tenant",
         profile=WebUiProfile.TENANT,
@@ -202,7 +203,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/heating-time",
         "Heizzeit",
         "zone.read",
-        "thermoctl.web.tenant_views.show_heating_time",
+        "thermoctl.web.ui_api_reports.show_heating_time",
         "any_zone",
         "tenant",
         profile=WebUiProfile.TENANT,
@@ -211,7 +212,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "/temperature-history",
         "Verlauf",
         "zone.read",
-        "thermoctl.web.tenant_views.show_temperature_history",
+        "thermoctl.web.ui_api_reports.show_history",
         "any_zone",
         "tenant",
         profile=WebUiProfile.TENANT,
@@ -221,10 +222,10 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "Mehr",
         # Kein Recht: `/account` ist der eigene, persönliche Bereich -- jeder
         # Angemeldete kommt daran, unabhängig von jedem Grant (siehe
-        # `web/account_views.py`s eigene Begründung). Der Wächtertest unten
+        # `/ui-api/account`). Der Wächtertest unten
         # überspringt genau diesen Eintrag deshalb bewusst.
         None,
-        "thermoctl.web.account_views.show_account",
+        "thermoctl.web.ui_api_access.show_account",
         section="tenant",
         profile=WebUiProfile.TENANT,
     ),

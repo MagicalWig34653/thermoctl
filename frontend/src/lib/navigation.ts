@@ -6,8 +6,8 @@
 //  - Sichtbarkeit kommt ausschließlich aus `bootstrap.navigation`. Diese Datei kennt keine
 //    Rechte; ein Eintrag erscheint nur, wenn der Server den Pfad geliefert hat. Das ist
 //    Darstellung, keine Autorisierung -- jeder Endpunkt prüft erneut.
-//  - Solange eine Ansicht nicht migriert ist, verweist sie auf die bestehende HTML-Seite
-//    (`legacyHref`), nie ins Leere.
+//  - Ein Server-Pfad ohne Abbildung erscheint nicht; es gibt keine Alt-Seiten mehr, auf die
+//    er verweisen könnte.
 
 export interface ServerNavItem {
   path: string;
@@ -255,15 +255,6 @@ export const ACCOUNT_PATHS = ['/account'] as const;
 export const HELP_PATH = '/glossar';
 export const PASSKEYS_PATH = '/passkeys';
 
-/** Wohin ein Pfad, den die Abbildung nicht kennt, nach dem Server-Abschnitt gehört. */
-const FALLBACK_AREA: Record<string, string> = {
-  main: 'uebersicht',
-  tenant: 'uebersicht',
-  analysis: 'auswertung',
-  system: 'system',
-  access: 'personen',
-};
-
 export interface VisibleLink {
   path: string;
   label: string;
@@ -276,8 +267,6 @@ export interface VisiblePage extends NavPage {
 
 export interface VisibleArea extends Omit<NavArea, 'pages'> {
   pages: VisiblePage[];
-  /** Pfade aus dem Server, die keine Abbildung haben und hier gesammelt werden. */
-  extraLinks: VisibleLink[];
 }
 
 /**
@@ -287,8 +276,6 @@ export interface VisibleArea extends Omit<NavArea, 'pages'> {
  */
 export function buildVisibleAreas(items: readonly ServerNavItem[]): VisibleArea[] {
   const byPath = new Map(items.map((i) => [i.path, i]));
-  const known = new Set(AREAS.flatMap((a) => a.pages.flatMap((p) => p.paths)));
-  known.add('/account');
   const areas: VisibleArea[] = AREAS.map((area) => ({
     ...area,
     pages: area.pages.flatMap((page) => {
@@ -299,14 +286,8 @@ export function buildVisibleAreas(items: readonly ServerNavItem[]): VisibleArea[
       const implied = page.alsoWith?.some((p) => byPath.has(p)) ?? false;
       return links.length || implied ? [{ ...page, areaId: area.id, links }] : [];
     }),
-    extraLinks: [],
   }));
-  for (const item of items) {
-    if (known.has(item.path)) continue;
-    const target = areas.find((a) => a.id === (FALLBACK_AREA[item.section] ?? 'uebersicht'));
-    target?.extraLinks.push({ path: item.path, label: item.label });
-  }
-  return areas.filter((a) => a.id === 'uebersicht' || a.pages.length > 0 || a.extraLinks.length > 0);
+  return areas.filter((a) => a.id === 'uebersicht' || a.pages.length > 0);
 }
 
 export interface SearchEntry {

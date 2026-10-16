@@ -1,12 +1,4 @@
-"""Login and logout, end to end through a real browser.
-
-Both broke in exactly this way once before (see the task description this suite
-was commissioned from): an outdated login page locked users out, and logging out
-did not actually land on the login page because `hx-boost` followed the redirect
-invisibly. Neither failure shows up in an HTTP test that only checks a status code
-and a `Location` header — it needs a browser that actually runs `hx-boost`,
-executes htmx's redirect handling, and updates the address bar (or doesn't).
-"""
+"""Anmelden und Abmelden in der Svelte-Oberfläche, mit einem echten Browser."""
 
 from __future__ import annotations
 
@@ -20,45 +12,33 @@ from browser_tests.conftest import LiveServer
 pytestmark = pytest.mark.browser
 
 
-def test_login_with_correct_credentials_reaches_the_dashboard(
+def test_login_with_correct_credentials_reaches_the_app(
     page: Page, live_server: LiveServer
 ) -> None:
     page.goto("/login")
+    # Der Altpfad leitet auf die Oberfläche um.
+    expect(page).to_have_url(re.compile(r"/app/login"))
     page.get_by_label("Benutzername").fill(live_server.admin_username)
     page.get_by_label("Passwort").fill(live_server.admin_password)
-    page.get_by_role("button", name="Anmelden").click()
-
-    # The header bar exists only on the logged-in shells (`base_admin.html`,
-    # `base_tenant.html`), never on the login page's `base_plain.html` — an
-    # HTTP test can check the redirect target in isolation, but not that
-    # htmx's boosted submit actually arrives there with a working page behind
-    # it. Anchor is `.tc-topbar` since v0.9.0 (`.tc-head` no longer exists) --
-    # same assertion, new element, chosen because it stays visible at every
-    # viewport width, unlike the collapsible `.tc-sidebar`.
-    expect(page.locator(".tc-topbar")).to_be_visible()
-    expect(page).to_have_url(f"{live_server.base_url}/")
+    page.get_by_role("button", name="Anmelden", exact=True).click()
+    expect(page.get_by_text("Abmelden").first).to_be_visible()
+    expect(page).not_to_have_url(re.compile(r"/login"))
 
 
 def test_login_with_wrong_password_shows_an_error_and_stays_on_the_login_page(
     page: Page, live_server: LiveServer
 ) -> None:
-    page.goto("/login")
+    page.goto("/app/login")
     page.get_by_label("Benutzername").fill(live_server.admin_username)
     page.get_by_label("Passwort").fill("ganz-offensichtlich-falsch")
-    page.get_by_role("button", name="Anmelden").click()
-
+    page.get_by_role("button", name="Anmelden", exact=True).click()
     expect(page.get_by_role("alert")).to_contain_text("Benutzername oder Passwort falsch")
-    # Still on the login page, not silently let through.
     expect(page.get_by_label("Benutzername")).to_be_visible()
 
 
-def test_logout_leads_back_to_a_working_login_page(admin_page: Page) -> None:
-    # The account menu, not a direct `goto("/logout")`: the real defect sat in the
-    # button's own `hx-post`/`hx-boost` interaction, which only fires from an
-    # actual click on the actual element.
-    admin_page.get_by_role("button", name="Browsertest-Verwaltung").click()
-    admin_page.get_by_role("button", name="Abmelden").click()
-
+def test_logout_leads_back_to_the_login_page(admin_page: Page) -> None:
+    admin_page.get_by_text("Abmelden").first.click()
     expect(admin_page.get_by_label("Benutzername")).to_be_visible()
     expect(admin_page.get_by_label("Passwort")).to_be_visible()
-    expect(admin_page).to_have_url(re.compile(r"/login$"))
+    # Die Oberfläche zeigt die Anmeldung, ohne in der Sitzung angemeldet zu bleiben.
+    expect(admin_page.get_by_text("Abmelden")).to_have_count(0)

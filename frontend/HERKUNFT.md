@@ -3,7 +3,9 @@
 Quelle: `frontend/package-lock.json` (Felder `version`, `license` je Paket). Die Lizenzangabe stammt aus dem
 Lockfile, nicht aus einer eigenen Prüfung der Lizenztexte. Fehlt sie dort, steht „unbekannt“ -- nichts geraten.
 Gebaut wird zu statischen Dateien in `thermoctl/web/static/app/` (nicht eingecheckt, entsteht im Docker-Build
-und in der CI); das Endabbild enthält kein Node.
+und in der CI); das Endabbild enthält kein Node. Dies ist seit der Ablösung der Jinja/HTMX-Oberfläche
+(2026-10-17) die einzige Weboberfläche; deren Fremdcode (Bootstrap, HTMX, Mermaid) ist entfernt, übrig bleibt
+Swagger UI für `/docs` (`thermoctl/web/static/HERKUNFT.md`).
 
 ## Direkte Abhängigkeiten
 

@@ -30,7 +30,6 @@ from fastapi.testclient import TestClient
 
 from tests.helpers import user_with_permissions
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
-from thermoctl.web.assets import ASSET_VERSION
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "thermoctl" / "web" / "templates"
 PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
@@ -51,31 +50,9 @@ def _cookie_paths(response, name: str) -> list[str]:
 # --- login: redirect target and cookie scope ------------------------------------
 
 
-def test_login_redirect_is_prefixed(client_with_prefix: TestClient, user) -> None:
-    response = client_with_prefix.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"{PREFIX}/"
-
-
-def test_login_without_prefix_redirects_to_the_bare_root(client: TestClient, user) -> None:
-    response = client.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
-
-
 def test_login_cookies_are_scoped_to_the_prefix(client_with_prefix: TestClient, user) -> None:
     response = client_with_prefix.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
     assert _cookie_paths(response, "thermoctl_session") == [PREFIX]
     assert _cookie_paths(response, "thermoctl_csrf") == [PREFIX]
@@ -83,9 +60,7 @@ def test_login_cookies_are_scoped_to_the_prefix(client_with_prefix: TestClient, 
 
 def test_login_cookies_without_prefix_are_scoped_to_the_root(client: TestClient, user) -> None:
     response = client.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
     assert _cookie_paths(response, "thermoctl_session") == ["/"]
     assert _cookie_paths(response, "thermoctl_csrf") == ["/"]
@@ -113,9 +88,8 @@ def test_logout_redirect_and_cookie_deletion_are_prefixed(
     user_record = user_with_permissions(session, "web-logout", [("zone.read", None)])
     _entry, secret = create_session(session, user_record, 3600)
     client_with_prefix.cookies.set(COOKIE_NAME, secret)
-    response = client_with_prefix.post("/logout", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == f"{PREFIX}/login?stale=1"
+    response = client_with_prefix.post("/ui-api/logout")
+    assert response.status_code == 403  # kein CSRF-Token: Wiederherstellungspfad
     assert _cookie_paths(response, "thermoctl_session") == [PREFIX]
 
 
@@ -123,54 +97,12 @@ def test_logout_without_prefix_is_unchanged(client: TestClient, session) -> None
     user_record = user_with_permissions(session, "web-logout-2", [("zone.read", None)])
     _entry, secret = create_session(session, user_record, 3600)
     client.cookies.set(COOKIE_NAME, secret)
-    response = client.post("/logout", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login?stale=1"
+    response = client.post("/ui-api/logout")
+    assert response.status_code == 403
     assert _cookie_paths(response, "thermoctl_session") == ["/"]
 
 
 # --- rendered pages: links, static assets, forms carry the prefix ---------------
-
-
-def _logged_in(client: TestClient, session, name: str) -> TestClient:
-    user_record = user_with_permissions(
-        session, name, [("zone.read", None), ("zone.manage", None), ("mode.manage", None)]
-    )
-    _entry, secret = create_session(session, user_record, 3600)
-    client.cookies.set(COOKIE_NAME, secret)
-    return client
-
-
-def test_rendered_page_carries_the_prefix_on_every_local_link(
-    client_with_prefix: TestClient, session
-) -> None:
-    _logged_in(client_with_prefix, session, "web-render")
-    response = client_with_prefix.get("/zones")
-    assert response.status_code == 200
-    body = response.text
-    assert f'href="{PREFIX}/static/thermoctl.css?v={ASSET_VERSION}"' in body
-    assert f'href="{PREFIX}/zones/new"' in body
-    # No stray un-prefixed absolute link to a local page slipped through.
-    assert 'href="/zones' not in body
-    assert 'href="/static' not in body
-
-
-def test_rendered_page_without_prefix_uses_bare_local_links(client: TestClient, session) -> None:
-    _logged_in(client, session, "web-render-2")
-    response = client.get("/zones")
-    assert response.status_code == 200
-    body = response.text
-    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
-    assert 'href="/zones/new"' in body
-
-
-def test_htmx_and_form_attributes_carry_the_prefix(
-    client_with_prefix: TestClient, session
-) -> None:
-    _logged_in(client_with_prefix, session, "web-render-3")
-    response = client_with_prefix.get("/modes/new")
-    assert response.status_code == 200
-    assert f'action="{PREFIX}/modes"' in response.text
 
 
 # --- static assets: the actual file, not just the rendered href -----------------
@@ -185,37 +117,18 @@ def test_static_asset_is_served_under_the_prefix(client_with_prefix: TestClient)
     path -- every asset 404d even though the very same `href` looked correct in the
     rendered HTML. This fetches the file itself, not the link to it.
     """
-    response = client_with_prefix.get("/static/thermoctl.css")
+    response = client_with_prefix.get("/static/favicon.svg")
     assert response.status_code == 200
     assert len(response.content) > 0
 
 
 def test_static_asset_without_prefix_is_unchanged(client: TestClient) -> None:
-    response = client.get("/static/thermoctl.css")
+    response = client.get("/static/favicon.svg")
     assert response.status_code == 200
     assert len(response.content) > 0
 
 
 # --- a POST-triggered redirect from an authenticated, CSRF-protected view -------
-
-
-def test_mutating_view_redirect_is_prefixed(client_with_prefix: TestClient, session) -> None:
-    from thermoctl.auth.csrf import CSRF_COOKIE_NAME, CSRF_HEADER, csrf_token
-    from thermoctl.config import get_settings
-
-    _logged_in(client_with_prefix, session, "web-mutate")
-    secret = client_with_prefix.cookies.get(COOKIE_NAME)
-    assert secret is not None
-    token = csrf_token(secret, get_settings().secret_key.get_secret_value())
-    client_with_prefix.cookies.set(CSRF_COOKIE_NAME, token)
-    response = client_with_prefix.post(
-        "/modes",
-        data={"code": "eco", "name": "Sparsam", "sort_order": "1"},
-        headers={CSRF_HEADER: token},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"{PREFIX}/modes"
 
 
 # --- the same configured process, reached directly (no, or a forged, header) ----
@@ -228,37 +141,11 @@ def test_mutating_view_redirect_is_prefixed(client_with_prefix: TestClient, sess
 # at all, not as some partial or inconsistent state.
 
 
-def test_login_redirect_direct_is_unprefixed_even_with_ingress_configured(
-    client_direct_with_ingress_configured: TestClient, user
-) -> None:
-    response = client_direct_with_ingress_configured.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
-
-
-def test_login_redirect_with_forged_header_is_unprefixed(
-    client_with_forged_prefix_header: TestClient, user
-) -> None:
-    response = client_with_forged_prefix_header.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
-
-
 def test_login_cookies_direct_are_scoped_to_the_root_even_with_ingress_configured(
     client_direct_with_ingress_configured: TestClient, user
 ) -> None:
     response = client_direct_with_ingress_configured.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
     assert _cookie_paths(response, "thermoctl_session") == ["/"]
     assert _cookie_paths(response, "thermoctl_csrf") == ["/"]
@@ -268,43 +155,16 @@ def test_login_cookies_with_forged_header_are_scoped_to_the_root(
     client_with_forged_prefix_header: TestClient, user
 ) -> None:
     response = client_with_forged_prefix_header.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
     assert _cookie_paths(response, "thermoctl_session") == ["/"]
     assert _cookie_paths(response, "thermoctl_csrf") == ["/"]
 
 
-def test_rendered_page_direct_uses_bare_links_even_with_ingress_configured(
-    client_direct_with_ingress_configured: TestClient, session
-) -> None:
-    _logged_in(client_direct_with_ingress_configured, session, "web-direct-render")
-    response = client_direct_with_ingress_configured.get("/zones")
-    assert response.status_code == 200
-    body = response.text
-    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
-    assert 'href="/zones/new"' in body
-    assert PREFIX not in body
-
-
-def test_rendered_page_with_forged_header_uses_bare_links(
-    client_with_forged_prefix_header: TestClient, session
-) -> None:
-    _logged_in(client_with_forged_prefix_header, session, "web-forged-render")
-    response = client_with_forged_prefix_header.get("/zones")
-    assert response.status_code == 200
-    body = response.text
-    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
-    assert 'href="/zones/new"' in body
-    # The forged value must not appear anywhere in what got rendered either.
-    assert "EinAnderesAddon" not in body
-
-
 def test_static_asset_direct_is_served_unprefixed_even_with_ingress_configured(
     client_direct_with_ingress_configured: TestClient,
 ) -> None:
-    response = client_direct_with_ingress_configured.get("/static/thermoctl.css")
+    response = client_direct_with_ingress_configured.get("/static/favicon.svg")
     assert response.status_code == 200
     assert len(response.content) > 0
 
@@ -321,19 +181,17 @@ def test_ingress_configured_and_direct_access_work_side_by_side(
     `THERMOCTL_ROOT_PATH` -- exactly the situation an add-on with its port also
     exposed to a reverse proxy is in: one running process, reached two ways.
     """
-    via_ingress = client_with_prefix.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert via_ingress.headers["location"] == f"{PREFIX}/"
+    credentials = {"username": "lino", "password": "passwort-lang-genug"}
+    via_ingress = client_with_prefix.post("/ui-api/login", json=credentials)
+    assert _cookie_paths(via_ingress, "thermoctl_session") == [PREFIX]
 
-    direct = client_direct_with_ingress_configured.post(
-        "/login",
-        data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    )
-    assert direct.headers["location"] == "/"
+    direct = client_direct_with_ingress_configured.post("/ui-api/login", json=credentials)
+    assert _cookie_paths(direct, "thermoctl_session") == ["/"]
+
+    legacy = client_with_prefix.get("/zones", follow_redirects=False)
+    assert legacy.headers["location"] == f"{PREFIX}/app/uebersicht/raeume"
+    legacy_direct = client_direct_with_ingress_configured.get("/zones", follow_redirects=False)
+    assert legacy_direct.headers["location"] == "/app/uebersicht/raeume"
 
 
 def test_no_template_sends_a_form_or_link_past_the_ingress_prefix() -> None:
@@ -357,9 +215,7 @@ def test_no_template_sends_a_form_or_link_past_the_ingress_prefix() -> None:
     verdaechtig = re.compile(r'\b(?:action|href|hx-(?:get|post))\s*=\s*"(/[^"{]*)"')
     findings: list[str] = []
     for template in sorted(TEMPLATES.glob("*.html")):
-        for number, line in enumerate(
-            template.read_text(encoding="utf-8").splitlines(), start=1
-        ):
+        for number, line in enumerate(template.read_text(encoding="utf-8").splitlines(), start=1):
             for treffer in verdaechtig.finditer(line):
                 findings.append(f"{template.name}:{number}: {treffer.group(0)}")
     assert not findings, (

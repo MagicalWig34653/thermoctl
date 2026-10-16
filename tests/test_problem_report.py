@@ -158,78 +158,14 @@ def test_a_room_without_a_reading_says_so_instead_of_inventing_one(
 # -- Das Recht ----------------------------------------------------------------
 
 
-def test_a_read_only_tenant_cannot_send_anything(
-    tenant_client: Client, session: Session, sent: list[Any]
-) -> None:
-    """Die wichtigste Zusicherung dieser Datei."""
-    mine, _other = _zones(session)
-    client = tenant_client([("zone.read", mine.id)])
-    response = client.post(
-        f"/zones/{mine.id}/report", data={"kind": "not_warm"}, headers=_csrf(client)
-    )
-    assert response.status_code == 404
-    assert sent == []
-    assert not list(
-        session.scalars(select(AuditEvent).where(AuditEvent.action == "report.created"))
-    )
 
 
-def test_a_foreign_room_cannot_be_reported(
-    tenant_client: Client, session: Session, sent: list[Any]
-) -> None:
-    mine, other = _zones(session)
-    client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
-    response = client.post(
-        f"/zones/{other.id}/report", data={"kind": "not_warm"}, headers=_csrf(client)
-    )
-    assert response.status_code == 404
-    assert sent == []
 
 
-def test_the_form_is_only_offered_where_the_permission_exists(
-    tenant_client: Client, session: Session
-) -> None:
-    mine, _other = _zones(session)
-    without = tenant_client([("zone.read", mine.id)]).get("/").text
-    assert "Problem melden" not in without
 
 
-def test_with_the_permission_the_report_goes_out_and_into_the_audit(
-    tenant_client: Client, session: Session, sent: list[Any]
-) -> None:
-    mine, _other = _zones(session)
-    client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
-    response = client.post(
-        f"/zones/{mine.id}/report",
-        data={"kind": "not_warm", "note": "seit gestern"},
-        headers=_csrf(client), follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert "report_notice" in response.headers["location"]
-    assert len(sent) == 1
-    assert "Bad" in sent[0].title
-    entry = session.scalars(
-        select(AuditEvent).where(AuditEvent.action == "report.created")
-    ).one()
-    assert entry.object_id == str(mine.id)
-    assert "seit gestern" in (entry.detail or "")
 
 
-def test_an_unknown_kind_is_reported_back_without_sending(
-    tenant_client: Client, session: Session, sent: list[Any]
-) -> None:
-    mine, _other = _zones(session)
-    client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
-    response = client.post(
-        f"/zones/{mine.id}/report", data={"kind": "unsinn"},
-        headers=_csrf(client), follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert "report_errors" in response.headers["location"]
-    assert sent == []
-    assert not list(
-        session.scalars(select(AuditEvent).where(AuditEvent.action == "report.created"))
-    )
 
 
 # -- Die Zustellwege ----------------------------------------------------------
@@ -247,32 +183,16 @@ def test_with_the_switch_off_nothing_goes_out_but_the_audit_still_has_it(
     session.flush()
     client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
     response = client.post(
-        f"/zones/{mine.id}/report", data={"kind": "not_warm"},
-        headers=_csrf(client), follow_redirects=False,
+        f"/ui-api/rooms/{mine.id}/report", json={"kind": "not_warm"}, headers=_csrf(client)
     )
-    assert response.status_code == 303
-    assert "nicht+eingerichtet" in response.headers["location"].replace("%20", "+")
+    assert response.status_code == 200
+    assert "nicht eingerichtet" in response.json()["message"]
     assert sent == []
     assert list(
         session.scalars(select(AuditEvent).where(AuditEvent.action == "report.created"))
     )
 
 
-def test_without_a_configured_webhook_the_answer_is_honest(
-    tenant_client: Client, session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mine, _other = _zones(session)
-    get_settings.cache_clear()
-    client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
-    response = client.post(
-        f"/zones/{mine.id}/report", data={"kind": "not_warm"},
-        headers=_csrf(client), follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert "nicht+eingerichtet" in response.headers["location"].replace("%20", "+")
-    assert list(
-        session.scalars(select(AuditEvent).where(AuditEvent.action == "report.created"))
-    )
 
 
 def test_a_failing_webhook_does_not_lose_the_report(
@@ -297,11 +217,10 @@ def test_a_failing_webhook_does_not_lose_the_report(
     get_settings.cache_clear()
     client = tenant_client([("zone.read", mine.id), ("report.create", mine.id)])
     response = client.post(
-        f"/zones/{mine.id}/report", data={"kind": "not_warm"},
-        headers=_csrf(client), follow_redirects=False,
+        f"/ui-api/rooms/{mine.id}/report", json={"kind": "not_warm"}, headers=_csrf(client)
     )
     get_settings.cache_clear()
-    assert response.status_code == 303
+    assert response.status_code == 200
     assert list(
         session.scalars(select(AuditEvent).where(AuditEvent.action == "report.created"))
     )

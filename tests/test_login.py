@@ -39,14 +39,17 @@ def _csrf(client: TestClient, settings: Settings) -> dict[str, str]:
 
 
 def test_login_with_the_correct_password(client: TestClient, user) -> None:
-    response = client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"},
-                          follow_redirects=False)
-    assert response.status_code == 303
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
+    assert response.status_code == 200
     assert "thermoctl_session" in response.cookies
 
 
 def test_login_with_the_wrong_password_fails(client: TestClient, user) -> None:
-    response = client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"}
+    )
     assert response.status_code == 401
     assert "thermoctl_session" not in response.cookies
 
@@ -54,78 +57,60 @@ def test_login_with_the_wrong_password_fails(client: TestClient, user) -> None:
 def test_the_error_message_does_not_reveal_whether_the_user_exists(
     client: TestClient, user
 ) -> None:
-    a = client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
-    b = client.post("/login", data={"username": "gibtsnicht", "password": "falsch-aber-lang"})
+    a = client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
+    b = client.post(
+        "/ui-api/login", json={"username": "gibtsnicht", "password": "falsch-aber-lang"}
+    )
     assert a.status_code == b.status_code == 401
     assert a.text == b.text
 
 
 def test_cookie_is_httponly_and_samesite(client: TestClient, user) -> None:
-    response = client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"},
-                          follow_redirects=False)
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
     header = response.headers["set-cookie"].lower()
     assert "httponly" in header
     assert "samesite=lax" in header
 
 
-def test_cookie_does_not_contain_the_stored_hash(client: TestClient, user,
-                                                      session: Session) -> None:
-    response = client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"},
-                          follow_redirects=False)
+def test_cookie_does_not_contain_the_stored_hash(
+    client: TestClient, user, session: Session
+) -> None:
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
     stored = session.query(Session_).one().token_hash
     assert stored not in response.headers["set-cookie"]
 
 
-def test_an_inactive_user_cannot_get_in(client: TestClient, user,
-                                               session: Session) -> None:
+def test_an_inactive_user_cannot_get_in(client: TestClient, user, session: Session) -> None:
     user.is_active = False
     session.flush()
     response = client.post(
-        "/login", data={"username": "lino", "password": "passwort-lang-genug"}
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
     )
     assert response.status_code == 401
 
 
 def test_logging_out_revokes_the_session(client: TestClient, user, session: Session) -> None:
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     # The application itself hands out the valid token through its own,
-    # non-httpOnly cookie -- exactly what HTMX in the interface would read
+    # non-httpOnly cookie -- exactly what the Svelte app reads
     # and send back as a header.
     token = client.cookies[CSRF_COOKIE_NAME]
-    client.post("/logout", headers={"X-CSRF-Token": token})
+    client.post("/ui-api/logout", headers={"X-CSRF-Token": token})
     assert session.query(Session_).one().revoked_at is not None
 
 
-def test_logout_redirects_a_browser_directly_to_login_and_clears_both_cookies(
-    client: TestClient, user
-) -> None:
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+def test_logout_answers_json_and_clears_both_cookies(client: TestClient, user) -> None:
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     token = client.cookies[CSRF_COOKIE_NAME]
 
-    response = client.post(
-        "/logout", headers={"X-CSRF-Token": token}, follow_redirects=False
-    )
+    response = client.post("/ui-api/logout", headers={"X-CSRF-Token": token})
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login"
-    cookies = response.headers.get_list("set-cookie")
-    assert any(COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
-    assert any(CSRF_COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
-
-
-def test_boosted_logout_uses_a_visible_browser_redirect(client: TestClient, user) -> None:
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
-    token = client.cookies[CSRF_COOKIE_NAME]
-
-    response = client.post(
-        "/logout",
-        headers={"X-CSRF-Token": token, "HX-Request": "true", "HX-Boosted": "true"},
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 204
-    assert response.headers["HX-Redirect"] == "/login"
-    assert "location" not in response.headers
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
     cookies = response.headers.get_list("set-cookie")
     assert any(COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
     assert any(CSRF_COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
@@ -137,17 +122,19 @@ def test_a_logout_without_a_csrf_token_is_not_carried_out(
     """Refused as before -- but no longer a dead end.
 
     These two tests asserted a plain 403, and that was exactly the behaviour reported
-    from use: with a stale page, the way *out* of it was blocked as well. `/logout` is
+    from use: with a stale page, the way *out* of it was blocked as well. `/ui-api/logout` is
     a recovery path now: the request is still not carried out (the session row keeps
     its `revoked_at`), the cookies are cleared, and the browser lands on the login
     form.
     """
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
 
-    response = client.post("/logout", follow_redirects=False)
+    response = client.post("/ui-api/logout")
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login?stale=1"
+    assert response.status_code == 403
+    assert response.json()["stale"] is True
+    cookies = response.headers.get_list("set-cookie")
+    assert any(COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
     assert session.query(Session_).one().revoked_at is None, (
         "Ohne gültiges Token darf keine Sitzung serverseitig widerrufen werden"
     )
@@ -162,29 +149,30 @@ def test_a_logout_with_a_token_from_a_foreign_session_revokes_nothing(
     concession that keeps a stale page from stranding its user. Whose session dies is
     the point here: nobody's.
     """
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     _foreign_session, foreign_secret = create_session(session, user, 3600)
     foreign_token = csrf_token(foreign_secret, settings.secret_key.get_secret_value())
 
-    response = client.post(
-        "/logout", headers={"X-CSRF-Token": foreign_token}, follow_redirects=False
-    )
+    response = client.post("/ui-api/logout", headers={"X-CSRF-Token": foreign_token})
 
-    assert response.status_code == 303
+    assert response.status_code == 403
     assert [s.revoked_at for s in session.query(Session_).all()] == [None, None]
 
 
-def test_login_and_failed_attempt_land_in_the_audit_log(client: TestClient, user,
-                                                   session: Session) -> None:
-    client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+def test_login_and_failed_attempt_land_in_the_audit_log(
+    client: TestClient, user, session: Session
+) -> None:
+    client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     actions = [e.action for e in session.query(AuditEvent).all()]
     assert "login_failed" in actions
     assert "login" in actions
 
 
 def test_the_password_appears_in_no_response(client: TestClient, user) -> None:
-    response = client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
     assert "passwort-lang-genug" not in response.text
 
 
@@ -196,14 +184,14 @@ def test_failed_attempts_are_increasingly_delayed(client, user, monkeypatch) -> 
 
     monkeypatch.setattr("thermoctl.web.shared.login.sleep", merken)
     for _ in range(3):
-        client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
+        client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
     assert delays == sorted(delays)
     assert delays[-1] > delays[0]
 
 
 def test_a_successful_login_resets_the_counter(client, user) -> None:
-    client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
-    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     from thermoctl.web.shared.login import FEHLVERSUCHE
 
     assert FEHLVERSUCHE.get("lino", 0) == 0
@@ -219,14 +207,15 @@ def test_session_duration_comes_from_the_settings_row(
     # without anything actually being wrong.
     before_login = utcnow().replace(microsecond=0)
     client.post(
-        "/login", data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
+        "/ui-api/login",
+        json={"username": "lino", "password": "passwort-lang-genug"},
     )
     after_login = utcnow().replace(microsecond=0) + timedelta(seconds=1)
     expiry = session.query(Session_).one().expires_at
     # 3600 s from the settings row instead of the built-in 14-day default.
     assert (before_login + timedelta(seconds=3600)) <= expiry
     assert expiry <= (after_login + timedelta(seconds=3600))
+
 
 def test_password_verification_runs_even_for_an_unknown_user(
     client: TestClient, user, monkeypatch: pytest.MonkeyPatch
@@ -248,11 +237,11 @@ def test_password_verification_runs_even_for_an_unknown_user(
 
     monkeypatch.setattr("thermoctl.web.shared.login.verify_password", counting)
 
-    client.post("/login", data={"username": "gibtsnicht", "password": "falsch-aber-lang"})
+    client.post("/ui-api/login", json={"username": "gibtsnicht", "password": "falsch-aber-lang"})
     assert len(calls) == 1, "no check happened for an unknown user"
 
     calls.clear()
-    client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
     assert len(calls) == 1, "no check happened for a known user"
 
 
@@ -266,6 +255,7 @@ def test_the_login_delay_does_not_block_the_event_loop() -> None:
     is stalled. The test therefore lets the real delay run and checks that a second
     task got to run during it.
     """
+
     async def szenario() -> int:
         ticks = 0
 
@@ -299,7 +289,7 @@ def test_the_password_check_does_not_run_on_the_event_loop(
         return False
 
     monkeypatch.setattr("thermoctl.web.shared.login.verify_password", merken)
-    client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
+    client.post("/ui-api/login", json={"username": "lino", "password": "falsch-aber-lang"})
 
     assert threads
     assert all(t is not threading.main_thread() for t in threads)
@@ -318,99 +308,12 @@ def test_the_failure_counter_cannot_grow_without_bound(
 
     for nummer in range(10):
         client.post(
-            "/login", data={"username": f"erfunden-{nummer}", "password": "falsch-aber-lang"}
+            "/ui-api/login", json={"username": f"erfunden-{nummer}", "password": "falsch-aber-lang"}
         )
 
     assert len(thermoctl.web.shared.login.FEHLVERSUCHE) == 3
     # Behalten wird das Jüngste: der Zähler soll das gerade laufende Raten bremsen.
     assert "erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
-
-
-def test_changing_the_own_password_ends_the_other_sessions_only(
-    client: TestClient, user, session: Session, settings: Settings
-) -> None:
-    """Whoever changes their password because a cookie was stolen must lose that cookie.
-
-    The opposite was the documented behaviour, with the argument that a password change
-    is usually not a reaction to a suspicion. When it *is* one, leaving the other
-    sessions alive defeats the point -- and nothing told the user it had happened. The
-    browser doing the change stays logged in, so the change is not a self-lockout.
-    """
-    client.post(
-        "/login", data={"username": "lino", "password": "passwort-lang-genug"}
-    )
-    fremde, _geheim = create_session(session, user, 3600)
-    eigene_kennung = session.query(Session_).filter(
-        Session_.id != fremde.id
-    ).one().id
-
-    antwort = client.post(
-        f"/users/{user.id}/password",
-        data={"password": "ein-anderes-langes-passwort"},
-        headers=_csrf(client, settings),
-        follow_redirects=False,
-    )
-
-    assert antwort.status_code == 303
-    session.expire_all()
-    assert session.get(Session_, fremde.id).revoked_at is not None
-    assert session.get(Session_, eigene_kennung).revoked_at is None
-
-
-def test_an_administrative_reset_ends_every_session_of_that_account(
-    client_als, session: Session, user, settings: Settings
-) -> None:
-    """Resetting somebody else's password spares nothing -- that is the point.
-
-    The exception exists so the browser in front of the person changing their own
-    password keeps working. An administrator resetting a foreign account has no such
-    browser to spare, and sparing one would leave exactly the access the reset is
-    meant to cut.
-    """
-    fremde_a, _a = create_session(session, user, 3600)
-    fremde_b, _b = create_session(session, user, 3600)
-    verwaltung = client_als([("user.manage", None)])
-
-    antwort = verwaltung.post(
-        f"/users/{user.id}/password",
-        data={"password": "von-der-verwaltung-gesetzt"},
-        headers=_csrf(verwaltung, settings),
-        follow_redirects=False,
-    )
-
-    assert antwort.status_code == 303
-    session.expire_all()
-    assert session.get(Session_, fremde_a.id).revoked_at is not None
-    assert session.get(Session_, fremde_b.id).revoked_at is not None
-
-
-def test_ending_the_other_sessions_without_changing_the_password(
-    client: TestClient, user, session: Session, settings: Settings
-) -> None:
-    """A lost device should not force a password change to cut it loose.
-
-    `set_password` claimed in its docstring that a dedicated way to do this existed.
-    It did not, and this is it.
-    """
-    client.post(
-        "/login", data={"username": "lino", "password": "passwort-lang-genug"}
-    )
-    verlorenes_geraet, _geheim = create_session(session, user, 3600)
-    eigene_kennung = session.query(Session_).filter(
-        Session_.id != verlorenes_geraet.id
-    ).one().id
-
-    antwort = client.post("/users/sessions/revoke-others", headers=_csrf(client, settings))
-
-    assert antwort.status_code == 200
-    session.expire_all()
-    assert session.get(Session_, verlorenes_geraet.id).revoked_at is not None
-    assert session.get(Session_, eigene_kennung).revoked_at is None
-    # Und das Passwort ist unverändert: die Anmeldung geht weiterhin.
-    assert client.post(
-        "/login", data={"username": "lino", "password": "passwort-lang-genug"},
-        follow_redirects=False,
-    ).status_code == 303
 
 
 def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:
@@ -435,6 +338,4 @@ def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:
             if "secure" not in benannt:
                 verstöße.append(f"{quelle}:{knoten.lineno}")
 
-    assert not verstöße, (
-        "Diese set_cookie-Aufrufe setzen kein secure=: " + ", ".join(verstöße)
-    )
+    assert not verstöße, "Diese set_cookie-Aufrufe setzen kein secure=: " + ", ".join(verstöße)

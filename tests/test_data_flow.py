@@ -9,7 +9,6 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
@@ -414,22 +413,6 @@ def test_escape_label_reference_encodes_everything_unknown() -> None:
 # -- Seite -----------------------------------------------------------------------------
 
 
-def test_page_shows_the_zone_with_diagram_source_and_edge_list(
-    client_als, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "wohnen")
-    _sensor_and_window(session, zone)
-    _valve(session, zone, "kopf-lesen", "reading_only")
-    page = client_als([("zone.manage", zone.id)]).get("/zones/data-flow")
-
-    assert page.status_code == 200
-    assert "data-flow-diagram" in page.text and "flowchart LR" in page.text
-    assert "kopf-lesen" in page.text and "external_temperature_input" in page.text
-    assert "static/data_flow.js" not in page.text  # wird von page_scripts.js nachgeladen
-    # Keine Anfrage an Dritte: kein externes Skript, kein fremdes Stylesheet.
-    assert not re.findall(r'<(?:script|link)[^>]+(?:src|href)="https?://', page.text)
-    assert "cdn." not in page.text
 
 
 def test_page_escapes_a_hostile_name_in_html(client_als, session: Session) -> None:
@@ -445,67 +428,13 @@ def test_page_escapes_a_hostile_name_in_html(client_als, session: Session) -> No
     assert "<script>alert" not in page.text
 
 
-def test_page_lists_only_visible_zones(client_als, session: Session) -> None:
-    create_settings(session)
-    mine = create_zone(session, "meinraum")
-    create_zone(session, "fremderraum")
-    page = client_als([("zone.manage", mine.id)]).get("/zones/data-flow")
-    assert page.status_code == 200
-    assert "Meinraum" in page.text and "Fremderraum" not in page.text
 
 
-def test_single_zone_page_refuses_a_foreign_zone(client_als, session: Session) -> None:
-    create_settings(session)
-    mine = create_zone(session, "einzelmein")
-    theirs = create_zone(session, "einzelfremd")
-    user = client_als([("zone.manage", mine.id)])
-    assert user.get(f"/zones/{mine.id}/data-flow").status_code == 200
-    refused = user.get(f"/zones/{theirs.id}/data-flow")
-    assert refused.status_code == 404
-    assert "einzelfremd" not in refused.text.lower()
 
 
-def test_page_without_the_right_is_empty_like_its_neighbours(client_als, session: Session) -> None:
-    create_settings(session)
-    zone = create_zone(session, "nurlesen")
-    page = client_als([("zone.read", zone.id)]).get("/zones/data-flow")
-    assert page.status_code == 200
-    assert "Nurlesen" not in page.text and "Noch keine sichtbaren Zonen" in page.text
-    single = client_als([("zone.read", zone.id)]).get(f"/zones/{zone.id}/data-flow")
-    assert single.status_code == 404
 
 
-def test_page_is_closed_to_tenants_and_anonymous_visitors(
-    client_als, tenant_client, client: TestClient, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "mieterdaten")
-    anonymous = client.get("/zones/data-flow", follow_redirects=False)
-    assert anonymous.status_code in (303, 401) and "Mieterdaten" not in anonymous.text
-    tenant = tenant_client([("zone.manage", zone.id)])
-    assert tenant.get("/zones/data-flow").status_code == 403
-    assert tenant.get(f"/zones/{zone.id}/data-flow").status_code == 403
 
 
-def test_static_assets_are_served_locally(client: TestClient) -> None:
-    script = client.get("/static/data_flow.js")
-    assert script.status_code == 200 and "securityLevel" in script.text
-    mermaid = client.get("/static/vendor/mermaid/mermaid.min.js")
-    assert mermaid.status_code == 200 and len(mermaid.content) > 1_000_000
-    assert "securityLevel" in script.text and 'securityLevel: "strict"' in script.text
-    # Der Initialisierer lädt nirgends von einer fremden Adresse.
-    assert "http://" not in script.text and "https://" not in script.text
 
 
-def test_single_zone_page_has_one_heading_and_the_dry_run_note(
-    client_als, session: Session
-) -> None:
-    create_settings(session)
-    zone = create_zone(session, "einzeln")
-    page = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/data-flow")
-
-    assert page.status_code == 200
-    assert "Datenfluss dieser Zone" not in page.text
-    assert "Im Trockenlauf wird nichts gesendet" in page.text
-    assert "Notbetrieb-Übergabe ist hier nicht dargestellt" in page.text
-    assert "data-flow-edges" in page.text

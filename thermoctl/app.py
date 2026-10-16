@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exception_handlers import http_exception_handler
@@ -110,34 +110,13 @@ from thermoctl.services.retention import (
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR, templates
-from thermoctl.web.account_views import router as account_router
-from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.assets import ASSET_VERSION
-from thermoctl.web.audit_views import router as audit_router
-from thermoctl.web.auth_views import router as auth_router
-from thermoctl.web.changes_views import router as changes_router
-from thermoctl.web.control_views import router as control_router
-from thermoctl.web.controller_views import router as controller_router
-from thermoctl.web.daily_views import router as alltag_router
-from thermoctl.web.daily_views import shared_router as alltag_shared_router
-from thermoctl.web.device_assignment_views import router as device_assignment_router
-from thermoctl.web.device_commands_views import router as device_commands_router
-from thermoctl.web.device_views import router as devices_router
-from thermoctl.web.glossary_views import router as glossary_router
-from thermoctl.web.kiosk_admin_views import router as kiosk_admin_router
 from thermoctl.web.kiosk_api import router as kiosk_api_router
 from thermoctl.web.kiosk_views import router as kiosk_router
 from thermoctl.web.legacy_redirects import router as legacy_redirects_router
-from thermoctl.web.mapping_map_views import router as mapping_map_router
-from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.oauth_views import router as oauth_consent_router
 from thermoctl.web.passkey_views import router as passkey_router
-from thermoctl.web.report_views import router as report_router
-from thermoctl.web.schedule_views import router as schedule_router
-from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.spa_views import router as spa_router
-from thermoctl.web.start_views import router as start_router
-from thermoctl.web.tenant_views import router as tenant_router
 from thermoctl.web.ui_api import router as ui_api_router
 from thermoctl.web.ui_api_access import router as ui_api_access_router
 from thermoctl.web.ui_api_auth import router as ui_api_auth_router
@@ -149,8 +128,6 @@ from thermoctl.web.ui_api_rooms import router as ui_api_rooms_router
 from thermoctl.web.ui_api_schedule import router as ui_api_schedule_router
 from thermoctl.web.ui_api_zones import router as ui_api_zones_router
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
-from thermoctl.web.vacation_views import router as vacation_router
-from thermoctl.web.zone_views import router as zone_router
 
 log = logging.getLogger(__name__)
 
@@ -1188,7 +1165,8 @@ def _warn_if_reachable_unprotected(settings: Settings) -> None:
     )
 
 
-# The one directory served as-is: Bootstrap, htmx and our own CSS/JS (static/HERKUNFT.md).
+# The one directory served as-is: the built Svelte app, the Swagger UI and the favicon
+# (static/HERKUNFT.md).
 _static_files = StaticFiles(directory=str(STATIC_DIR))
 
 
@@ -1317,15 +1295,7 @@ def create_app() -> FastAPI:
     # Zuerst: Die GET-Seiten der alten Oberfläche leiten auf `/app/` um und müssen vor den
     # alten Routern greifen (siehe `thermoctl/web/legacy_redirects.py`).
     app.include_router(legacy_redirects_router)
-    app.include_router(start_router)
-    app.include_router(control_router)
-    app.include_router(controller_router)
-    app.include_router(auth_router)
     app.include_router(oauth_consent_router)
-    app.include_router(setup_router)
-    app.include_router(admin_router)
-    app.include_router(account_router)
-    app.include_router(glossary_router)
     app.include_router(spa_router)
     app.include_router(ui_api_router)
     app.include_router(ui_api_auth_router)
@@ -1339,23 +1309,8 @@ def create_app() -> FastAPI:
     app.include_router(ui_api_zones_router)
     # Eigener Principal (Kiosk-Cookie), eigene CSRF-Semantik -- bewusst nicht unter /ui-api.
     app.include_router(kiosk_api_router)
-    app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
-    app.include_router(audit_router)
-    app.include_router(device_commands_router)
-    app.include_router(changes_router)
-    app.include_router(devices_router)
-    app.include_router(device_assignment_router)
-    app.include_router(mapping_map_router)
-    app.include_router(zone_router)
-    app.include_router(modes_router)
     app.include_router(passkey_router)
-    app.include_router(schedule_router)
-    app.include_router(alltag_router)
-    app.include_router(alltag_shared_router)
-    app.include_router(tenant_router)
-    app.include_router(report_router)
-    app.include_router(vacation_router)
     app.include_router(api_router)
     app.router.routes.append(
         Mount("/static", app=_serve_static, name="static")
@@ -1365,63 +1320,33 @@ def create_app() -> FastAPI:
     async def stale_page_handler(request: Request, exc: StalePage) -> Response:
         """Answers a request whose page is older than the session behind it.
 
-        Two ways out, and both matter. On a recovery path (`/login`, `/logout`) the
-        session and CSRF cookies are cleared and the browser is sent to the login
-        form: the person wanted to leave or to come back in, and an outdated token
-        must not be what stops them. Reported from use -- a tab left open could
-        neither log out nor log in again, and the only escape was deleting exactly
-        the right cookie by hand.
+        On a recovery path (`/ui-api/login`, `/ui-api/logout`) the session and CSRF
+        cookies are cleared: the person wanted to leave or to come back in, and an
+        outdated token must not be what stops them. Reported from use -- a tab left
+        open could neither log out nor log in again, and the only escape was deleting
+        exactly the right cookie by hand.
 
-        Everywhere else the request stays refused, but a browser gets a page saying
-        so instead of `{"detail": "..."}`. Nothing about the check itself is relaxed:
-        a forged request still carries no valid token and still changes nothing.
+        Everywhere else the request stays refused, but a browser (the OAuth consent
+        page) gets a page saying so instead of `{"detail": "..."}`.
+        Nothing about the check itself is relaxed: a forged request still carries no
+        valid token and still changes nothing.
 
         What this does concede: someone else's page can now log a signed-in visitor
         out (the cleared cookies). That is the usual trade for not stranding people,
         it takes over no account, and it is written down here rather than left to be
         discovered.
         """
-        # htmx drives most controls of this interface. It follows a redirect
-        # transparently and would swap the login form into the middle of the old
-        # page without ever changing the address -- so htmx is told where to go
-        # through its own header instead.
-        # The Svelte app reads JSON errors; a page, redirect or htmx header would be lost.
+        # The Svelte app reads JSON errors; a page or redirect would be lost.
         if request.url.path.startswith("/ui-api/"):
             stale = JSONResponse(
                 {"detail": "Ungültiges CSRF-Token", "stale": True}, status_code=403
             )
             if exc.recovery:
-                # Same way out as for the HTML forms: clear the dead session so the
-                # next login or logout attempt of the app is not blocked again.
+                # Clear the dead session so the next login or logout attempt of the app
+                # is not blocked again.
                 stale.delete_cookie(COOKIE_NAME, path=cookie_path(request))
                 stale.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))
             return stale
-        from_htmx = request.headers.get("hx-request") is not None
-        login_target = prefixed(request, "/login?stale=1")
-        if exc.recovery:
-            answer: Response = (
-                Response(status_code=204)
-                if from_htmx
-                else RedirectResponse(login_target, status_code=303)
-            )
-            if from_htmx:
-                answer.headers["HX-Redirect"] = login_target
-            cookie_scope = cookie_path(request)
-            answer.delete_cookie(COOKIE_NAME, path=cookie_scope)
-            answer.delete_cookie(CSRF_COOKIE_NAME, path=cookie_scope)
-            return answer
-        if from_htmx:
-            # htmx ignores the body of an error answer, so a message put there would
-            # be seen by nobody -- measured in the browser: the control simply did
-            # nothing, which is the very complaint this handler exists for. The page
-            # is not reloaded automatically either; that was tried and it can put a
-            # control that fires on restore into a loop of reload, refuse, reload.
-            # Instead a marker goes out that the small handler in `base_core.html` turns
-            # into a visible notice with a reload button -- the person decides when
-            # the page goes away, and an unsent change is not swallowed silently.
-            answer = JSONResponse(status_code=403, content={"detail": str(exc)})
-            answer.headers["HX-Stale-Page"] = "1"
-            return answer
         if "text/html" not in request.headers.get("accept", ""):
             return JSONResponse(status_code=403, content={"detail": str(exc)})
         return templates.TemplateResponse(
@@ -1437,9 +1362,7 @@ def create_app() -> FastAPI:
 
         Everything that is not a person in front of a browser keeps the plain 401:
         REST and MCP (clients that read the status), and any request that does not ask
-        for HTML. htmx cannot follow a redirect usefully (it would swap the login form
-        into the middle of the old page), so it is told where to go through its own
-        header, exactly like `StalePage` above.
+        for HTML (`/ui-api` answers with JSON; the Svelte app decides where to go).
 
         The way back (`return_to`) is only set for a page the person asked for with a
         GET; a form that was posted with an expired session has nothing sensible to
@@ -1448,39 +1371,21 @@ def create_app() -> FastAPI:
         """
         # `request.url.path` carries no deployment prefix (the proxy strips it, see
         # `resolve_root_path`), and `/api/` and `/mcp` authenticate with bearer tokens and
-        # never raise `NotLoggedIn`; only `HX-Current-URL` below needs its prefix removed.
+        # never raise `NotLoggedIn`.
         path = request.url.path
-        root = request.scope.get("root_path", "")
-        from_htmx = request.headers.get("hx-request") is not None
         # `/ui-api` is called by script (fetch sends `Accept: */*` or JSON, but the
         # answer must be JSON regardless): the Svelte app decides where to go itself.
-        if (
-            path.startswith("/ui-api/")
-            or not from_htmx
-            and "text/html" not in request.headers.get("accept", "")
-        ):
+        if path.startswith("/ui-api/") or "text/html" not in request.headers.get("accept", ""):
             return await http_exception_handler(request, exc)
 
         target: str | None = None
-        if from_htmx and request.headers.get("hx-boosted") is None:
-            # A fragment request (polling, partial reload): the address worth coming
-            # back to is the page the person is looking at, not the fragment URL.
-            current = urlsplit(request.headers.get("hx-current-url", ""))
-            current_path = current.path
-            if root and current_path.startswith(root):
-                current_path = current_path[len(root) :]
-            target = current_path + (f"?{current.query}" if current.query else "")
-        elif request.method in ("GET", "HEAD"):
+        if request.method in ("GET", "HEAD"):
             target = path + (f"?{request.url.query}" if request.url.query else "")
         return_to = safe_return_to(target)
         # The login is the Svelte app's page; `/login` itself only forwards there.
         login = prefixed(request, "/app/login")
         if return_to is not None:
             login = f"{login}?{urlencode({'return_to': return_to})}"
-        if from_htmx:
-            answer: Response = Response(status_code=401)
-            answer.headers["HX-Redirect"] = login
-            return answer
         redirect = RedirectResponse(login, status_code=303)
         # The answer depends on cookie and `Accept`; nothing in between may keep it.
         redirect.headers["Cache-Control"] = "no-store"

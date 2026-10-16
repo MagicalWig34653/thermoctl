@@ -12,7 +12,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
@@ -21,19 +20,15 @@ from thermoctl.auth.sessions import COOKIE_NAME, create_session, session_lifetim
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
-from thermoctl.db.models.operations import Setting
-from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.domain.passkey import (
     PasskeyError,
     begin_authentication,
     begin_registration,
     cleanup_old_challenges,
     finish_registration,
-    remove_passkey,
     verify_authentication,
 )
 from thermoctl.domain.principal import Principal
-from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 
 router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
@@ -128,30 +123,6 @@ def _own_user(session: Session, principal: Principal) -> User:
     return user
 
 
-@router.get("/passkeys")
-async def passkey_list(
-    request: Request,
-    principal: Annotated[Principal, Depends(current_principal)],
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    """One's own passkeys. Nobody sees someone else's here — there's no route there."""
-    user = _own_user(session, principal)
-    return templates.TemplateResponse(
-        request,
-        "passkeys.html",
-        {
-            "passkeys": session.scalars(
-                select(UserPasskey)
-                .where(UserPasskey.user_id == user.id)
-                .order_by(UserPasskey.created_at)
-            ).all(),
-            "available": get_settings().passkeys_available(),
-            "timezone": getattr(session.get(Setting, 1), "timezone", None),
-            "is_htmx": is_partial_swap(request),
-        },
-    )
-
-
 @router.post("/passkey/registration/options")
 async def registration_arguments(
     principal: Annotated[Principal, Depends(current_principal)],
@@ -191,22 +162,3 @@ async def save_registration(
             content={"status": "rejected", "notice": str(exc)},
         )
     return JSONResponse({"status": "saved", "label": entry.label})
-
-
-@router.post("/passkeys/{passkey_id}/remove")
-async def delete_passkey(
-    passkey_id: int,
-    request: Request,
-    principal: Annotated[Principal, Depends(current_principal)],
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    from fastapi.responses import RedirectResponse
-
-    user = _own_user(session, principal)
-    entry = session.get(UserPasskey, passkey_id)
-    # Someone else's passkey is unfindable, not forbidden — otherwise the response
-    # would reveal which ids exist.
-    if entry is None or entry.user_id != user.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Passkey nicht gefunden")
-    remove_passkey(session, user, entry)
-    return RedirectResponse(prefixed(request, "/passkeys"), status_code=status.HTTP_303_SEE_OTHER)

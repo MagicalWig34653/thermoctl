@@ -4,7 +4,6 @@ import { buildVisibleAreas } from '../src/lib/navigation.ts';
 import {
   appHref,
   internalTarget,
-  legacyHref,
   relativePath,
   resolveRoute,
   splitTarget,
@@ -23,12 +22,10 @@ test('relativePath: Präfix und Grenze', () => {
   assert.equal(relativePath('/app/zeit', '/ing'), '/');
 });
 
-test('appHref und legacyHref setzen den Präfix zur Laufzeit ein', () => {
+test('appHref setzt den Präfix zur Laufzeit ein', () => {
   assert.equal(appHref('', '/'), '/app/');
   assert.equal(appHref('/ing', '/zeit/wochenplaene'), '/ing/app/zeit/wochenplaene');
   assert.equal(appHref('/ing', 'zeit'), '/ing/app/zeit');
-  assert.equal(legacyHref('', '/zones'), '/zones');
-  assert.equal(legacyHref('/ing', '/zones/3'), '/ing/zones/3');
 });
 
 test('splitTarget trennt Query/Hash und Schlussstriche', () => {

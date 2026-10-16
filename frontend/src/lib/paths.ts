@@ -38,11 +38,6 @@ export function appHref(prefix: string, to: string): string {
   return `${prefix}${APP_SEGMENT}${target === '/' ? '/' : target}`;
 }
 
-/** Adresse einer bestehenden HTML-Seite des Servers (Vollseitenladen mit Präfix). */
-export function legacyHref(prefix: string, path: string): string {
-  return `${prefix}${path.startsWith('/') ? path : `/${path}`}`;
-}
-
 /** Zerlegt `'/a/b?x=1#h'` in Pfad ohne Schlussstrich und Rest. */
 export function splitTarget(to: string): { path: string; rest: string } {
   const cut = to.search(/[?#]/);

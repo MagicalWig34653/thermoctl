@@ -18,7 +18,7 @@ class NotLoggedIn(HTTPException):
     """401 for a protected page without a valid session.
 
     A subclass of its own so `app.py` can send a *browser* to the login form and leave
-    everything else -- REST, MCP, htmx fragments of other kinds -- with the plain 401
+    everything else -- REST, MCP, scripted requests -- with the plain 401
     it always got. Anything that catches `HTTPException` keeps working unchanged.
     """
 
@@ -88,7 +88,7 @@ _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 # end: every form is refused, logging out is refused, and logging in again is refused
 # too as long as the old session cookie is still around. Reported from use, and the
 # only escape was deleting exactly the right cookie by hand.
-_RECOVERY_PATHS = frozenset({"/login", "/logout", "/ui-api/login", "/ui-api/logout"})
+_RECOVERY_PATHS = frozenset({"/ui-api/login", "/ui-api/logout"})
 
 
 class StalePage(Exception):
