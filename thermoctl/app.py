@@ -1360,6 +1360,9 @@ def create_app() -> FastAPI:
         # transparently and would swap the login form into the middle of the old
         # page without ever changing the address -- so htmx is told where to go
         # through its own header instead.
+        # The Svelte app reads JSON errors; a page, redirect or htmx header would be lost.
+        if request.url.path.startswith("/ui-api/"):
+            return JSONResponse({"detail": "Ungültiges CSRF-Token"}, status_code=403)
         from_htmx = request.headers.get("hx-request") is not None
         login_target = prefixed(request, "/login?stale=1")
         if exc.recovery:

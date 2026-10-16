@@ -45,3 +45,27 @@ def test_ui_api_router_carries_csrf_protection() -> None:
     from thermoctl.web.ui_api import router
 
     assert csrf_protection in [d.dependency for d in router.dependencies]
+
+
+def test_csrf_failure_under_ui_api_is_json(client_als: Als) -> None:
+    client = client_als([("zone.read", None)])
+    response = client.post("/ui-api/csrf-probe", headers={"X-CSRF-Token": "falsch"})
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Ungültiges CSRF-Token"}
+
+
+def test_valid_csrf_passes_under_ui_api(client_als: Als) -> None:
+    from thermoctl.web import ui_api  # noqa: F401
+
+    client = client_als([("zone.read", None)])
+    token = client.cookies.get("thermoctl_csrf")
+    if token is None:
+        from thermoctl.auth.csrf import csrf_token
+        from thermoctl.auth.sessions import COOKIE_NAME
+        from thermoctl.config import get_settings
+
+        token = csrf_token(
+            client.cookies[COOKIE_NAME], get_settings().secret_key.get_secret_value()
+        )
+    response = client.post("/ui-api/csrf-probe", headers={"X-CSRF-Token": token})
+    assert response.json() == {"ok": True}

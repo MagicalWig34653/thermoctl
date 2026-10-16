@@ -44,6 +44,12 @@ class BootstrapOut(BaseModel):
     zones: list[ZoneOut]
 
 
+@router.post("/csrf-probe")
+def csrf_probe() -> dict[str, bool]:
+    """Wirkungsprobe der Router-weiten CSRF-Prüfung; ändert nichts."""
+    return {"ok": True}
+
+
 @router.get("/bootstrap")
 def bootstrap(
     principal: Annotated[Principal, Depends(current_principal)],
