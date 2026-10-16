@@ -423,6 +423,8 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     },
     ("POST", "/ui-api/schedule/{zone_id}/copy-day"):
         "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
+    ("POST", "/ui-api/schedule/{zone_id}/day-times"):
+        "wie die Mieteransicht (zwei Zeiten je Tag): beide Profile, schedule.manage je Zone",
     ("POST", "/ui-api/schedule/{zone_id}/copy-week"):
         "wie die Mieter-Übernahme: beide Profile, Ziele mit schedule.manage",
     ("POST", "/ui-api/schedule/{zone_id}/undo"):

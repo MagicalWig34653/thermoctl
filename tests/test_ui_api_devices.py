@@ -820,6 +820,45 @@ def test_controllers_read_model_with_properties_channels_and_seen_actions(client
     assert body["commands"]
 
 
+def test_controllers_report_the_last_value_with_its_age(client_als: Als, world: World, session: Session) -> None:
+    from datetime import timedelta
+
+    from thermoctl.db.base import utcnow
+
+    number = session.scalars(select(DeviceProperty).where(DeviceProperty.device_id == world.ctrl.id)).one()
+    number.last_value_number = Decimal("21.5000")
+    number.last_value_at = utcnow() - timedelta(minutes=5)
+    text = _prop(session, world.ctrl, "action", writable=False)
+    text.last_value_text = "hold"
+    text.last_value_at = utcnow() + timedelta(minutes=3)  # Gerätezeit geht vor: Alter nie negativ
+    silent = _prop(session, world.ctrl, "linkquality", writable=False)
+    whole = _prop(session, world.ctrl, "battery", writable=False)
+    whole.last_value_number = Decimal("100.0000")
+    whole.last_value_at = utcnow()
+    session.flush()
+    body = _call(_manage(client_als, world.a), "GET", "/ui-api/controllers").json()
+    by_name = {p["name"]: p for p in body["controllers"][0]["properties"]}
+    assert body["timezone"] == "Europe/Berlin"
+    assert by_name["external_temperature"]["last_value"] == "21.5"
+    assert 299 <= by_name["external_temperature"]["last_value_age_seconds"] <= 330
+    assert by_name["external_temperature"]["last_value_at"].endswith("+00:00")
+    assert by_name["action"]["last_value"] == "hold" and by_name["action"]["last_value_age_seconds"] == 0
+    assert by_name["battery"]["last_value"] == "100"
+    assert by_name[silent.name]["last_value"] is None
+    assert by_name[silent.name]["last_value_at"] is None and by_name[silent.name]["last_value_age_seconds"] is None
+
+
+def test_controllers_in_hidden_zones_show_no_values(client_als: Als, world: World, session: Session) -> None:
+    other = create_device(session, "knopf-bad")
+    prop = _prop(session, other, "secret", writable=False)
+    prop.last_value_text = "geheim"
+    _assign(session, world.b, other, "controller")
+    session.flush()
+    body = _call(_manage(client_als, world.a), "GET", "/ui-api/controllers").json()
+    assert [c["name"] for c in body["controllers"]] == ["drehknopf"]
+    assert "geheim" not in str(body) and "knopf-bad" not in str(body)
+
+
 def test_controllers_hide_zones_the_viewer_cannot_read(client_als: Als, world: World, session: Session) -> None:
     _assign(session, world.b, world.ctrl, "controller")
     read_only = client_als([("device.read", world.a.id), ("zone.read", world.a.id)])

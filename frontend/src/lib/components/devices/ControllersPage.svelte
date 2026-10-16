@@ -6,6 +6,7 @@
   import { createDevicesClient } from '$lib/devices/client';
   import { deviceFailure, failureText } from '$lib/devices/errors';
   import type { Controller, ControllerChannel, Controllers } from '$lib/devices/types';
+  import { lastValueLine } from '$lib/devices/last-value';
   import { formatInstant } from '$lib/rooms/logic';
 
   const { api } = useApp();
@@ -147,6 +148,7 @@
             {@const v = draftOf(d, p.name, 'read')}
             <div class="mt-2 grid gap-2 rounded-lg border p-3" data-testid="channel-read">
               <div class="font-medium">{p.name}<span class="text-sm font-normal text-muted-foreground"> · {p.value_type}{p.unit ? ` (${p.unit})` : ''}</span></div>
+              <div class="text-sm" data-testid="last-value"><span class="mr-1 text-muted-foreground">Letzter Wert:</span>{lastValueLine(p, data.timezone)}</div>
               {#if d.manageable}
                 <div class="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                   <label class="grid gap-1 text-sm"><span>Verwendung</span>
@@ -204,7 +206,7 @@
           {#each d.bindings as b (b.action)}
             {@const v = buttonDraft(d, b.action)}
             <div class="mt-2 grid gap-2 rounded-lg border p-3" data-testid="binding">
-              <div class="font-medium">Taste {b.action}{#if b.last_seen}<span class="text-sm font-normal text-muted-foreground"> · zuletzt {formatInstant(b.last_seen, Intl.DateTimeFormat().resolvedOptions().timeZone)}</span>{/if}</div>
+              <div class="font-medium">Taste {b.action}{#if b.last_seen}<span class="text-sm font-normal text-muted-foreground"> · zuletzt {formatInstant(b.last_seen, data.timezone)}</span>{/if}</div>
               {#if d.manageable}
                 <div class="grid gap-2 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
                   <label class="grid gap-1 text-sm"><span>Aktion</span>

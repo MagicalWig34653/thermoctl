@@ -117,6 +117,14 @@ ENDPUNKTE: Tabelle = [
     ),
     (
         "POST",
+        "/ui-api/schedule/{z}/day-times",
+        {"version": "0", "weekday": 1, "first_minute": 420, "second_minute": 1320},
+        "beide",
+        "schedule.manage",
+        True,
+    ),
+    (
+        "POST",
         "/ui-api/schedule/{z}/points",
         {"version": "0", "weekday": 1, "minute_of_day": 60, "mode_id": 0},
         "beide",
@@ -602,6 +610,11 @@ def test_stale_version_is_409_for_every_schedule_write(client_als: Als, session:
         ("PUT", f"{base}/points/{point.id}/mode", {"version": stale, "mode_id": nacht}),
         ("DELETE", f"{base}/points/{point.id}?version={stale}", None),
         ("POST", f"{base}/copy-day", {"version": stale, "weekday": 1, "scope": "all"}),
+        (
+            "POST",
+            f"{base}/day-times",
+            {"version": stale, "weekday": 4, "first_minute": 400, "second_minute": 1300},
+        ),
         ("POST", f"{base}/copy-week", {"version": stale, "targets": []}),
     ]
     snapshot = (_points(session, zone), session.query(AuditEvent).count())
@@ -1475,3 +1488,174 @@ def test_read_only_source_offers_only_the_rooms_the_principal_may_write(
     )
     assert response.status_code == 200, response.text
     assert _points(session, writable) == _points(session, zone)
+
+
+# -- Zwei Schaltzeiten eines Tages (Wohnungssicht: Einrichten und Warm ab / Nacht ab) ------
+
+
+def _plan_leeren(session: Session, zone: Zone) -> None:
+    session.query(SchedulePoint).filter_by(zone_id=zone.id).delete()
+    session.flush()
+
+
+def _day_times(
+    client: TestClient, zone: Zone, version: str, first: int, second: int, **extra: Any
+) -> Any:
+    body = {
+        "version": version,
+        "weekday": 2,
+        "first_minute": first,
+        "second_minute": second,
+        **extra,
+    }
+    return _call(client, "POST", f"/ui-api/schedule/{zone.id}/day-times", body)
+
+
+def test_day_times_set_up_an_empty_plan_with_the_warmest_mode_first(
+    tenant_client: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    _plan_leeren(session, zone)
+    client = tenant_client(PLAN)
+    tag, nacht = _mode(session, "tag").id, _mode(session, "nacht").id
+    read = client.get(f"/ui-api/schedule/{zone.id}").json()
+    assert read["points"] == [] and read["empty_day_modes"] == [
+        {"id": tag, "name": "Tag"},
+        {"id": nacht, "name": "Nacht"},
+    ]
+    response = _day_times(client, zone, read["version"], 390, 1320)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["changed"] is True and body["undo_token"] and body["version"] != read["version"]
+    assert _points(session, zone) == [(2, 390, tag), (2, 1320, nacht)]
+    assert _audit(session, "schedule") == 1
+    undone = _call(
+        client, "POST", f"/ui-api/schedule/{zone.id}/undo", {"undo_token": body["undo_token"]}
+    )
+    assert undone.status_code == 200, undone.text
+    assert _points(session, zone) == []
+
+
+def test_day_times_keep_the_modes_of_the_two_points_and_follow_a_swap(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    tag, nacht = _mode(session, "tag").id, _mode(session, "nacht").id
+    other_days = [p for p in _points(session, zone) if p[0] != 2]
+    first = _day_times(client, zone, _version(client, zone), 450, 1290)
+    assert first.status_code == 200, first.text
+    assert _points(session, zone) == sorted(other_days + [(2, 450, tag), (2, 1290, nacht)])
+    # Tausch: Das frühere Feld gehört dem früheren Punkt (Tag), das spätere dem späteren (Nacht).
+    swapped = _day_times(client, zone, _version(client, zone), 1380, 300)
+    assert swapped.status_code == 200, swapped.text
+    assert _points(session, zone) == sorted(other_days + [(2, 1380, tag), (2, 300, nacht)])
+
+
+def test_day_times_accept_midnight(client_als: Als, session: Session) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    tag, nacht = _mode(session, "tag").id, _mode(session, "nacht").id
+    response = _day_times(client, zone, _version(client, zone), 0, 1439)
+    assert response.status_code == 200, response.text
+    assert (2, 0, tag) in _points(session, zone) and (2, 1439, nacht) in _points(session, zone)
+
+
+def test_day_times_without_change_are_a_noop_without_undo(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    audit_before = session.query(AuditEvent).count()
+    response = _day_times(client, zone, _version(client, zone), 420, 1320)
+    assert response.status_code == 200, response.text
+    assert response.json()["changed"] is False and response.json()["undo_token"] is None
+    assert session.query(AuditEvent).count() == audit_before
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "weekday", "field"),
+    [
+        (420, 420, 2, "time_of_day"),
+        (-1, 600, 2, "time_of_day"),
+        (600, 1440, 2, "time_of_day"),
+        (600, 700, 0, "weekday"),
+        (600, 700, 8, "weekday"),
+    ],
+)
+def test_day_times_validate_in_the_domain(
+    client_als: Als, session: Session, first: int, second: int, weekday: int, field: str
+) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    before = (_points(session, zone), session.query(AuditEvent).count())
+    error = _fehler(
+        _day_times(client, zone, _version(client, zone), first, second, weekday=weekday),
+        422,
+        "validation",
+    )
+    assert error["field"] == field
+    assert (_points(session, zone), session.query(AuditEvent).count()) == before
+
+
+def test_day_times_refuse_a_day_with_other_than_two_points(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    tag = _mode(session, "tag").id
+    session.add(SchedulePoint(zone_id=zone.id, weekday=2, minute_of_day=600, setpoint_mode_id=tag))
+    session.flush()
+    before = _points(session, zone)
+    error = _fehler(_day_times(client, zone, _version(client, zone), 400, 500), 422, "validation")
+    assert error["field"] == "weekday" and "3 Schaltzeiten" in error["detail"]
+    session.query(SchedulePoint).filter_by(zone_id=zone.id, weekday=2).delete()
+    session.add(SchedulePoint(zone_id=zone.id, weekday=2, minute_of_day=600, setpoint_mode_id=tag))
+    session.flush()
+    error = _fehler(_day_times(client, zone, _version(client, zone), 400, 500), 422, "validation")
+    assert "1 Schaltzeiten" in error["detail"]
+    assert _points(session, zone) != before
+
+
+def test_day_times_need_two_usable_setpoints_for_an_empty_day(
+    client_als: Als, session: Session
+) -> None:
+    source(session, "web")
+    zone = zone_with_schedule(session, "nackt", [])
+    client = client_als(PLAN)
+    read = client.get(f"/ui-api/schedule/{zone.id}").json()
+    assert read["empty_day_modes"] is None
+    error = _fehler(_day_times(client, zone, read["version"], 400, 500), 422, "validation")
+    assert error["field"] == "mode_id"
+    assert _points(session, zone) == []
+
+
+def test_day_times_demand_the_right_in_that_zone_and_hide_foreign_zones(
+    client_als: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    other = create_zone(session, "nebenan")
+    client = client_als([("zone.read", None), ("schedule.manage", other.id)])
+    before = (_points(session, zone), session.query(AuditEvent).count())
+    _fehler(_day_times(client, zone, "0", 400, 500), 403, "forbidden")
+    assert (_points(session, zone), session.query(AuditEvent).count()) == before
+    only_other = client_als([("zone.read", other.id), ("schedule.manage", other.id)])
+    _fehler(_day_times(only_other, zone, "0", 400, 500), 404, "not_found")
+
+
+def test_day_times_chain_the_undo_history(client_als: Als, session: Session) -> None:
+    zone = _raum(session)
+    client = client_als(PLAN)
+    first = _day_times(client, zone, _version(client, zone), 450, 1290).json()
+    second = _day_times(
+        client, zone, first["version"], 480, 1260, previous_undo_token=first["undo_token"]
+    )
+    assert second.status_code == 200, second.text
+    undone = _call(
+        client,
+        "POST",
+        f"/ui-api/schedule/{zone.id}/undo",
+        {"undo_token": second.json()["undo_token"]},
+    )
+    assert undone.status_code == 200, undone.text
+    assert (2, 450, _mode(session, "tag").id) in _points(session, zone)

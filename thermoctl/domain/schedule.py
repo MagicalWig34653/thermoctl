@@ -834,6 +834,109 @@ def move_schedule_point(
     return point
 
 
+def empty_day_modes(session: Session, zone: Zone) -> tuple[tuple[int, str], tuple[int, str]] | None:
+    """The two modes a still empty day is set up with -- or `None`.
+
+    The simplified day editor has two fields, "warm from" and "cooler from". Which two
+    modes those are for **this** zone cannot be guessed by the interface: modes are freely
+    named and carry their own setpoints per zone. The two warmest setpoints of the zone are
+    taken, the warmer one first. Frost protection stays out: it is the lower bound of the
+    control, not a stretch of a daily routine. `None` if the zone has fewer than two
+    usable setpoints.
+    """
+    settings = session.get(Setting, 1)
+    frost_id = settings.frost_protection_mode_id if settings is not None else None
+    rows = session.execute(
+        select(SetpointMode.id, SetpointMode.name, ZoneSetpoint.temperature_c)
+        .join(ZoneSetpoint, ZoneSetpoint.setpoint_mode_id == SetpointMode.id)
+        .where(ZoneSetpoint.zone_id == zone.id)
+    ).all()
+    usable = sorted(
+        ((mode_id, name, temperature) for mode_id, name, temperature in rows
+         if mode_id != frost_id),
+        key=lambda row: row[2],
+        reverse=True,
+    )
+    if len(usable) < 2:
+        return None
+    return (usable[0][0], usable[0][1]), (usable[1][0], usable[1][1])
+
+
+def set_schedule_day_times(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    first_minute: int,
+    second_minute: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Sets the two switch times of one day as a single gesture (tenant day editor).
+
+    A day with no switch point is set up: the warmer of the zone's two warmest setpoints
+    starts at `first_minute`, the next cooler one at `second_minute` (`empty_day_modes`). A
+    day with exactly two points keeps the modes of its points: `first_minute` belongs to the
+    earlier point, `second_minute` to the later one -- so a swap of the times swaps the
+    stretches. Any other day is refused: a third switch time cannot be shown with two
+    fields without silently dropping one. All other days stay untouched; `None` if the
+    day already looks like this. Midnight (00:00) is a valid time.
+    """
+    if not 1 <= weekday <= 7:
+        raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
+    if not 0 <= first_minute <= 1439 or not 0 <= second_minute <= 1439:
+        raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
+    if first_minute == second_minute:
+        raise ScheduleError("time_of_day", "Die beiden Zeiten müssen sich unterscheiden.")
+    points = _zone_points(session, zone.id)
+    day = sorted(
+        (point for point in points if point.weekday == weekday),
+        key=lambda point: point.minute_of_day,
+    )
+    if not day:
+        modes = empty_day_modes(session, zone)
+        if modes is None:
+            raise ScheduleError(
+                "mode_id",
+                "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- "
+                "ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
+            )
+        mode_ids = [modes[0][0], modes[1][0]]
+    elif len(day) == 2:
+        mode_ids = [day[0].setpoint_mode_id, day[1].setpoint_mode_id]
+    else:
+        raise ScheduleError(
+            "weekday",
+            f"Dieser Tag hat {len(day)} Schaltzeiten und lässt sich nicht vereinfacht "
+            "bearbeiten.",
+        )
+    before = schedule_snapshot(points)
+    after = tuple(
+        sorted(
+            [
+                (p.weekday, p.minute_of_day, p.setpoint_mode_id)
+                for p in points
+                if p.weekday != weekday
+            ]
+            + [(weekday, first_minute, mode_ids[0]), (weekday, second_minute, mode_ids[1])]
+        )
+    )
+    if after == before:
+        return None
+    _replace_snapshot(session, zone, after)
+    event = audit.record(
+        session, source=source, action="update", object_type="schedule",
+        object_id=str(zone.id),
+        summary=f"Tageszeiten im Zeitplan für Zone '{zone.display_name}' gesetzt",
+        detail=(
+            f"{_DAYS[weekday]} {_label_time(first_minute)} / {_label_time(second_minute)}"
+        ),
+        user_id=user_id, token_id=token_id,
+    )
+    return before, after, _schedule_revision(session, event)
+
+
 def change_schedule_point_mode(
     session: Session,
     zone: Zone,

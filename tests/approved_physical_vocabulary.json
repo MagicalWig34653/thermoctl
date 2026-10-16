@@ -637,6 +637,9 @@
     "thermoctl/domain/reading.py": [
       "switch"
     ],
+    "thermoctl/domain/schedule.py": [
+      "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte."
+    ],
     "thermoctl/domain/self_regulating.py": [
       "actuator"
     ],

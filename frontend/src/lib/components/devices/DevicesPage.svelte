@@ -1,15 +1,25 @@
 <script lang="ts">
   import { useApp } from '$lib/context';
+  import { zoneFromSearch } from '$lib/preselect';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import SurveyList from '$lib/components/devices/SurveyList.svelte';
   import ZoneAssignment from '$lib/components/devices/ZoneAssignment.svelte';
 
-  const { session } = useApp();
+  const { router, session } = useApp();
   type Tab = 'geraete' | 'raeume';
-  let tab = $state<Tab>('geraete');
-  let zoneId = $state<number | null>(null);
+  // Mit `?zone=` einer sichtbaren Raums öffnet die Seite gleich dessen Zuordnung.
+  const wanted = zoneFromSearch(router.search, session.bootstrap?.zones ?? []);
+  let tab = $state<Tab>(wanted === null ? 'geraete' : 'raeume');
+  let zoneId = $state<number | null>(wanted);
   const zones = $derived(session.bootstrap?.zones ?? []);
+  $effect(() => {
+    const next = zoneFromSearch(router.search, zones);
+    if (next !== null) {
+      zoneId = next;
+      tab = 'raeume';
+    }
+  });
 </script>
 
 <header class="mb-6">

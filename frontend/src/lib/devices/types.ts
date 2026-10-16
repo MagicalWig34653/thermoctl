@@ -237,6 +237,10 @@ export interface ControllerProperty {
   readable: boolean;
   writable: boolean;
   values: string[];
+  /** Zuletzt gemeldeter Wert als Text, Zeitpunkt (ISO, UTC) und Alter in Sekunden; `null`, wenn noch keiner kam. */
+  last_value: string | null;
+  last_value_at: string | null;
+  last_value_age_seconds: number | null;
 }
 
 export interface ControllerChannel {
@@ -261,6 +265,8 @@ export interface Controller {
 
 export interface Controllers {
   controllers: Controller[];
+  /** Zeitzone der Anlage, in der Zeitpunkte angezeigt werden. */
+  timezone: string;
   zones: { id: number; name: string; manageable: boolean }[];
   source_devices: { id: number; name: string }[];
   kinds: Named[];

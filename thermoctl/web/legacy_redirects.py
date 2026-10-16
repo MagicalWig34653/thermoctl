@@ -13,8 +13,14 @@ Eigenschaften, auf die es ankommt:
   `/ui-api/` -- und es werden auch keine Daten gelesen.
 - Das Ziel ist immer ein fester Pfad aus der Tabelle unten, nie etwas aus der Anfrage.
   Einzige Ausnahme ist `/login`: Dort wird `return_to` übernommen, aber nur, wenn
-  `safe_return_to` es bestätigt; sonst entfällt es. Alle anderen Query-Parameter
-  (`?zone`, `?period`, `?ansicht` ...) kennt die Oberfläche nicht und werden verworfen.
+  `safe_return_to` es bestätigt; sonst entfällt es. Dazu kommen genau drei Direktlink-
+  Parameter, die die Oberfläche versteht -- `?zone` (nur eine kurze Ziffernfolge), `?period`
+  (nur die bekannten Zeiträume, umgerechnet) und `?ansicht` (nur `auto`/`panel`/`tafel`) --
+  und auch nur für die Ziele, die sie lesen (`TARGET_PARAMS`). Jeder Wert wird neu gebildet,
+  nie durchgereicht; alles andere wird verworfen. Ob die Raum-Id existiert oder sichtbar ist,
+  weiß dieses Modul nicht (es liest keine Daten): Die Oberfläche verwirft eine unbekannte
+  oder fremde Id ohne Hinweis. Ein Fragment (`/glossar#sollwert`) behält der Browser über
+  die Weiterleitung hinweg von selbst; die Hilfe liest es.
 - Der Pfadpräfix (Home-Assistant-Ingress) kommt wie bei jedem handgebauten Redirect aus
   `prefixed()`.
 - Ausdrücklich NICHT hier: Schreib-POSTs, die JSON-Routen von Passkey/Kiosk-Cookie,
@@ -105,16 +111,75 @@ SECTION_FALLBACKS: dict[str, str] = {
 
 APP_ROOT = "/app"
 
+# Direktlink-Parameter je Ziel (Pfad unter `/app`), die die Oberfläche versteht. Was hier
+# nicht steht, wird nicht übernommen.
+TARGET_PARAMS: dict[str, tuple[str, ...]] = {
+    "/zeit/wochenplaene": ("zone",),
+    "/auswertung/verlauf": ("zone", "period"),
+    "/geraete/liste": ("zone",),
+    "/geraete/karte": ("zone", "tab"),
+    "/kiosk": ("ansicht",),
+}
+
+# Alte Zeiträume (Tage) auf die Kurzbezeichnungen der Oberfläche; 90 Tage gibt es dort nicht.
+_PERIODS: dict[str, str] = {"7": "7d", "30": "30d", "24h": "24h", "7d": "7d", "30d": "30d"}
+_ANSICHTEN = frozenset({"auto", "panel", "tafel"})
+_KARTEN_TABS = frozenset({"karte", "liste", "datenfluss"})
+
+
+def clean_zone_id(value: object) -> str | None:
+    """Eine Raum-Id nur als kurze, positive Ziffernfolge (ohne führende Nullen)."""
+    if not isinstance(value, str) or not (value.isascii() and value.isdigit()) or len(value) > 9:
+        return None
+    number = int(value)
+    return str(number) if number > 0 else None
+
+
+def clean_param(name: str, value: object) -> str | None:
+    """Der geprüfte, neu gebildete Wert eines Direktlink-Parameters oder `None`."""
+    if name == "zone":
+        return clean_zone_id(value)
+    if name == "period":
+        return _PERIODS.get(value) if isinstance(value, str) else None
+    if name == "ansicht":
+        return value if isinstance(value, str) and value in _ANSICHTEN else None
+    if name == "tab":
+        return value if isinstance(value, str) and value in _KARTEN_TABS else None
+    return None  # pragma: no cover - TARGET_PARAMS nennt nur die bekannten Namen
+
+
+def target_with_query(
+    request: Request, target: str, extra: dict[str, str] | None = None
+) -> str:
+    """`target` mit den erlaubten, geprüften Parametern der Anfrage; `extra` sind feste Werte
+    (zum Beispiel die Raum-Id aus dem Altpfad), sie gelten vor der Anfrage."""
+    values: dict[str, str] = dict(extra or {})
+    for name in TARGET_PARAMS.get(target, ()):
+        cleaned = clean_param(name, request.query_params.get(name))
+        if cleaned is not None and name not in values:
+            values[name] = cleaned
+    ordered = {name: values[name] for name in TARGET_PARAMS.get(target, ()) if name in values}
+    return f"{target}?{urlencode(ordered)}" if ordered else target
+
 
 def app_location(request: Request, target: str) -> str:
     """Vollständige Adresse (mit Präfix) eines Pfads unter `/app`."""
     return prefixed(request, f"{APP_ROOT}{target}")
 
 
-def _handler(target: str) -> Callable[[Request], Awaitable[Response]]:
+def _handler(
+    target: str, *, zone_from_path: bool = False, fixed: dict[str, str] | None = None
+) -> Callable[[Request], Awaitable[Response]]:
     async def redirect(request: Request) -> Response:
+        extra: dict[str, str] = {}
+        if zone_from_path:
+            zone_id = clean_zone_id(request.path_params.get("zone_id"))
+            if zone_id is not None:
+                extra["zone"] = zone_id
+        extra.update(fixed or {})
         return RedirectResponse(
-            app_location(request, target), status_code=status.HTTP_303_SEE_OTHER
+            app_location(request, target_with_query(request, target, extra)),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     return redirect
@@ -129,14 +194,24 @@ async def _room(request: Request) -> Response:
     return RedirectResponse(app_location(request, target), status_code=status.HTTP_303_SEE_OTHER)
 
 
+# Der Datenfluss ist ein Reiter der Gerätekarte.
+FIXED_PARAMS: dict[str, dict[str, str]] = {
+    "/zones/data-flow": {"tab": "datenfluss"},
+    "/zones/{zone_id}/data-flow": {"tab": "datenfluss"},
+}
+
 for _path, _target in EXACT_TARGETS.items():
     if _path in ("/setup", "/kiosk"):
         continue  # eigene Handler weiter unten
-    router.add_api_route(_path, _handler(_target), methods=["GET"])
+    router.add_api_route(_path, _handler(_target, fixed=FIXED_PARAMS.get(_path)), methods=["GET"])
 for _path in ROOM_PATHS:
     router.add_api_route(_path, _room, methods=["GET"])
 for _path, _target in PARAM_TARGETS.items():
-    router.add_api_route(_path, _handler(_target), methods=["GET"])
+    router.add_api_route(
+        _path,
+        _handler(_target, zone_from_path="{zone_id}" in _path, fixed=FIXED_PARAMS.get(_path)),
+        methods=["GET"],
+    )
 for _path, _target in SECTION_FALLBACKS.items():
     router.add_api_route(f"{_path}/{{rest:path}}", _handler(_target), methods=["GET"])
 
@@ -150,7 +225,10 @@ async def setup(request: Request) -> Response:
 @router.get("/kiosk")
 async def kiosk(request: Request) -> Response:
     """Die Kioskansicht der Oberfläche; das Cookie liest `/kiosk-api`."""
-    return RedirectResponse(app_location(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        app_location(request, target_with_query(request, "/kiosk")),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("/login")

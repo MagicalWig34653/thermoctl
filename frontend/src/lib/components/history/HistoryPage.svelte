@@ -2,20 +2,28 @@
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { PERIODS, type PeriodId } from '$lib/history/format';
+  import { periodFromSearch, zoneFromSearch } from '$lib/preselect';
   import { historyWording } from '$lib/history/wording';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import HeatingTime from './HeatingTime.svelte';
   import HistoryChart from './HistoryChart.svelte';
 
-  const { session } = useApp();
+  const { router, session } = useApp();
   const zones = $derived(session.bootstrap?.zones ?? []);
   const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
   const w = $derived(historyWording(tenant));
   // Ob die Anlage scharf ist, meldet der Verlauf selbst (`control_armed`); der erste geladene genügt.
   let armed = $state<boolean | null>(null);
 
-  let period = $state<PeriodId>('7d');
-  let zoneId = $state<number | null>(null);
+  // Vorwahl aus der Adresse (`?zone=`, `?period=`): nur sichtbare Räume und bekannte Zeiträume.
+  let period = $state<PeriodId>(periodFromSearch(router.search) ?? '7d');
+  let zoneId = $state<number | null>(zoneFromSearch(router.search, session.bootstrap?.zones ?? []));
+  $effect(() => {
+    const wantedZone = zoneFromSearch(router.search, zones);
+    if (wantedZone !== null) zoneId = wantedZone;
+    const wantedPeriod = periodFromSearch(router.search);
+    if (wantedPeriod !== null) period = wantedPeriod;
+  });
   const shown = $derived(zoneId === null ? zones : zones.filter((z) => z.id === zoneId));
   // Erster geladener Verlauf: für die Messung der Startzeit der Seite.
   let firstLoadMs = $state<number | null>(null);

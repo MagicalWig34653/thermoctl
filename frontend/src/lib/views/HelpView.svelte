@@ -7,18 +7,20 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { toFailure, type Failure } from '$lib/rooms/logic';
   import { EXPLANATIONS, GLOSSARY_HINT } from '$lib/help/explanations';
+  import { entryFromHash, termFromSearch } from '$lib/preselect';
   import { createZonesClient } from '$lib/zones/client';
   import { filterGlossary, groupByLetter, termOf } from '$lib/zones/logic';
   import type { Glossary } from '$lib/zones/types';
 
   // Glossar und Hilfe: dieselben Begriffe wie die alte Seite `/glossar`, aus derselben Quelle.
-  const { api } = useApp();
+  const { api, router } = useApp();
   const client = createZonesClient(api);
 
   let glossary = $state<Glossary | null>(null);
   let failure = $state<Failure | null>(null);
   let loading = $state(true);
-  let query = $state('');
+  // Vorwahl aus der Adresse: `?suche=` füllt die Suche, `#begriff` springt zum Eintrag.
+  let query = $state(termFromSearch(router.search));
   let area = $state<string | null>(null);
 
   async function load() {
@@ -30,6 +32,11 @@
       failure = toFailure(error);
     } finally {
       loading = false;
+    }
+    const wanted = glossary ? entryFromHash(window.location.hash, glossary.entries.map((e) => e.id)) : null;
+    if (wanted !== null) {
+      await tick();
+      await jump(wanted);
     }
   }
   onMount(() => void load());

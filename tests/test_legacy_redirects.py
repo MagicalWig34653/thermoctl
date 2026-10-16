@@ -37,15 +37,15 @@ CASES: list[tuple[str, str]] = [
     ("/zones/7/delete", "/app/raeume/7"),
     ("/zones/7/parameters", "/app/raeume/7"),
     ("/zones/7/setpoints", "/app/raeume/7"),
-    ("/zones/7/schedule", "/app/zeit/wochenplaene"),
-    ("/zones/7/schedule/adopt", "/app/zeit/wochenplaene"),
-    ("/zones/7/schedule/points/3/delete", "/app/zeit/wochenplaene"),
+    ("/zones/7/schedule", "/app/zeit/wochenplaene?zone=7"),
+    ("/zones/7/schedule/adopt", "/app/zeit/wochenplaene?zone=7"),
+    ("/zones/7/schedule/points/3/delete", "/app/zeit/wochenplaene?zone=7"),
     ("/schedule", "/app/zeit/wochenplaene"),
-    ("/zones/7/devices", "/app/geraete/liste"),
+    ("/zones/7/devices", "/app/geraete/liste?zone=7"),
     ("/zones/history", "/app/auswertung/verlauf"),
-    ("/zones/7/history", "/app/auswertung/verlauf"),
+    ("/zones/7/history", "/app/auswertung/verlauf?zone=7"),
     ("/temperature-history", "/app/auswertung/verlauf"),
-    ("/temperature-history/7/tile", "/app/auswertung/verlauf"),
+    ("/temperature-history/7/tile", "/app/auswertung/verlauf?zone=7"),
     ("/statistics", "/app/auswertung/verlauf"),
     ("/heating-time", "/app/auswertung/verlauf"),
     ("/relay-wear", "/app/auswertung/verschleiss"),
@@ -56,8 +56,8 @@ CASES: list[tuple[str, str]] = [
     ("/devices", "/app/geraete/liste"),
     ("/plant", "/app/geraete/anlagenbild"),
     ("/devices/map", "/app/geraete/karte"),
-    ("/zones/data-flow", "/app/geraete/karte"),
-    ("/zones/7/data-flow", "/app/geraete/karte"),
+    ("/zones/data-flow", "/app/geraete/karte?tab=datenfluss"),
+    ("/zones/7/data-flow", "/app/geraete/karte?zone=7&tab=datenfluss"),
     ("/controllers", "/app/geraete/bediengeraete"),
     ("/control", "/app/system/betrieb"),
     ("/settings", "/app/heizung/regelvorgaben"),
@@ -131,12 +131,13 @@ def test_the_ingress_prefix_is_applied_once(
 @pytest.mark.parametrize(
     "old",
     [
+        # Ziele, die den Parameter nicht lesen, bekommen ihn nicht.
         "/zones?zone=3&period=7d",
-        "/zones/7/history?period=7d",
-        "/schedule?zone=3",
-        "/kiosk?ansicht=tafel&zone_id=3",
-        "/audit?kind=x&return_to=https://evil.example",
+        "/audit?kind=x&return_to=https://evil.example&zone=3",
         "/setup?return_to=//evil.example",
+        "/kiosk?zone_id=3&period=7",
+        "/schedule?period=7&ansicht=tafel&tab=datenfluss",
+        "/relay-wear?zone=3",
     ],
 )
 def test_query_parameters_are_dropped(client: TestClient, old: str) -> None:
@@ -144,6 +145,98 @@ def test_query_parameters_are_dropped(client: TestClient, old: str) -> None:
     assert response.status_code == 303
     assert "?" not in response.headers["location"]
     assert "evil" not in response.headers["location"]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("/schedule?zone=3", "/app/zeit/wochenplaene?zone=3"),
+        ("/schedule?zone=0003", "/app/zeit/wochenplaene?zone=3"),
+        ("/zones/history?zone=3&period=7", "/app/auswertung/verlauf?zone=3&period=7d"),
+        ("/zones/history?period=30", "/app/auswertung/verlauf?period=30d"),
+        ("/statistics?period=24h", "/app/auswertung/verlauf?period=24h"),
+        ("/heating-time?zone=5&period=30d", "/app/auswertung/verlauf?zone=5&period=30d"),
+        ("/temperature-history?zone=5", "/app/auswertung/verlauf?zone=5"),
+        ("/devices?zone=4", "/app/geraete/liste?zone=4"),
+        ("/devices/map?zone=4&tab=datenfluss", "/app/geraete/karte?zone=4&tab=datenfluss"),
+        ("/devices/map?tab=liste", "/app/geraete/karte?tab=liste"),
+        ("/zones/data-flow?zone=4", "/app/geraete/karte?zone=4&tab=datenfluss"),
+        ("/kiosk?ansicht=tafel", "/app/kiosk?ansicht=tafel"),
+        ("/kiosk?ansicht=panel&zone=3", "/app/kiosk?ansicht=panel"),
+        # Der Raum im Altpfad gilt vor einem abweichenden ?zone der Anfrage.
+        ("/zones/7/history?zone=9&period=7", "/app/auswertung/verlauf?zone=7&period=7d"),
+        ("/zones/7/data-flow?tab=liste", "/app/geraete/karte?zone=7&tab=datenfluss"),
+        ("/zones/7/schedule?period=7", "/app/zeit/wochenplaene?zone=7"),
+    ],
+)
+def test_direct_link_parameters_the_spa_understands_are_forwarded_rebuilt(
+    client: TestClient, client_with_prefix: TestClient, old: str, new: str
+) -> None:
+    assert client.get(old, follow_redirects=False).headers["location"] == new
+    prefixed = client_with_prefix.get(old, follow_redirects=False)
+    assert prefixed.headers["location"] == f"{PREFIX}{new}"
+
+
+@pytest.mark.parametrize(
+    "old",
+    [
+        "/schedule?zone=abc",
+        "/schedule?zone=-1",
+        "/schedule?zone=0",
+        "/schedule?zone=1.5",
+        "/schedule?zone=1234567890",
+        "/schedule?zone=%C2%B2",
+        "/schedule?zone=%D9%A3",
+        "/schedule?zone=3%0d%0aSet-Cookie:a=b",
+        "/schedule?zone=3&zone=4%26x%3d1",
+        "/schedule?zone=https://evil.example",
+        "/schedule?zone=//evil.example",
+        "/schedule?zone=%00",
+        "/schedule?zone=",
+        "/zones/history?period=90",
+        "/zones/history?period=%3Cscript%3E",
+        "/zones/history?period=7%26zone%3d9",
+        "/zones/history?period=",
+        "/kiosk?ansicht=evil",
+        "/kiosk?ansicht=PANEL",
+        "/kiosk?ansicht=panel%26x%3d1",
+        "/devices/map?tab=%2f%2fevil.example",
+        "/devices/map?tab=Datenfluss",
+        "/devices/map?tab=karte%26zone%3d1",
+    ],
+)
+def test_forged_direct_link_values_are_dropped_without_a_trace(
+    client: TestClient, old: str
+) -> None:
+    location = client.get(old, follow_redirects=False).headers["location"]
+    assert "?" not in location
+    assert location.startswith("/app/")
+    for bad in ("evil", "script", "Set-Cookie", "%", "&x", "\r", "\n", "http"):
+        assert bad not in location
+
+
+def test_only_the_last_of_a_repeated_parameter_counts_and_is_still_checked(
+    client: TestClient,
+) -> None:
+    location = client.get("/schedule?zone=3&zone=abc", follow_redirects=False).headers["location"]
+    assert location == "/app/zeit/wochenplaene"
+    location = client.get("/schedule?zone=abc&zone=3", follow_redirects=False).headers["location"]
+    assert location == "/app/zeit/wochenplaene?zone=3"
+
+
+def test_every_forwarded_parameter_has_a_cleaner() -> None:
+    for names in legacy_redirects.TARGET_PARAMS.values():
+        for name in names:
+            assert legacy_redirects.clean_param(name, "") is None
+    assert legacy_redirects.clean_param("unbekannt", "1") is None  # pragma: no cover
+    assert legacy_redirects.clean_zone_id(7) is None
+
+
+def test_the_glossary_fragment_is_left_to_the_browser(client: TestClient) -> None:
+    # Das Fragment erreicht den Server nie; der Browser hängt es an die Weiterleitung an,
+    # solange diese keines setzt. Die Weiterleitung darf also keines setzen.
+    location = client.get("/glossar?suche=x", follow_redirects=False).headers["location"]
+    assert location == "/app/hilfe" and "#" not in location
 
 
 def test_unknown_paths_are_not_swallowed(client: TestClient) -> None:
@@ -373,7 +466,7 @@ def test_every_target_exists_in_the_spa_navigation() -> None:
         | {f"/app{t}" for t in legacy_redirects.PARAM_TARGETS.values()}
     )
     for target in targets:
-        parts = [p for p in target.removeprefix("/app").split("/") if p]
+        parts = [p for p in target.split("?")[0].removeprefix("/app").split("/") if p]
         if not parts or parts[0] in {"raeume", "konto", "hilfe", "login", "setup", "kiosk"}:
             continue
         assert set(parts) <= ids, target

@@ -11,6 +11,9 @@
   import type { Intent } from '$lib/schedule/intents';
   import { formatCelsius } from '$lib/rooms/decimal';
   import CopyPanel from './CopyPanel.svelte';
+  import DayTimesPanel from './DayTimesPanel.svelte';
+  import SetupDialog from './SetupDialog.svelte';
+  import { planIsEmpty } from '$lib/schedule/daytimes';
   import Inspector from './Inspector.svelte';
   import PreviewStrip from './PreviewStrip.svelte';
   import WeekGrid from './WeekGrid.svelte';
@@ -34,6 +37,12 @@
       brushModes.reduce<(typeof brushModes)[number] | null>((best, m) => (!best || m.warmth > best.warmth ? m : best), null),
   );
   const selected = $derived(editor.selectedBlock);
+  let setupOpen = $state(false);
+  // Einrichten: erst die zwei Zeiten des Montags, auf Wunsch danach auf alle Tage übertragen.
+  async function setup(first: number, second: number, allDays: boolean) {
+    const ok = await editor.submit({ type: 'dayTimes', weekday: 1, first, second });
+    if (ok && allDays) await editor.submit({ type: 'copyDay', weekday: 1, scope: 'all' });
+  }
 
   const act = (intent: Intent) => void editor.submit(intent);
   const say = (text: string) => (editor.notice = { tone: 'warn', text });
@@ -115,6 +124,13 @@
         </div>
       {/if}
 
+      {#if editor.canEdit && planIsEmpty(plan) && plan.empty_day_modes}
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3" data-testid="setup-hint">
+          <p class="m-0 text-sm">Für diesen Raum gibt es noch keinen Wochenplan. Bis dahin hält die Heizung ihn auf dem Frostschutzwert.</p>
+          <Button onclick={() => (setupOpen = true)} disabled={editor.busy} data-testid="setup-open">Einrichten</Button>
+        </div>
+      {/if}
+
       {#if editor.conflict}
         <div class="mb-3 flex flex-wrap items-center gap-3">
           <Notice tone="error">Plan wurde in einer anderen Sitzung geändert. Bearbeiten ist gesperrt, bis du neu lädst.</Notice>
@@ -191,9 +207,13 @@
     </aside>
   </div>
   {#if selected}<div class="h-[58vh] lg:hidden" aria-hidden="true"></div>{/if}
+  <SetupDialog {plan} bind:open={setupOpen} busy={editor.busy || editor.conflict} onsetup={setup} onmessage={say} />
 
   <div class="mt-6 grid gap-6">
     <PreviewStrip preview={editor.preview} error={editor.previewError} />
+    {#if plan.can_edit}
+      <DayTimesPanel {plan} {activeDay} busy={editor.busy || editor.conflict} onintent={act} onmessage={say} />
+    {/if}
     {#if plan.can_edit || plan.copy_targets.length}
       <CopyPanel {plan} {activeDay} busy={editor.busy || editor.conflict} onintent={act} />
     {/if}
