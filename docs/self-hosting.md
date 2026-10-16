@@ -258,6 +258,13 @@ möglicherweise eine andere ist, weist der zugehörige Hinweis auf der Fehleraus
 
 ## 6c. Gleichzeitig über Ingress und direkt erreichbar
 
+*Svelte-Oberfläche:* Sie wird als statische Dateien aus dem Container ausgeliefert (gebaut in
+einer Node-Stufe von `docker/Dockerfile`; zum Betrieb ist kein Node nötig, auch nicht beim
+Bauen aus `docker build`). Ihre Asset-Pfade sind beim Bauen relativ (`base: './'`), weil der
+Ingress-Präfix erst zur Laufzeit feststeht: Der Server setzt den Präfix pro Anfrage in die
+ausgelieferte Hülle ein (`<meta name="thermoctl-prefix">` und die Asset-Adressen), die
+Oberfläche hängt ihn an alle Pfade. Der Präfix folgt derselben Regel wie unten beschrieben.
+
 Das Add-on gibt Port 8000 des Containers frei (`ports: 8000/tcp`) — wer zusätzlich zu
 Ingress einen eigenen Reverse-Proxy direkt auf diesen Port zeigen lässt, muss dafür
 nichts umstellen. Der Präfix wird pro Anfrage bestimmt: Eine Anfrage über Ingress trägt
@@ -393,6 +400,14 @@ MQTT-Client-Kennung ableiten lässt, was `/healthz` auf der Bereitschaft antwort
 und dass die Migrationssperre oben auch dann greift, wenn ein Orchestrierer zwei
 Nachbildungen gleichzeitig startet (Swarm ignoriert `depends_on`, ein Kubernetes
 Rolling Update lässt alte und neue Nachbildung kurz nebeneinander laufen).
+
+## 6e. Selbst bauen
+
+`docker build -f docker/Dockerfile .` baut alles, einschließlich der Svelte-Oberfläche
+(Stufe `node:26-slim`: `npm ci`, `npm run build`). Wer ohne Docker aus dem Quelltext startet,
+muss die Oberfläche einmal selbst bauen: `cd frontend && npm ci && npm run build` (siehe
+README, Abschnitt „Oberfläche bauen und entwickeln"). Ohne gebaute Oberfläche liefert der
+Dienst unter `/static/app/` nichts aus.
 
 ## 7. Wenn etwas nicht geht
 

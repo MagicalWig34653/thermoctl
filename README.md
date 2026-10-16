@@ -138,6 +138,28 @@ auffindbar macht, wird unter macOS als versteckt markiert und beim Start übersp
 Aufruf über `python -c` nimmt stattdessen das Projektverzeichnis in den Modulpfad. Im
 Container tritt das nicht auf, dort ist das Paket regulär installiert.
 
+## Oberfläche bauen und entwickeln (Svelte)
+
+Die Weboberfläche (Svelte 5, TypeScript, shadcn-svelte/Bits UI, Tailwind, gebaut mit Vite)
+liegt in `frontend/`. Node (Version 26) wird nur zum Bauen gebraucht; das Docker-Abbild baut
+die Oberfläche in einer eigenen Stufe und enthält am Ende kein Node.
+
+```bash
+cd frontend
+npm ci                # Abhängigkeiten exakt nach package-lock.json
+npm run dev           # Vite-Entwicklungsserver, leitet API-Aufrufe an das lokal laufende Backend weiter
+npm run check         # Typprüfung (svelte-check)
+npm test              # Tests
+npm run build         # Ausgabe nach thermoctl/web/static/app/ (nicht eingecheckt)
+```
+
+Für `npm run dev` muss das Backend parallel laufen (siehe oben). Der Entwicklungsserver
+braucht eine Proxy-Einstellung auf dessen Adresse (Vite-Option `server.proxy`); Stand der
+Gerüst-Fassung: in `frontend/vite.config.ts` noch nicht eingetragen. Ohne `npm run build` gibt es
+unter `static/app/` nichts auszuliefern. Die Herkunft der npm-Pakete steht in
+[`frontend/HERKUNFT.md`](frontend/HERKUNFT.md). Die CI führt `npm ci`, `check`, `test` und
+`build` vor dem Python-Lauf aus.
+
 ## Tests
 
 ```bash
