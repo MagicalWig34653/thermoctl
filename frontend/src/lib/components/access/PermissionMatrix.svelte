@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Switch } from '$lib/components/ui/switch';
-  import { buildMatrix } from '$lib/access/matrix';
+  import { buildMatrix, roomFieldsLocked } from '$lib/access/matrix';
   import type { Grant, PermissionArea, ZoneRef } from '$lib/access/types';
 
   // Rechte je Anlage und Raum. Reine Darstellung und Eingabe: was gespeichert wird und ob es
@@ -48,7 +48,8 @@
               </span>
             </div>
             {#if row.zoneScoped && row.rooms.length}
-              <fieldset class="m-0 mt-2 border-0 p-0" disabled={disabled}>
+              {@const locked = roomFieldsLocked(row, disabled)}
+              <fieldset class="m-0 mt-2 border-0 p-0" disabled={locked} data-locked={locked}>
                 <legend class="mb-1 p-0 text-xs text-muted-foreground">
                   {#if row.plantWide}Gilt bereits für alle Räume. Einzelne Räume sind dann nicht nötig.{:else}Oder nur für einzelne Räume{/if}
                 </legend>
@@ -61,6 +62,7 @@
                         type="checkbox"
                         class="size-5"
                         checked={room.granted}
+                        disabled={locked}
                         onchange={() => ontoggle(row.code, room.zoneId)}
                       />
                       {room.zoneName}

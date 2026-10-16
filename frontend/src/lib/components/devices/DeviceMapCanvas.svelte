@@ -6,7 +6,7 @@
   import type { MapActions } from '$lib/devices/map-actions.svelte';
   import {
     HEAD_H, MAX_ZOOM, MIN_ZOOM, NODE_W, ROW_H, anchors, autoLayout, bounds, clampZoom, curvePath, fitView,
-    matchesSearch, nodeHeight, nodeRects, readableView, resolvePlacement, toWorld, visiblePorts, zoomAround,
+    foldAll, matchesSearch, nodeHeight, nodeRects, readableView, resolvePlacement, toWorld, visiblePorts, zoomAround,
     type Placement, type Point, type View,
   } from '$lib/devices/geometry';
   import { drawnLines, nodeDeviceId, portIndex, rejectionReason, valvesOfDevice, zoneName } from '$lib/devices/map-logic';
@@ -283,6 +283,11 @@
     persist();
   }
 
+  function foldEverything(collapse: boolean) {
+    collapsedIds = foldAll(map.nodes, collapse);
+    persist();
+  }
+
   function nudge(e: KeyboardEvent, id: string) {
     const step = e.shiftKey ? 64 : 16;
     const d: Record<string, Point> = {
@@ -396,6 +401,10 @@
       <Button variant="outline" size="icon" aria-label="Karte vergrößern" disabled={view.k >= MAX_ZOOM} onclick={() => zoomBy(1.25)}><Plus size={16} aria-hidden="true" /></Button>
       <Button variant="outline" class="max-sm:size-10 max-sm:px-0" aria-label="Einpassen" title="Alles einpassen" onclick={fitNow}><Maximize size={16} aria-hidden="true" /><span class="max-sm:sr-only">Einpassen</span></Button>
       <Button variant="outline" class="max-sm:size-10 max-sm:px-0" aria-label="Automatisch anordnen" title="Ordnet die Karten neu an. Das betrifft nur die Darstellung in diesem Browser." onclick={arrange}><RotateCcw size={16} aria-hidden="true" /><span class="max-sm:sr-only">Automatisch anordnen</span></Button>
+    </div>
+    <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Karten ein- und ausklappen">
+      <Button variant="outline" class="min-h-10" data-testid="fold-collapse" onclick={() => foldEverything(true)}>Alle einklappen</Button>
+      <Button variant="outline" class="min-h-10" data-testid="fold-expand" onclick={() => foldEverything(false)}>Alle ausklappen</Button>
     </div>
     <label class="flex min-h-10 items-center gap-2 text-sm">
       <input type="checkbox" class="size-4" checked={technical} onchange={(e) => setTechnical(e.currentTarget.checked)} />

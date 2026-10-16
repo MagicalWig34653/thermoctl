@@ -6,17 +6,31 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { appHref } from '$lib/paths';
   import { formatCelsius } from '$lib/rooms/decimal';
+  import { buildVisibleAreas } from '$lib/navigation';
   import { createResource } from '$lib/rooms/resource.svelte';
   import type { Rooms } from '$lib/rooms/types';
+  import { createZonesClient } from '$lib/zones/client';
+  import { roomShortcuts } from '$lib/zones/logic';
   import RoomDeleteDialog from './RoomDeleteDialog.svelte';
   import RoomFormDialog from './RoomFormDialog.svelte';
 
   // Verwaltung der Räume: anlegen, bearbeiten, löschen. Welche Zeile bearbeitbar ist, sagt der
   // Server je Raum (`actions.set_operating_mode` = zone.manage in der Anlagensicht); der Server
   // prüft jeden Aufruf trotzdem erneut.
-  const { api, prefix } = useApp();
+  const { api, prefix, session } = useApp();
+  const zonesClient = createZonesClient(api);
   const rooms = createResource(() => api.get<Rooms>('/ui-api/rooms'));
-  onMount(() => rooms.start());
+  const orders = createResource(() => zonesClient.orders());
+  onMount(() => {
+    const stopRooms = rooms.start();
+    const stopOrders = orders.start();
+    return () => {
+      stopRooms();
+      stopOrders();
+    };
+  });
+  const areas = $derived(buildVisibleAreas(session.bootstrap?.navigation ?? []));
+  const sortOf = $derived(new Map((orders.data?.rooms ?? []).map((r) => [r.id, r.sort_order])));
 
   let formOpen = $state(false);
   let formZone = $state<number | null>(null);
@@ -73,9 +87,14 @@
           <div class="min-w-0 flex-1 basis-48">
             <a class="text-base font-medium" href={appHref(prefix, `/raeume/${room.id}`)}>{room.name}</a>
             <div class="text-sm text-muted-foreground">
-              {room.operating_mode.label} · Ist {formatCelsius(room.temperature_c)} · Soll {formatCelsius(room.setpoint.temperature_c)}
+              {#if sortOf.has(room.id)}<span data-testid="room-sort">Sortierwert {sortOf.get(room.id)} · </span>{/if}{room.operating_mode.label} · Ist {formatCelsius(room.temperature_c)} · Soll {formatCelsius(room.setpoint.temperature_c)}
             </div>
           </div>
+          <nav class="flex flex-wrap gap-x-3 gap-y-1 text-sm" aria-label={`Weiter zu ${room.name}`}>
+            {#each roomShortcuts(areas, room.id) as link (link.label)}
+              <a class="inline-flex min-h-10 items-center underline" href={appHref(prefix, link.to)}>{link.label}</a>
+            {/each}
+          </nav>
           {#if room.actions.set_operating_mode}
             <div class="flex gap-2">
               <Button variant="outline" onclick={() => openEdit(room.id)} aria-label={`Raum ${room.name} bearbeiten`}><Pencil aria-hidden="true" />Bearbeiten</Button>
@@ -94,6 +113,7 @@
   ondone={(room, created) => {
     notice = created ? `Raum „${room.display_name}“ angelegt.` : `Raum „${room.display_name}“ gespeichert.`;
     void rooms.refresh();
+    void orders.refresh();
   }}
 />
 <RoomDeleteDialog

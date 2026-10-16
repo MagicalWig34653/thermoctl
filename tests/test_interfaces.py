@@ -234,3 +234,27 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
         "thermoctl/services/ingest.py:66",
         "thermoctl/services/meross_discovery.py:108",
     ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)
+
+
+def test_more_links_point_into_the_app_and_agree_with_the_legacy_redirects(
+    session: Session,
+) -> None:
+    """Die Verweise der Schnittstellenkarten führen direkt in die Oberfläche unter `/app`,
+    nicht über einen alten Pfad und eine Umleitung -- und sie sind genau die Ziele, auf die
+    die Umleitungen dieselben Seiten abbilden."""
+    from thermoctl.web.legacy_redirects import EXACT_TARGETS
+
+    found: dict[str, str] = {}
+    for overrides in ({}, {"mqtt_enabled": True, "mqtt_host": "b"}):
+        for bridge in (None, True, False):
+            for s in overview(session, _settings(**overrides), bridge):
+                if s.more is not None:
+                    found[s.key] = s.more[1]
+    assert found, "mindestens eine Karte hat einen Verweis"
+    assert set(found.values()) <= set(EXACT_TARGETS.values())
+    assert found["mqtt"] == EXACT_TARGETS["/devices"] == "/geraete/liste"
+    old = ("/app", "/devices", "/tokens", "/control")
+    assert not any(path.startswith(old) for path in found.values())
+    assert set(found.values()) <= {
+        "/geraete/liste", "/personen/tokens", "/konto", "/system/betrieb",
+    }

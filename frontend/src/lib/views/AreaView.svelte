@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChevronRight } from '@lucide/svelte';
   import type { VisibleArea } from '$lib/navigation';
-  import { appHref, legacyHref } from '$lib/paths';
+  import { appHref } from '$lib/paths';
   import { useApp } from '$lib/context';
   import Placeholder from '$lib/components/Placeholder.svelte';
 
@@ -40,7 +40,7 @@
           <li>
             <a
               class="flex min-h-14 items-center rounded-xl border bg-card px-4 py-3 hover:bg-muted"
-              href={legacyHref(prefix, `/zones/${zone.id}`)}>{zone.name}</a
+              href={appHref(prefix, `/raeume/${zone.id}`)}>{zone.name}</a
             >
           </li>
         {/each}

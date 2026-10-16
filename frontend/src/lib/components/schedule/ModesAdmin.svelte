@@ -77,6 +77,7 @@
             {#if mode.delete_lock}
               <span class="text-sm text-muted-foreground">Nicht löschbar: {mode.delete_lock}</span>
             {:else if confirming === mode.id}
+              <p class="m-0 basis-full text-sm" data-testid="mode-delete-hint">Soll der Modus „{mode.name}“ wirklich gelöscht werden? Vorhandene Sollwerte dieses Modus werden ebenfalls gelöscht.</p>
               <Button variant="destructive" disabled={busy} onclick={() => run(() => client.removeMode(mode.id), `„${mode.name}“ gelöscht.`)}>Wirklich löschen</Button>
               <Button variant="ghost" onclick={() => (confirming = null)}>Abbrechen</Button>
             {:else}

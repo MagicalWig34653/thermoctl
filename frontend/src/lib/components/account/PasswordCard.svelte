@@ -46,6 +46,7 @@
     </label>
     <label class="grid gap-1 text-sm font-medium">Neues Passwort
       <input class={field} type="password" bind:value={next} required autocomplete="new-password" aria-invalid={weak} aria-describedby={weak ? 'pw-msg' : undefined} />
+      <span class="text-xs font-normal text-muted-foreground">Mindestens 12 Zeichen. Alle anderen angemeldeten Geräte werden dabei abgemeldet; dieses bleibt angemeldet.</span>
     </label>
     <label class="grid gap-1 text-sm font-medium">Neues Passwort wiederholen
       <input class={field} type="password" bind:value={again} required autocomplete="new-password" aria-invalid={mismatch} />

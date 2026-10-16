@@ -224,3 +224,8 @@ export function matchesSearch(node: MapNode, query: string): boolean {
     node.ports.some((p) => p.label.toLocaleLowerCase('de-DE').includes(q))
   );
 }
+
+/** „Alle einklappen / ausklappen“: die einzuklappenden Kennungen (alle Karten oder keine). */
+export function foldAll(nodes: readonly { id: string }[], collapse: boolean): string[] {
+  return collapse ? nodes.map((n) => n.id) : [];
+}

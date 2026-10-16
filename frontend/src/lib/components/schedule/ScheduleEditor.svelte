@@ -97,6 +97,10 @@
         {/if}
       </div>
 
+      {#if plan.points.length === 0}
+        <div class="mb-3" data-testid="plan-empty"><Notice tone="info">Noch kein Zeitplan vorhanden. Bis zum ersten Punkt gilt der Frostschutz.</Notice></div>
+      {/if}
+
       {#if editor.canEdit && brushMode}
         <div class="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Neue Zeit mit">
           <span class="text-sm text-muted-foreground">Neue Zeit mit</span>

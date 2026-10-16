@@ -437,6 +437,7 @@ def show_heating_time(
 class RelayDayOut(BaseModel):
     day: str
     operations: int
+    annual_projection: int
 
 
 class RelayDeviceOut(BaseModel):
@@ -500,7 +501,11 @@ def show_relay_wear(
                 lifetime_percent_per_year=v.assumed_lifetime_percent_per_year,
                 lifetime_years=v.assumed_lifetime_years,
                 wear_level=v.wear_level,
-                days=[RelayDayOut(day=d.day.isoformat(), operations=d.operations) for d in v.days],
+                days=[RelayDayOut(
+                        day=d.day.isoformat(),
+                        operations=d.operations,
+                        annual_projection=d.annual_projection,
+                    ) for d in v.days],
             )
             for v in values
         ],

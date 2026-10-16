@@ -63,7 +63,9 @@
 <section class="max-w-[820px] rounded-xl border bg-card p-4" aria-labelledby="vacation-title" data-testid="vacation">
   <h2 id="vacation-title">Urlaub der Anlage</h2>
   <p class="text-sm text-muted-foreground">
-    Während des Urlaubs gilt für alle Räume die Absenktemperatur statt des Wochenplans.
+    Senkt jeden Raum auf einen einzigen Absenkwert ab, so lange, wie hier festgelegt, ohne dass ein Raum dafür einzeln angefasst wird.
+    Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und ein Raum in Betriebsart „Aus“ bleibt aus.
+    Eine bereits laufende, von Hand gesetzte Übersteuerung eines einzelnen Raums geht dabei nicht verloren: Sie gilt weiter, bis sie selbst endet.
   </p>
   {#if loadError && !info}
     <Notice tone="error">{loadError}</Notice>

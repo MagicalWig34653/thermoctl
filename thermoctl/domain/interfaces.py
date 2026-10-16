@@ -50,7 +50,7 @@ class Interface:
     finding: str
     details: list[Detail] = field(default_factory=list)
     hint: str | None = None
-    more: tuple[str, str] | None = None  # (Beschriftung, Pfad)
+    more: tuple[str, str] | None = None  # (Beschriftung, Pfad innerhalb der Oberfläche unter /app)
 
 
 @dataclass(frozen=True)
@@ -251,7 +251,7 @@ def overview(
                        "Umgebung" if settings.mqtt_password else "Standard",
                        "THERMOCTL_MQTT_PASSWORD"),
             ],
-            more=("Geräte ansehen", "/devices"),
+            more=("Geräte ansehen", "/geraete/liste"),
         )
     )
 
@@ -269,7 +269,7 @@ def overview(
                 "damit kommt niemand hinein."
             ),
             [Detail("Beschreibung", "/docs", "Standard")],
-            more=("Tokens verwalten", "/tokens"),
+            more=("Tokens verwalten", "/personen/tokens"),
         )
     )
 
@@ -321,7 +321,7 @@ def overview(
                        "Umgebung" if settings.passkey_rp_id else "Standard",
                        "THERMOCTL_PASSKEY_ORIGIN"),
             ],
-            more=("Eigene Passkeys", "/passkeys"),
+            more=("Eigene Passkeys", "/konto"),
         )
     )
 
@@ -451,7 +451,7 @@ def overview(
                     "THERMOCTL_MQTT_PREFIX",
                 ),
             ],
-            more=("Betriebszustand", "/control"),
+            more=("Betriebszustand", "/system/betrieb"),
         )
     )
 

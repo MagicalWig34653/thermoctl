@@ -129,3 +129,8 @@ export function wearLabel(level: string): { label: string; tone: 'ok' | 'warn' |
       return { label: level || '—', tone: 'warn' };
   }
 }
+
+/** Datum `2026-10-16` als `16.10.2026`. */
+export function formatWearDay(iso: string): string {
+  return iso.split('-').reverse().join('.');
+}
