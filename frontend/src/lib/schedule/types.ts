@@ -45,7 +45,6 @@ export interface Plan {
   segments: PlanSegment[];
   modes: PlanMode[];
   can_edit: boolean;
-  full_editor: boolean;
   copy_targets: CopyTarget[];
 }
 

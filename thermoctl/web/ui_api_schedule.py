@@ -16,10 +16,10 @@ Prüfung vor dem Schreiben, keine Sperre: zwei exakt gleichzeitige Anfragen ders
 Version kann sie nicht trennen (wie die HTML-Rücknahme auch nicht).
 
 Rechte und Sichtbarkeit wie `ui_api_rooms`: unbekannte und nicht lesbare Zonen
-antworten gleich (404), erst danach kommt die Aktion (403). Profilregeln wie die
-HTML-Views: der vollständige Editor (Bereich/Punkte), Urlaub und Modi nur in der
-Anlagensicht, die Abwesenheit nur in der Wohnungssicht; Tag kopieren, Plan kopieren und
-Rücknahme stehen beiden Profilen offen (die Mieteransicht hat sie auch).
+antworten gleich (404), erst danach kommt die Aktion (403). Den Zeitplan schreiben
+(Bereich, Punkte, Blöcke, Tag/Plan kopieren, Rücknahme) entscheidet allein
+`schedule.manage` je Raum, nicht das UI-Profil (Entscheidung des Projektinhabers); das
+Profil trennt nur Urlaub und Modi (Anlagensicht) von der Abwesenheit (Wohnungssicht).
 
 Block-Operationen (`/block/move|duplicate|resize|delete`): ein Block ist der Lauf von
 einem Schaltpunkt bis zum nächsten (er darf über Mitternacht und die Wochennaht reichen,
@@ -170,7 +170,6 @@ class ScheduleOut(BaseModel):
     segments: list[SegmentOut]
     modes: list[PlanModeOut]
     can_edit: bool
-    full_editor: bool
     copy_targets: list[CopyTargetOut]
 
 
@@ -563,7 +562,6 @@ def _schedule(session: Session, principal: Principal, zone: Zone) -> ScheduleOut
             for m in modes
         ],
         can_edit=can_edit,
-        full_editor=can_edit and principal.ui_profile is WebUiProfile.ADMIN,
         copy_targets=_copy_targets(session, principal, zone) if can_edit else [],
     )
 
@@ -687,7 +685,6 @@ def show_preview(zone_id: int, principal: Who, session: Sess) -> PreviewOut:
 def paint(zone_id: int, body: PaintIn, principal: Who, session: Sess) -> ScheduleChangeOut:
     """Einen Bereich eines Tages setzen (`paint_schedule_interval`); auch Übermalen."""
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     _check_version(session, zone, body.version)
     try:
         gesture = paint_schedule_interval(
@@ -715,7 +712,6 @@ def paint(zone_id: int, body: PaintIn, principal: Who, session: Sess) -> Schedul
 @router.post("/schedule/{zone_id}/points")
 def add_point(zone_id: int, body: PointIn, principal: Who, session: Sess) -> ScheduleChangeOut:
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     _check_version(session, zone, body.version)
     before = _before(session, zone)
     try:
@@ -741,7 +737,6 @@ def move_point(
 ) -> ScheduleChangeOut:
     """Punkt verschieben (mit Eintrag im Änderungsprotokoll wie bei MCP und REST)."""
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, body.version)
     before = _before(session, zone)
@@ -772,7 +767,6 @@ def set_point_mode(
     zone_id: int, point_id: int, body: PointModeIn, principal: Who, session: Sess
 ) -> ScheduleChangeOut:
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, body.version)
     before_mode = point.setpoint_mode_id
@@ -811,7 +805,6 @@ def remove_point(
     """Die Version kommt als Abfrageparameter (`?version=`), ein DELETE hat keinen Körper
     (ebenso `previous_undo_token`)."""
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     point = _point_of(session, zone, point_id)
     _check_version(session, zone, version)
     before = _before(session, zone)
@@ -842,7 +835,6 @@ def _block_operation(
     operation: Callable[[Zone], ScheduleGesture | None],
 ) -> ScheduleChangeOut:
     zone = _editable_zone(session, principal, zone_id)
-    _need_profile(principal, WebUiProfile.ADMIN)
     _check_version(session, zone, body.version)
     try:
         gesture = operation(zone)
@@ -952,7 +944,7 @@ def delete_block(zone_id: int, body: BlockIn, principal: Who, session: Sess) -> 
     )
 
 
-# -- Zeitplan schreiben (beide Profile) -------------------------------------------------
+# -- Zeitplan schreiben (kopieren, Rücknahme) -------------------------------------------------
 
 
 @router.post("/schedule/{zone_id}/copy-day")

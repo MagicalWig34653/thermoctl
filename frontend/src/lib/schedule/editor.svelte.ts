@@ -54,7 +54,6 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
   const blocks = $derived<Block[]>(plan ? blocksOf(plan.segments) : []);
   const selectedBlock = $derived(findBlock(blocks, selected));
   const canEdit = $derived(!!plan && plan.can_edit && !conflict);
-  const fullEditor = $derived(canEdit && !!plan?.full_editor);
 
   function take(next: Plan, prefer: BlockRef | null = null) {
     plan = next;
@@ -237,9 +236,6 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
     },
     get canEdit() {
       return canEdit;
-    },
-    get fullEditor() {
-      return fullEditor;
     },
     load,
     reload,

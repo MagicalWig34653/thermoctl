@@ -82,7 +82,6 @@
           <h2 id="plan-title" class="mb-1">{plan.zone_name}</h2>
           <p class="m-0 text-sm text-muted-foreground">
             {#if !plan.can_edit}Du kannst diesen Plan ansehen.
-            {:else if !plan.full_editor}In dieser Ansicht kannst du Pläne kopieren. Einzelne Zeiten ändert die Verwaltung.
             {:else}Auf dem Plan ziehen, um eine Zeit anzulegen.{/if}
           </p>
         </div>
@@ -98,7 +97,7 @@
         {/if}
       </div>
 
-      {#if editor.fullEditor && brushMode}
+      {#if editor.canEdit && brushMode}
         <div class="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Neue Zeit mit">
           <span class="text-sm text-muted-foreground">Neue Zeit mit</span>
           {#each brushModes as mode (mode.id)}
@@ -129,7 +128,7 @@
         blocks={editor.blocks}
         selected={editor.selected}
         ghost={editor.ghost}
-        editable={editor.fullEditor && !editor.busy}
+        editable={editor.canEdit && !editor.busy}
         brushModeId={brushMode?.id ?? null}
         bind:activeDay
         onselect={(ref) => editor.select(ref)}
@@ -148,7 +147,7 @@
         Zeiten gelten in der Ortszeit der Anlage ({zoneLabel(plan.timezone)}). Bei der Umstellung auf Sommer- oder Winterzeit
         ordnet der Server die Schaltzeiten zu.
       </p>
-      {#if editor.fullEditor}
+      {#if editor.canEdit}
         <details class="mt-3 text-sm">
           <summary class="cursor-pointer rounded-md py-1">Bedienung</summary>
           <ul class="m-0 mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
@@ -175,7 +174,7 @@
           block={selected}
           blocks={editor.blocks}
           modes={plan.modes}
-          editable={editor.fullEditor && !editor.busy}
+          editable={editor.canEdit && !editor.busy}
           onintent={act}
           onmessage={say}
           onclose={() => editor.select(null)}
