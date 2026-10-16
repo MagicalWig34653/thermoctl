@@ -18,7 +18,7 @@ Fehler sind immer `{"detail": <deutscher Satz>, "code": <maschinenlesbar>}`, opt
 """
 
 from dataclasses import asdict
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, cast
 
@@ -71,6 +71,7 @@ from thermoctl.domain.plant_diagram import DevicePicture, ZonePicture, plant_dia
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.solar_setback_log import setback_zone_names
 from thermoctl.domain.thermostat_mode import MODE_DESCRIPTIONS, MODE_LABELS, MODES
+from thermoctl.domain.time import local_day_start_utc
 from thermoctl.web.shared.controllers import (
     controllers_context,
     managed_device,
@@ -985,9 +986,11 @@ def show_device_commands(
     if from_day is not None and to_day is not None and to_day < from_day:
         raise _invalid("Das Bis-Datum darf nicht vor dem Von-Datum liegen.", "to_date")
     number = _page(page)
-    from_at = datetime.combine(from_day, time.min) if from_day is not None else None
+    timezone_name, _settings = _timezone(session)
+    # Lokale Kalendertage der Anlage, nicht UTC-Mitternacht (Wanduhr des Betreibers).
+    from_at = local_day_start_utc(from_day, timezone_name) if from_day is not None else None
     to_at = (
-        datetime.combine(to_day, time.min) + timedelta(days=1) - timedelta(microseconds=1)
+        local_day_start_utc(to_day + timedelta(days=1), timezone_name) - timedelta(microseconds=1)
         if to_day is not None
         else None
     )
@@ -1017,7 +1020,6 @@ def show_device_commands(
         },
         key=lambda name: (name.casefold(), name),
     )
-    timezone_name, _settings = _timezone(session)
     return {
         "timezone": timezone_name,
         "page": number,
