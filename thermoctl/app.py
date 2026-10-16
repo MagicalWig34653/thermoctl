@@ -133,8 +133,10 @@ from thermoctl.web.passkey_views import router as passkey_router
 from thermoctl.web.report_views import router as report_router
 from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
+from thermoctl.web.spa_views import router as spa_router
 from thermoctl.web.start_views import router as start_router
 from thermoctl.web.tenant_views import router as tenant_router
+from thermoctl.web.ui_api import router as ui_api_router
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
@@ -1310,6 +1312,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(account_router)
     app.include_router(glossary_router)
+    app.include_router(spa_router)
+    app.include_router(ui_api_router)
     app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
     app.include_router(audit_router)
@@ -1356,6 +1360,9 @@ def create_app() -> FastAPI:
         # transparently and would swap the login form into the middle of the old
         # page without ever changing the address -- so htmx is told where to go
         # through its own header instead.
+        # The Svelte app reads JSON errors; a page, redirect or htmx header would be lost.
+        if request.url.path.startswith("/ui-api/"):
+            return JSONResponse({"detail": "Ungültiges CSRF-Token"}, status_code=403)
         from_htmx = request.headers.get("hx-request") is not None
         login_target = prefixed(request, "/login?stale=1")
         if exc.recovery:
@@ -1412,7 +1419,13 @@ def create_app() -> FastAPI:
         path = request.url.path
         root = request.scope.get("root_path", "")
         from_htmx = request.headers.get("hx-request") is not None
-        if not from_htmx and "text/html" not in request.headers.get("accept", ""):
+        # `/ui-api` is called by script (fetch sends `Accept: */*` or JSON, but the
+        # answer must be JSON regardless): the Svelte app decides where to go itself.
+        if (
+            path.startswith("/ui-api/")
+            or not from_htmx
+            and "text/html" not in request.headers.get("accept", "")
+        ):
             return await http_exception_handler(request, exc)
 
         target: str | None = None

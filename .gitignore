@@ -92,3 +92,7 @@ var/bilder/
 # Mieterbezug). Bleiben aus demselben Grund draussen wie die Bestandsaufnahme
 # des Altsystems -- siehe CLAUDE.md.
 lokal/
+
+# Frontend (Svelte): Abhaengigkeiten und Build-Ausgabe, entsteht per `npm run build`
+frontend/node_modules/
+thermoctl/web/static/app/

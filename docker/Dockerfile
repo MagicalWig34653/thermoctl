@@ -1,7 +1,18 @@
+# Stufe 1: Svelte-Oberfläche bauen. Node bleibt in dieser Stufe, das Endabbild enthält
+# nur das Ergebnis (static/app/). Die Ausgabe geht laut vite.config.ts nach
+# ../thermoctl/web/static/app, daher die gespiegelte Verzeichnisstruktur.
+FROM node:26-slim AS frontend
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.14-slim AS build
 WORKDIR /build
 COPY pyproject.toml LICENSE ./
 COPY thermoctl ./thermoctl
+COPY --from=frontend /src/thermoctl/web/static/app ./thermoctl/web/static/app
 RUN pip install --no-cache-dir --prefix=/install ".[mcp]"
 
 FROM python:3.14-slim
