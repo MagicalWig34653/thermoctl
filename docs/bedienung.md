@@ -3,89 +3,280 @@
 Diese Anleitung richtet sich an alle, die `thermoctl` benutzen — nicht betreiben. Wer
 die Anlage einrichtet, eine eigene Instanz aufsetzt oder scharf schaltet, findet das in
 [self-hosting.md](self-hosting.md), [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md)
-und [scharfschalten.md](scharfschalten.md). Hier geht es um die beiden Oberflächen selbst.
+und [scharfschalten.md](scharfschalten.md). Hier geht es um die Weboberfläche selbst.
+Für Bewohner ohne Technikbezug gibt es zusätzlich die [Wohnungs-Anleitung](wohnung.md).
 
 **Ein Fachbegriff, den die Oberfläche nicht erklärt?** Das [Glossar](glossar.md) erklärt
-sie in einfachen Worten — dieselben Texte stehen in der Oberfläche unter **Hilfe →
-Glossar** (Anlagensicht, Seitenleiste) bzw. im Fußbereich jeder Seite. Neben schwierigen
-Einstellungen führt ein kleines Fragezeichen direkt zum passenden Eintrag.
+sie in einfachen Worten — dieselben Texte stehen in der Oberfläche unter **Glossar & Hilfe**
+(Seitenleiste unten). Neben schwierigen Einstellungen führt ein kleines Fragezeichen direkt
+zum passenden Eintrag.
 
-**Welche Oberfläche jemand sieht, entscheidet seine Gruppe, nicht sein Wunsch.** Es gibt
-zwei: die **Anlagensicht** für Verwaltung und Technik, und die **Wohnungssicht** für
-die Bewohner eines oder mehrerer Räume. Was jemand in seiner Oberfläche sehen *darf*,
-regeln zusätzlich die Rechte seiner Gruppe — eine Wohnungssicht-Gruppe kann z. B. für
-einen Raum zuständig sein und für einen anderen nicht.
+## Eine Oberfläche, Rechte entscheiden
 
-## Anlagensicht
+Es gibt **eine** Weboberfläche für alle: Bewohner und Verwaltung sehen dieselbe Anwendung,
+die Seitenleiste zeigt nur, was für das eigene Konto erreichbar ist. Das entscheiden die
+**Rechte der Gruppe** — eine Person darf alles, was mindestens eine ihrer Gruppen erlaubt,
+und Rechte für Räume lassen sich auf einzelne Räume beschränken. Daneben trägt jede Gruppe
+ein **Oberflächen-Profil** (Anlage oder Wohnung). Es ist keine Berechtigung, sondern trennt
+nur einzelne Bereiche voneinander: Die Seitenleiste eines Wohnungsprofils führt nur
+Übersicht, Wochenpläne, Temperatur & Heizzeit und das Konto; Urlaub für die ganze Anlage, Geräte,
+Betrieb, Einstellungen, Benutzer- und Gruppenverwaltung, die Betriebsart und die Temperaturen
+je Modus eines Raums gehören zum Anlagenprofil, die persönliche Abwesenheit zum
+Wohnungsprofil (nur dieses sieht sie auf der Seite Wochenpläne). Alles Übrige — etwa das Bearbeiten von Wochenplan-Zeiten eines Raums —
+entscheidet allein das Recht für diesen Raum.
 
-Für Verwalter, Haustechnik und alle, die die ganze Anlage im Blick behalten.
+![Übersicht der Verwaltung mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“](bilder/anlage-startseite.png)
 
-### Übersicht
+## Anmelden und Aufbau
 
-Die Startseite zeigt jede Zone als eigene Karte: Ist-Temperatur und wie alt die Messung
-ist, aktueller Sollwert samt Begründung (Zeitplan, Übersteuerung, Frostschutz …), die
-aktuelle Heizentscheidung und ein Band mit dem Tagesplan der nächsten 24 Stunden — je wärmer
-der Ton, desto höher der Sollwert, der senkrechte Strich markiert „jetzt". Oben stehen
-drei Zustandsanzeigen: ob die Regelung im Trockenlauf oder scharf ist, ob die
-MQTT-Ausgabe (der beim Prozessstart gebaute zweite Riegel) noch gesperrt ist, und —
-falls mehrere Instanzen denselben Bestand teilen — welche Rolle diese Instanz gerade
-hat. Darunter steht, ob eine Außentemperaturquelle gewählt ist, und — sobald ein
-Urlaub angesetzt oder geplant ist — der Chip „Urlaub geplant" (bzw. „Urlaub läuft"),
-verlinkt zur Urlaubsseite (siehe Abschnitt „Urlaub" unten).
+Die Anmeldeseite fragt nach Benutzername und Passwort; ist für die Anlage eine
+Passkey-Anmeldung eingerichtet, gibt es sie dort zusätzlich. Läuft die Sitzung ab, führt die
+Oberfläche zurück zur Anmeldung. Wie man ein Konto bekommt und was es darf, entscheidet
+die Verwaltung unter **Personen & Zugänge**.
 
-![Übersicht der Verwaltungssicht mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“](bilder/anlage-startseite.png)
+Links steht die Seitenleiste mit einer **Einstellungssuche** (sie sucht in den sichtbaren
+Bereichen und ihren Stichwörtern) und bis zu sieben Bereichen. Unter „Zuhause“ stehen
+**Übersicht**, **Zeit & Abwesenheit** und **Auswertung**, unter „Verwaltung“ **Geräte**,
+**Heizung & Regelung**, **System & Betrieb** und **Personen & Zugänge**. Ein Bereich
+erscheint nur, wenn das Konto mindestens eine seiner Seiten sehen darf. Ganz unten stehen
+**Konto & Sicherheit**, **Glossar & Hilfe** und **Abmelden**. Am Telefon wird die Seitenleiste
+über die Schaltfläche oben links eingeblendet. Das Farbsymbol oben rechts wechselt
+Darstellung (Hell, Dunkel, System) und Akzentfarbe.
 
-Weiter unten:
+## Übersicht und eigenes Dashboard
+
+Die Übersicht ist ein **persönliches Dashboard** aus Kacheln. Das Layout wird je Benutzer
+gespeichert. **Anpassen** öffnet den Bearbeitungsmodus: Kacheln aus der Galerie hinzufügen,
+je Kachel Einstellungen öffnen, entfernen und umsortieren (ziehen oder, am Griff, mit den
+Pfeiltasten), dann **Speichern**. Hat jemand das Layout zwischenzeitlich anderswo
+gespeichert, weist die Oberfläche darauf hin und behält den eigenen Entwurf. Welche
+Kachelarten und -ziele zur Wahl stehen, hängt von Rechten und Profil ab.
+
+Die Standard-Übersicht der Verwaltung zeigt oben drei Zustandsanzeigen: ob die Regelung im
+Trockenlauf oder scharf ist (**Aktorfreigabe**), ob die **MQTT-Ausgabe** (der beim
+Prozessstart gebaute zweite Riegel) noch gesperrt ist, und — falls mehrere Instanzen
+denselben Bestand teilen — welche **Rolle im Verbund** diese Instanz hat. Dazu kommen der
+Chip „Urlaub geplant“ bzw. „Urlaub läuft“, ein Hinweis, wenn ein Raum im Notbetrieb ist,
+die Kennzahlen „Auf einen Blick“ (sichtbare Räume, Heizanforderung, Auffälligkeiten,
+Außentemperatur) und der Anlagenstatus. Darunter stehen die Raumkarten mit Ist-Temperatur
+und Sollwert samt Begründung und einem Farbband mit dem Tagesverlauf.
 
 ![Übersicht weiter unten: Anlagenstatus, Temperaturverlauf eines Raums und die Liste „Heute relevant“](bilder/anlage-startseite-2.png)
 
-### Zonen, Wochenplan und Sollwerte
+Auf dem Telefon sieht ein Wohnungskonto dieselbe Übersicht ohne Anlagentechnik:
 
-Unter **Zonen** stehen alle Räume mit ihrer Betriebsart und Verweisen auf Geräte und
-Zeitplan. Eine Zone anzulegen braucht nur einen Namen — Geräte, Sollwerte und Zeitplan
-kommen danach dazu.
+![Übersicht auf dem Telefon mit Notbetriebs-Hinweis und Kennzahlen](bilder/wohnung-startseite-mobil.png)
 
-![Raumliste mit sechs Räumen, je mit Ist- und Sollwert sowie Verweisen auf Zeitplan, Geräte und Datenfluss](bilder/anlage-zonen.png)
+## Raum
 
-Der **Wochenplan** einer Zone zeigt sieben Tage nebeneinander als Farbbalken — je Modus
-eine Farbe — und darüber eine Vorschau der nächsten 24 Stunden, die auch eine gerade
-laufende Übersteuerung berücksichtigt. Schaltpunkte lassen sich per Klick auf einen Balken
-setzen, im Formular darunter eintragen oder mit „Zeit malen" über ein Zeitraster ziehen.
-Ein kompletter Plan lässt sich von einer anderen Zone übernehmen, statt ihn noch einmal
-einzutragen.
+Ein Klick auf eine Raumkarte öffnet den **Raum**. Er zeigt Ist-Temperatur, den wirksamen
+Sollwert samt Begründung und den Tagesverlauf als Farbband, außerdem Sensorstatus
+(Messwert, Fenster, „Messwert hängt“) und die letzte **Regelentscheidung** mit Ergebnis,
+Begründung und Zeitpunkt. Über dem Raum führen Knöpfe zu Zeitplan, Geräten, Datenfluss und
+Verlauf. Je nach Recht gibt es darin:
 
-![Wochenplan des Bads mit Modusauswahl und dem Wochenraster, in dem Zeiträume per Ziehen angelegt werden](bilder/anlage-bad-wochenplan.png)
+- **Sollwert anpassen** (− / +): ändert die normale Temperatur des gerade laufenden
+  Zeitplan-Abschnitts **dauerhaft**, nicht nur für heute. Solange eine Übersteuerung läuft,
+  ist der Knopf gesperrt („erst beenden, dann den Sollwert ändern“).
+- **Befristete Übersteuerung:** eine feste Temperatur bis zu einem gewählten Zeitpunkt oder
+  unbefristet; danach gilt wieder der Wochenplan. Sie lässt sich vorzeitig beenden.
+- **Nächste Phase:** zeigt, was der Zeitplan als Nächstes vorsieht; **Jetzt vorziehen**
+  nimmt es vorweg. Läuft schon eine Übersteuerung, steht dort **Übersteuerung ersetzen**.
+- **Betriebsart** (Anlagenprofil, `zone.manage`): z. B. den Raum ausschalten — er hält dann
+  nur noch den Frostschutz.
+- **Temperaturen je Modus** (Anlagenprofil, `setpoint.write`): Komfort, Tag, Nacht,
+  Frostschutz. **Entfernen** löscht den Wert; der Raum erbt dann den anlagenweiten Vorgabewert.
+- **Raumtechnik** (Regelparameter dieses Raums, auch der Notbetrieb, siehe unten) und
+  **Problem melden** an die Verwaltung, wenn das Recht dafür da ist.
 
-Die **Sollwerte** einer Zone legen fest, welche Temperatur zu welchem Modus gehört
-(Komfort, Tag, Nacht, Frostschutz). Ein leeres Feld löscht den Sollwert für diesen
-Modus — die Zone erbt dann den anlagenweiten Vorgabewert.
+Räume anlegen, bearbeiten und löschen geht auf der Seite **Übersicht → Räume**; ein Raum
+braucht nur einen Namen, Geräte und Zeitplan kommen danach dazu. Löschen lässt sich mit
+„Rückgängig“ zurücknehmen.
 
 ![Raumseite des Bads mit Ist- und Sollwert, Sollwert-Regler, laufender Übersteuerung, Sensorstatus, Regelentscheidung und Temperaturen je Modus](bilder/anlage-bad-raum.png)
 
-### Geräte
+## Zeit & Abwesenheit
 
-Die Geräteliste zeigt alle bekannten Geräte mit ihrer Zone, ihrem Verbindungsstatus
-(Zigbee2MQTT-Signalstärke und Batterie, oder „hat sich noch nie gemeldet", solange noch
-keine MQTT-Nachricht einging; bei Meross-Geräten, die sich nie über MQTT melden, sondern
-nur stündlich beim Geräteabgleich mit der Cloud, steht stattdessen „wurde noch nie als
-online abgeglichen") und ihren Fähigkeiten —
-Temperaturmessung, Schaltausgang oder Thermostatventil. Zonen ohne Meldung stehen oben
-gesondert, damit sie auffallen. Ein Gerät wird per Ziehen und Ablegen einer Zone
-zugeordnet.
+### Wochenpläne
+
+Unter **Wochenpläne** wählt man oben einen Raum. Der **Wochenplan** zeigt sieben Tage als
+Farbbalken, je Modus eine Farbe (mit Temperatur); der Plan ist ein Ring: Jeder Zeitbereich
+gilt bis zum nächsten Schaltpunkt. Darüber steht eine Vorschau der nächsten 24 Stunden. Wer
+`schedule.manage` für den Raum hat, kann bearbeiten:
+
+- **Neue Zeit:** Modus oben wählen und auf dem Plan ziehen. Ziehen auf einem langen
+  Zeitbereich oder leerem Plan legt eine neue Zeit an und teilt den Bereich; Umschalt
+  + Ziehen übermalt auch fremde Schaltpunkte.
+- **Verschieben und Kopieren:** einen kurzen Zeitbereich ziehen verschiebt ihn, mit Alt
+  (Option) wird er dupliziert. Esc bricht die Geste ab. Die Ränder lassen sich ziehen, um
+  Beginn oder Ende zu ändern.
+- **Tastatur:** Pfeiltasten am markierten Block verschieben ihn (links/rechts um 15
+  Minuten, mit Umschalt 5; hoch/runter auf den Vor- bzw. Folgetag), Alt + Pfeile ändern Ende
+  bzw. Beginn, Enter oder Leertaste öffnen den Inspektor, Rücktaste oder Entf löschen den
+  Block, Strg/Cmd + Z nimmt zurück, mit Umschalt wird wiederholt.
+- **Ohne Zeiger oder Touch:** das Formular „Neue Zeit anlegen“ unter der Vorschau legt einen
+  Schaltpunkt (Tag, Uhrzeit, Modus) oder einen Zeitraum innerhalb eines Tages an. Per
+  Tastatur lassen sich Blöcke verschieben und kürzen; eine neue Zeit entsteht dort über
+  dieses Formular.
+- **Inspektor** für Temperatur und genaue Zeiten, ein Feld „<Tag>: zwei Zeiten“ („Tag ab“
+  und „Nacht ab“) für einen einfachen Tag, und ein Bereich zum **Kopieren** eines ganzen
+  Plans auf einen anderen Raum.
+- **Vorschau** der nächsten 24 Stunden: was die Regelung tatsächlich vorsieht — Plan, Urlaub
+  und Übersteuerungen in ihrer Rangfolge.
+
+![Wochenplan des Bads mit Modusauswahl und dem Wochenraster, in dem Zeiträume per Ziehen angelegt werden](bilder/anlage-bad-wochenplan.png)
+
+Dasselbe sieht ein Konto im Wohnungsprofil für die eigenen Räume, soweit es dort
+`schedule.manage` hat:
+
+![Wochenplan des Wohnzimmers mit Raumauswahl und Wochenraster](bilder/wohnung-wohnzimmer-wochenplan.png)
+
+Weiter unten stehen Vorschau und das Formular „Neue Zeit anlegen“:
+
+![Wochenplan weiter unten: Vorschau der nächsten 24 Stunden und „Neue Zeit anlegen“](bilder/wohnung-wohnzimmer-wochenplan-2.png)
+
+### Urlaub und Abwesenheit
+
+Die **Verwaltung** (Anlagenprofil, Recht `vacation.manage`) setzt unter
+**Urlaub & Abwesenheit** einen einzigen Absenkwert für **die ganze
+Anlage** über einen zusammenhängenden Zeitraum an — erster und letzter Tag, dazu die
+Temperatur, auf die jede Zone währenddessen abgesenkt wird. Fenster, Sensorausfall,
+Mindestschaltdauern und Ventilschutz gelten dabei unverändert weiter, und eine Zone in
+Betriebsart „Aus“ bleibt aus. Ein geplanter oder laufender Urlaub zeigt seinen Zustand
+(„Geplant“ oder „Läuft“) und lässt sich vorzeitig beenden; ein zweiter Urlaub muss den
+bestehenden erst beenden. Eine von Hand gesetzte Übersteuerung einer Zone gilt weiter, bis
+sie selbst endet.
+
+![Seite „Urlaub & Abwesenheit“ mit dem geplanten Anlagenurlaub, Absenkwert und der Schaltfläche „Urlaub beenden“](bilder/anlage-urlaub.png)
+
+Bewohner (Wohnungsprofil) planen stattdessen auf der Seite **Wochenpläne** ihre
+**Abwesenheit**: „Zurück am“ und
+eine Temperatur, auf der **alle eigenen Räume** währenddessen gehalten werden; der
+Wochenplan bleibt unverändert und gilt danach wieder. Eine laufende Abwesenheit steht mit
+Enddatum und „Abwesenheit beenden“ da. Beide Funktionen sind getrennt und lösen oder
+beenden einander nicht.
+
+## Auswertung
+
+### Temperatur & Heizzeit
+
+**Temperatur & Heizzeit** zeigt je Raum ein Diagramm (Raum oder „Alle Räume“, Zeitraum
+24 Std., 7 oder 30 Tage). Es zeichnet nur, was protokollierte Zeilen belegen: gemessene
+Temperatur (bei langen Zeiträumen verdichtet mit Min./Max.), geplanten und wirksamen
+Sollwert, die **Heizanforderung** und die **Sonnenabsenkung**; Zeiten ohne Daten stehen
+schraffiert als **Messlücke**, nicht als Schätzwert. Mit Maus oder Tastatur (Pfeiltasten,
+Pos1, Ende) liest man Werte an einer Stelle ab. Mit der Maus lässt sich durch Ziehen
+zoomen; Touch zoomt nicht, damit Wischen die Seite scrollt. Die **Datenreihen** lassen sich
+ein- und ausblenden, die **Datentabelle** ist die Textfassung, **CSV** lädt die Zahlen
+herunter, **Vollbild** vergrößert die Kachel. Läuft die Anlage im Trockenlauf, steht
+darüber ein Hinweis, dass Sollwert und Heizanforderung Entscheidungen der Regelung sind,
+keine Aufzeichnung dessen, was in den Räumen geschah.
+
+![Seite „Temperatur & Heizzeit“ mit Temperaturverlauf eines Raums über sieben Tage](bilder/anlage-verlauf.png)
+
+Im Wohnungsprofil trägt dieselbe Seite eine Erklärung zu Linie, Zielwerten und Heizanforderung
+(„Zielwert ohne Sonnenabsenkung“, „Tatsächlicher Zielwert“):
+
+![Seite „Temperatur & Heizzeit“ im Wohnungsprofil mit Erklärung und Raumauswahl](bilder/wohnung-verlauf.png)
+
+### Heizzeit
+
+Darunter zeigt **Heizzeit** je Raum, wie viele Stunden in einem wählbaren Zeitraum eine
+Heizanforderung bestand — als einfache Orientierung, ausdrücklich **kein** Energie- oder
+Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum
+tatsächlich wurde, hängt zusätzlich von Außentemperatur, Gebäudezustand und Lüften ab. Im
+Trockenlauf zeigen die Balken, wann *geheizt worden wäre*, nicht was wirklich geschah.
+
+![Seite „Temperatur & Heizzeit“ auf dem Telefon](bilder/wohnung-verlauf-mobil.png)
+
+### Ereignisse
+
+**Ereignisse** führt drei Protokolle zusammen: das **Schaltprotokoll** (jeder Befehl, der an
+ein Gerät hinausging oder im Trockenlauf unterdrückt bzw. verworfen wurde, mit Zeitpunkt,
+Raum, Gerät, Befehl, Ergebnis und aufklappbarer Begründung), das **Audit** und das
+**Änderungsprotokoll**. Filter grenzen lange Listen ein, die Audit-Liste gibt es als CSV.
+Eine protokollierte Änderung lässt sich **zurücknehmen**; wurde seitdem etwas anderes
+geändert, weist die Oberfläche darauf hin, dass das neuere Werte überschreiben würde. Wie
+man ein unauffälliges Schaltprotokoll von einem mit echtem Problem unterscheidet, erklärt
+[scharfschalten.md](scharfschalten.md#4-wie-man-das-schaltprotokoll-liest).
+
+![Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
+
+### Relaisverschleiß
+
+**Relaisverschleiß** zählt Schaltspiele je Gerät und Tag und rechnet sie auf ein Jahr hoch,
+verglichen mit einer angenommenen Relais-Lebensdauer (Vorgabe 500.000 Schaltspiele — eine
+Annahme, keine Herstellerangabe, einstellbar unter Regelvorgaben). Auch die gewöhnliche
+Hysterese verschleißt ein Relais, nur langsamer. Die Heizstatistik selbst zeigt
+Regelentscheidungen, keine bestätigte körperliche Heizwirkung.
+
+![Relaisverschleiß mit Zeitraumauswahl und dem Hinweis, dass im Zeitraum keine geschalteten Geräte protokolliert wurden](bilder/anlage-relaisverschleiss.png)
+
+## Geräte
+
+### Geräte und Zuordnung
+
+**Geräte & Zuordnung** hat zwei Reiter. **Geräte** listet alle bekannten Geräte mit Raum,
+Verbindungsstatus (Zigbee2MQTT-Signalstärke und Batterie, oder „hat sich noch nie
+gemeldet“, solange keine MQTT-Nachricht einging; bei Meross-Geräten, die sich nie über MQTT
+melden, sondern nur stündlich beim Geräteabgleich mit der Cloud: „wurde noch nie als online
+abgeglichen“) und Fähigkeiten — Temperaturmessung, Schaltausgang oder Thermostatventil.
+Auffälliges steht zuerst, ein Suchfeld und „nur Auffälliges“ grenzen ein. **Zuordnung je
+Raum** legt pro Raum die Temperaturquelle fest, ordnet Geräte zu (per Auswahlfeld) und
+tauscht ein Gerät aus; dort steht auch die Tastenzuordnung.
 
 ![Geräteliste mit Suchfeld und Karten je Gerät, Auffälliges zuerst](bilder/anlage-geraete.png)
 
-Weiter unten:
+### Gerätekarte, Datenfluss und Anlagenbild
+
+Die **Gerätekarte** stellt Raumfühler links, Räume in der Mitte und Heizkreise rechts dar,
+verbunden durch Linien (Ausgang rechts, Eingang links, Farbe nach Art des Wertes). Es lässt
+sich zoomen, einpassen, automatisch anordnen, suchen und per **Liste** statt Karte ansehen;
+Verbindungen werden dort verbunden und getrennt. **Datenfluss** zeigt je Raum, welcher Wert
+von welchem Gerät kommt und was `thermoctl` an welchen Aktor schreiben würde, je nach
+Betriebsart des Ventils: Schaltbefehle bei einem Schaltaktor, Sollwert und Istwert bei einem
+Ventil, das selbst regelt, nur die Raumtemperatur bei „Nur Raumtemperatur melden“.
+Gestrichelt ist, was fehlt. Ob gerade wirklich geschrieben wird oder nur im Trockenlauf
+entschieden, zeigt die Seite nicht. Das **Anlagenbild** gruppiert die Geräte je Raum und
+nennt Geräte ohne Raum.
 
 ![Gerätekarte mit Raumfühlern links, Räumen in der Mitte und Heizkreisen rechts, verbunden durch Linien](bilder/anlage-geraetekarte.png)
 
-### Betrieb: Trockenlauf und Scharfschalten
+**Bediengeräte** zeigt für Fernbedienungen und Taster, was ankommt und was hingeschickt
+wird, und die Tastenbelegung.
 
-**Betrieb** ist der Ort, an dem entschieden wird, ob die Anlage wirklich schaltet. Im
-**Trockenlauf** — der Vorgabe nach jeder Einrichtung — protokolliert die Regelung nur,
-was sie täte; es geht nichts an ein Gerät hinaus. Darunter steht für jede Zone Ist-Wert,
-Sollwert und die aktuelle Ein/Aus-Entscheidung. Die genaue Reihenfolge des
-Scharfschaltens (Begründung eintragen, danach neu starten) steht in
+## Heizung & Regelung
+
+**Regelvorgaben** fasst die anlagenweiten Werte zusammen, die ein Raum erbt, solange er
+nichts Eigenes einträgt: Regelzyklus, Hysterese, Mindest-Schaltdauern, Sensor-Timeouts und
+die PI-Regelung. Eigene Seiten gibt es für **Temperaturmodi**, **Fenster & Alarm**
+(Fenster-Erkennung per Temperatursturz, Alarm bei vergessen offenem Fenster),
+**Notbetrieb & Sensorfehler** (siehe unten), **Sonnenabsenkung** (Standort und Vorausschau;
+die Absenkung bleibt nie unter dem Frostschutz des Raums) und **Außenfühler** (Quelle der
+Außentemperatur). Ein leeres Feld in einem Raum bedeutet überall: Wert erben.
+
+![Regelvorgaben mit Hysterese, Mindest-Ein- und -Ausschaltdauer und Sensor- und Fensterwerten](bilder/anlage-einstellungen.png)
+
+## System & Betrieb
+
+### Betrieb und Freigaben
+
+**Betrieb & Freigaben** ist der Ort, an dem entschieden wird, ob die Anlage wirklich
+schaltet. Das hängt von **drei getrennten Riegeln** ab, die nebeneinander stehen und nicht
+zusammengefasst werden:
+
+1. **Gespeicherte Freigabe** — ob eine Freigabe erteilt wurde. Sie ändern nur Personen mit
+   dem Recht „Freigabe“ (`control.arm`), über **Freigabe erteilen …** mit Begründung.
+2. **Sendefreigabe (MQTT und Meross)** — wird beim Start des Dienstes gebildet und gilt für
+   alle Wege, auf denen Befehle hinausgehen. Eine Änderung der gespeicherten Freigabe
+   wirkt hier erst nach einem Neustart.
+3. **Führungsrolle im Verbund** — teilen mehrere Instanzen einen Bestand, schaltet nur die
+   führende; eine Reserve regelt nicht und schaltet nichts.
+
+Dazu zeigt die Seite **Trockenlauf**: Im Trockenlauf — der Vorgabe nach jeder
+Einrichtung — protokolliert die Regelung nur, was sie täte; es geht nichts an ein Gerät
+hinaus. Darunter steht je Raum Ist-Wert, Sollwert und die aktuelle Entscheidung mit
+Begründung. Die genaue Reihenfolge des Scharfschaltens steht in
 [scharfschalten.md](scharfschalten.md).
 
 ![Seite „Betrieb & Freigaben“ im Trockenlauf mit den vier Zustandskarten und der Schaltfläche „Freigabe erteilen …“](bilder/anlage-betrieb.png)
@@ -94,80 +285,28 @@ Weiter unten:
 
 ![Betriebsseite weiter unten: Regelentscheidung je Raum mit Begründung, Sollwertquelle und Notbetrieb-Zustand](bilder/anlage-betrieb-2.png)
 
-Läuft eine Zone im **Notbetrieb** (siehe [Notbetrieb bei Sensorausfall](#notbetrieb-bei-sensorausfall)
-unten) oder gibt es einen Vergleich von Ersatzquelle und Wandfühler, steht unter ihrer
-Zeile ein eigener Kasten „Notbetrieb": die Stufe, die aktive Quelle, bei der Rückkehrprüfung
-der Fortschritt (Messwerte von nötigen zwei), die Sendefreigabe (scharf oder Trockenlauf)
-und je Aktor Takt-Phase, Frist, Übergabe und Rückstellung. Darunter der **Vergleich
-Ersatzquelle ↔ Wandfühler** der letzten Tage: je Thermostat die Zahl der Messwerte, die
-mittlere Abweichung und ein **vorgeschlagener Ausgleichswert** — eine Grundlage für die
-Kalibrierung, die man unter den Regelparametern der Zone einträgt, kein Wert, der sich von
-selbst übernimmt.
+Läuft ein Raum im **Notbetrieb** (siehe [Notbetrieb bei Sensorausfall](#notbetrieb-bei-sensorausfall)
+unten) oder gibt es einen Vergleich von Ersatzquelle und Wandfühler, steht unter seiner
+Zeile ein eigener Kasten „Notbetrieb“: die Stufe, die aktive Quelle, bei der Rückkehrprüfung
+der Fortschritt, die Sendefreigabe und je Aktor Takt-Phase und Übergabe. Darunter der
+**Vergleich Ersatzquelle ↔ Wandfühler** der letzten Tage: je Thermostat die Zahl der
+Messwerte, die mittlere Abweichung und ein **vorgeschlagener Ausgleichswert** — eine
+Grundlage für die Kalibrierung, kein Wert, der sich von selbst übernimmt.
 
-### Schaltprotokoll
+### Verbund, Verbindungen und Meldungen
 
-Jeder Befehl, der wirklich an ein Gerät hinausging oder im Trockenlauf unterdrückt bzw.
-verworfen wurde, steht im **Schaltprotokoll** — mit Zeitpunkt, Zone, Gerät, gesendetem
-Befehl, Ergebnis und aufklappbarer Begründung. Filter nach Zeitraum, Zone und Ergebnis
-grenzen lange Listen ein. Wie man ein unauffälliges Protokoll von einem mit echtem
-Problem unterscheidet, erklärt [scharfschalten.md](scharfschalten.md#4-wie-man-das-schaltprotokoll-liest).
+**Verbund** zeigt die Führungsrolle dieser Instanz, **Verbindungen** die Schnittstellen
+(MQTT, Zigbee2MQTT, Meross, Home Assistant, Homebridge, MCP, Webhook).
 
-![Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
-
-### Benutzer, Gruppen und Rechte
-
-Unter **Benutzer** werden Konten angelegt, deaktiviert und einer Gruppe zugeordnet. Ein
-Konto ohne Gruppe hat keinerlei Rechte. Von hier aus lässt sich auch das eigene Passwort
-ändern und jede andere angemeldete Sitzung dieses Kontos beenden — etwa nach einem
-verlorenen Gerät.
-
-![Benutzerliste mit drei Konten, je mit Gruppe, Passwort-setzen und Sperren](bilder/anlage-benutzer.png)
-
-**Rechte hängen an Gruppen, nicht an Personen.** Wer mehreren Gruppen angehört, darf
-alles, was mindestens eine davon erlaubt. Vier eingebaute Gruppen decken die üblichen
-Fälle ab (Bedienung, Integration, Nur lesen, Verwaltung); eigene Gruppen lassen sich
-zusätzlich anlegen. Die Beschränkung auf einzelne Räume passiert nicht beim Anlegen,
-sondern danach über „Rechte bearbeiten": Zu jedem zonenbezogenen Recht lässt sich dort
-ankreuzen, für welche Zonen es gilt, statt es anlagenweit zu vergeben. Jede Gruppe trägt außerdem ein
-**Oberflächen-Profil** — Anlage oder Wohnung —, das bestimmt, welche der beiden
-Oberflächen ihre Mitglieder überhaupt zu sehen bekommen. Beim Upgrade behält jede
-bestehende Gruppe das Anlagenprofil; für eine Mietergruppe wird das Profil ausdrücklich
-auf Wohnung umgestellt.
-
-### Kiosk-Token
-
-Für das Wandtablet gibt es unter **Einstellungen → Kiosk-Tokens** einen eigenen
-Zugang ohne Benutzerkonto: Ein Token bekommt einen Namen, eine Auswahl an Zonen, die es
-sehen darf, optional die Erlaubnis zu bedienen (sonst zeigt es nur an), und optional eine
-Gültigkeit in Tagen. Die Adresse `/kiosk/<token>` erscheint danach genau einmal im
-Klartext — sie gehört als Lesezeichen aufs Tablet, danach lebt das Token nur noch im
-Cookie. Ein Token lässt sich jederzeit widerrufen.
-
-![Seite „Kiosk-Zugänge“ mit dem ausgestellten Zugang „Demo-Wandtablet“ und der Schaltfläche „Zugang ausstellen“](bilder/anlage-kiosk-token.png)
-
-Für kleine Wandpanels gibt es unter `/kiosk?ansicht=panel` eine eigene Ebene mit
-einem kompakten Zonenraster; Antippen einer Kachel öffnet ihre Details.
-Ohne JavaScript bleibt die scrollende Tafel.
-
-![Kiosk-Panel auf 480×480 Pixeln mit Raumkacheln, Ist- und Sollwert](bilder/kiosk-panel-uebersicht.png)
-
-### Einstellungen und Störungsmeldungen
-
-**Regelvorgaben** (`/settings`) fasst die anlagenweiten Werte zusammen, die eine Zone
-erbt, solange sie nichts Eigenes einträgt: Regelzyklus, Hysterese, Mindest-Schaltdauern,
-Sensor-Timeouts, Fenster-Erkennung, Sonnenabsenkung und sechs Arten von
-Störungsmeldungen (Sensorstörung, Brücke/Broker weg, gescheiterter Schaltbefehl,
-festhängender Messwert, Fenster vergessen offen, Problemmeldung aus einer Wohnung) —
-jede einzeln abschaltbar. Ein Testknopf prüft einen hinterlegten Webhook, ohne auf eine
-echte Störung zu warten.
-
-![Regelvorgaben mit Hysterese, Mindest-Ein- und -Ausschaltdauer und Sensor- und Fensterwerten](bilder/anlage-einstellungen.png)
-
-Weiter unten:
+**Meldungen** schaltet sechs Arten von Störungsmeldungen einzeln ein oder aus
+(Sensorstörung, Brücke/Broker weg, gescheiterter Schaltbefehl, festhängender Messwert,
+Fenster vergessen offen, Problemmeldung aus einer Wohnung). Ein Testknopf prüft einen
+hinterlegten Webhook, ohne auf eine echte Störung zu warten.
 
 ![Meldungen mit den sechs ein- und ausschaltbaren Meldungsarten](bilder/anlage-meldungen.png)
 
-### Notbetrieb bei Sensorausfall
+
+## Notbetrieb bei Sensorausfall
 
 Fällt der Temperatursensor einer Zone aus, regelt `thermoctl` nicht mehr auf eine Messung,
 die es nicht mehr gibt. Der Notbetrieb ist für **alle Zonen von Anfang an aktiv** — bei
@@ -195,7 +334,7 @@ an. Er geht in Stufen vor:
    Notbetrieb derselben Störung. Die Quelle muss die eingestellte Zahl neuer Messwerte
    liefern (Vorgabe 2) und die eingestellte Dauer durchgehend brauchbar bleiben
    (Vorgabe 60 Sekunden). Beides läuft gleichzeitig ab dem Beginn der Prüfung; sie besteht,
-   sobald beide Bedingungen erfüllt sind. Beides ist unter Regelvorgaben einstellbar. Besteht die
+   sobald beide Bedingungen erfüllt sind. Beides ist unter „Notbetrieb & Sensorfehler“ einstellbar. Besteht die
    Prüfung mit dem Wandfühler, geht die Zone zurück in den Normalbetrieb. Besteht sie
    mit der Ersatzquelle, kehrt die Zone in die Stufe Ersatzquelle zurück, und die Rückkehr
    zum Wandfühler wird danach eigens geprüft. Beim Abschluss der Störung (Rückkehr in den Normalbetrieb) soll ein
@@ -204,17 +343,17 @@ an. Er geht in Stufen vor:
    Fußbodenkreise gelten dabei weiter.
 
 Die Anlage kann je Störung eine Meldung zum Beginn und eine zur Entwarnung senden (mit dem
-Schalter „Sensorstörung" unter Regelvorgaben abschaltbar). Eine Zusage, dass jede genau
+Schalter „Sensorstörung" unter Meldungen abschaltbar). Eine Zusage, dass jede genau
 einmal ankommt, gibt es nicht: Nach einem Abbruch oder einem gescheiterten Versand wird
 erneut gesendet. Bricht der Prozess auch während dieser Wiederholung ab, bevor der
 Endzustand gespeichert ist, kann der nächste Lauf nochmals senden; eine Meldung kann deshalb
-mehrfach ankommen. Scheitert die Wiederholung selbst, bleibt die Meldung aus. Auf Start,
-Wohnungssicht und Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
+mehrfach ankommen. Scheitert die Wiederholung selbst, bleibt die Meldung aus. Auf der
+Übersicht steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
 (oben) und das Schaltprotokoll.
 
 **Einstellen** lässt sich der Notbetrieb an zwei Stellen:
 
-- **Regelvorgaben → Karte „Notbetrieb bei Sensorausfall"** (anlagenweit): Festtakt
+- **Heizung & Regelung → Notbetrieb & Sensorfehler** (anlagenweit): Festtakt
   (Sekunden an/aus), Rückkehrprüfung (Dauer und Zahl der Messwerte), Wiederanlaufspanne,
   anlagenweiter Notsollwert und die **Außenkennlinie**. Die Kennlinie besteht aus Zeilen
   (Außentemperatur, Sekunden an, Sekunden aus), die sich hinzufügen und entfernen lassen;
@@ -230,282 +369,66 @@ Wohnungssicht und Kiosk steht ein kurzer Hinweis in Klartext; Details für die T
 
   ![Seite „Notbetrieb & Sensorfehler“ mit Standardprofil, Festtakt und den Punkten der Außentemperaturkurve](bilder/anlage-einstellungen-notbetrieb.png)
 
-- **Zone → Regelparameter → Abschnitt „Notbetrieb bei Sensorausfall"** (je Zone): den
-  Notbetrieb für diese Zone **ausschalten**, ein anderes vorhandenes Profil wählen oder
+- **Raum → Raumtechnik → Gruppe „Notbetrieb“** (je Raum): den
+  Notbetrieb für diesen Raum **ausschalten**, ein anderes vorhandenes Profil wählen oder
   einen eigenen Notsollwert setzen (leer = Anlagenwert erben), und je zugeordnetem
-  Thermostat den **Ausgleichswert** (Recht `device.manage` nötig). Daneben stehen die
-  wirksamen Werte und woher sie stammen. Der Abschnitt gehört zum selben Formular wie die
-  übrigen Regelparameter, mit einem gemeinsamen Speichern-Knopf. Mehrere Profile
+  Thermostat den **Ausgleichswert** (Gruppe „Ausgleichswerte der Ersatzquelle“; Recht `device.manage` nötig). Daneben stehen die
+  wirksamen Werte und woher sie stammen. Die Gruppe gehört zum selben Formular wie die
+  übrigen Regelparameter des Raums. Mehrere Profile
   anzulegen ist nicht vorgesehen; es gibt das eine anlagenweite Profil.
 
 **Wichtig zu wissen:** Im Notbetrieb takten Fußbodenkreise nach der Uhr, **unabhängig von der
 Raumtemperatur**. Das ist eine Notlösung für den Ausfall, keine Regelung; wer eine Zone
 dauerhaft so betreibt, sollte den Sensor reparieren.
 
-### Statistik und Relaisverschleiß
+## Personen & Zugänge
 
-**Heizstatistik** zeigt, wie lange je Zone eine Heizanforderung bestand. Die Zahlen zeigen
-Regelentscheidungen, keine bestätigte körperliche Heizwirkung. **Relaisverschleiß**
-zählt Schaltspiele je Gerät und Tag und rechnet sie auf ein Jahr hoch, verglichen mit einer
-angenommenen Relais-Lebensdauer (Vorgabe 500.000 Schaltspiele — eine Annahme, keine
-Herstellerangabe, einstellbar unter Regelvorgaben). Nützlich unabhängig davon, ob eine Zone
-die PI-Regelung nutzt: Auch die gewöhnliche Hysterese verschleißt ein Relais, nur langsamer.
+**Personen & Rechte** hat zwei Reiter. Unter **Benutzer** werden Konten angelegt, einer
+Gruppe zugeordnet, **gesperrt** (laufende Sitzungen enden, das Konto bleibt erhalten und lässt
+sich wieder aktivieren) und mit **Passwort setzen** versehen — das beendet alle Sitzungen des
+Kontos. Ein Konto ohne Gruppe hat keinerlei Rechte.
 
-![Relaisverschleiß mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass im Zeitraum keine geschalteten Geräte protokolliert wurden](bilder/anlage-relaisverschleiss.png)
+![Benutzerliste mit drei Konten, je mit Gruppe, Passwort-setzen und Sperren](bilder/anlage-benutzer.png)
 
-### Urlaub
+Unter **Gruppen und Rechte** hängen **Rechte an Gruppen, nicht an Personen.** Wer mehreren
+Gruppen angehört, darf alles, was mindestens eine davon erlaubt. Vier eingebaute Gruppen
+decken die üblichen Fälle ab (Bedienung, Integration, Nur lesen, Verwaltung); eigene Gruppen
+lassen sich anlegen. Zonenbezogene Rechte lassen sich auf einzelne Räume beschränken, statt
+anlagenweit zu gelten. Jede Gruppe trägt außerdem das **Oberflächen-Profil** (Anlage oder
+Wohnung, siehe oben); beim Upgrade behält jede bestehende Gruppe das Anlagenprofil, für eine
+Mietergruppe wird das Profil ausdrücklich auf Wohnung gestellt.
 
-Unter **Urlaub** (`/vacation`, Recht `vacation.manage`) lässt sich ein einziger
-Absenkwert für **die ganze Anlage** über einen zusammenhängenden Zeitraum ansetzen —
-erster und letzter Tag, dazu die Temperatur, auf die währenddessen jede Zone abgesenkt
-wird. Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz gelten dabei
-unverändert weiter, und eine Zone in Betriebsart „Aus" bleibt aus. Ein bereits geplanter
-oder laufender Urlaub zeigt seinen Zustand als Chip — „Geplant" oder „Läuft" — samt
-Beginn, Ende und Absenkwert, und lässt sich vorzeitig beenden; ein zweiter Urlaub muss
-den bestehenden erst beenden. Eine einzelne, von Hand gesetzte Übersteuerung einer Zone
-geht dabei nicht verloren — sie gilt weiter, bis sie selbst endet.
+**API-Tokens** stellt man für den Zugriff über REST-API und MCP aus; **Kiosk-Zugänge** sind
+der Zugang für ein Wandtablet (siehe Kiosk).
 
-![Seite „Urlaub & Abwesenheit“ mit dem geplanten Anlagenurlaub, Absenkwert und der Schaltfläche „Urlaub beenden“](bilder/anlage-urlaub.png)
+## Konto & Sicherheit
 
-**Zu unterscheiden von der Abwesenheit der Wohnungssicht** (siehe dort): Der Urlaub hier
-ist anlagenweit und wird von der Verwaltung gesetzt: er betrifft alle Zonen der Anlage,
-unabhängig davon, wer in welchem Raum wohnt. Die Abwesenheit in der Wohnungssicht setzt
-dagegen jeder Bewohner für die eigenen Räume selbst, unabhängig von der übrigen Anlage.
-Beide Funktionen sind technisch getrennt und lassen sich nicht gegenseitig auslösen oder
-beenden.
+**Konto & Sicherheit** (Seitenleiste unten) ist der persönliche Bereich und für jeden
+Angemeldeten erreichbar, unabhängig von jedem Recht: Benutzername, Oberfläche (Profil), Konto
+seit, letzte Anmeldung; **Passwort ändern** (beendet alle anderen Sitzungen); jede
+**andere Sitzung beenden**; **Passkeys verwalten**, sofern für die Anlage eine
+Passkey-Anmeldung eingerichtet ist (ohne diese Einrichtung erscheint der Abschnitt nicht);
+sowie **Abmelden**. Ein Link führt zu **Glossar & Hilfe**.
 
-## Wohnungssicht
+![Konto & Sicherheit mit Profil und Passwortänderung](bilder/wohnung-konto.png)
 
-Für die Bewohner eines oder mehrerer Räume — ohne Fachbegriffe, ohne Zugriff auf
-Technik, Geräte oder andere Räume. Dieser Abschnitt richtet sich an die Verwaltung, die
-wissen muss, was ihre Mieter sehen und dürfen. **Zum Weitergeben an Bewohner** gibt es
-die eigenständige, technikfreie **[Wohnungs-Anleitung](wohnung.md)** — sie deckt
-denselben Funktionsumfang ab, ohne jeden Verweis auf Anlagensicht oder Technik.
+## Kiosk
 
-### Zuhause: Temperatur und vorübergehende Änderungen
+Für das Wandtablet gibt es unter **Personen & Zugänge → Kiosk-Zugänge** einen eigenen Zugang
+ohne Benutzerkonto: Ein Zugang bekommt einen Namen, eine Auswahl an Räumen, die er sehen
+darf, optional die Erlaubnis zu bedienen (sonst „nur ansehen“) und optional eine Gültigkeit
+in Tagen. Die Adresse `/kiosk/<token>` erscheint danach genau einmal im Klartext — sie
+gehört als Lesezeichen aufs Tablet, danach lebt das Token nur noch im Cookie. Ein Zugang
+lässt sich jederzeit widerrufen; das Tablet zeigt dann nichts mehr an.
 
-Die Startseite **Zuhause** zeigt jeden zugewiesenen Raum als Karte: Ist-Temperatur samt
-Messalter, aktueller Sollwert, eine kurze Begründung („Warum?") und ein Farbband mit dem
-heutigen Verlauf. Läuft gerade eine vorübergehende Änderung, steht sie hervorgehoben mit
-Enddatum und einem „Beenden"-Knopf darüber. Darunter drei Möglichkeiten, den Raum
-vorübergehend anders zu stellen:
+![Seite „Kiosk-Zugänge“ mit dem ausgestellten Zugang „Demo-Wandtablet“ und der Schaltfläche „Zugang ausstellen“](bilder/anlage-kiosk-token.png)
 
-- **Die Knöpfe „−"/„+"** (nur sichtbar, solange gerade keine vorübergehende Änderung
-  läuft) ändern die normale Temperatur des aktuell laufenden Zeitplan-Abschnitts **dauerhaft**
-  — nicht nur für heute. Wer abends auf 21,5 °C stellt, hat damit ab sofort jeden Abend
-  21,5 °C, bis er es wieder ändert. Deutlich von den drei folgenden, nur vorübergehenden
-  Möglichkeiten unterschieden, damit niemand aus Versehen den Dauerwert trifft, wenn er
-  nur kurz wärmer haben wollte.
-- **„Für eine Weile wärmer"** setzt eine feste Temperatur bis zu einem selbst gewählten
-  Zeitpunkt; danach gilt automatisch wieder der Wochenplan.
-- **„Zur nächsten Schaltzeit springen"** nimmt vorweg, was der Zeitplan ohnehin als
-  Nächstes vorsieht.
-- **„Laufende Änderung ersetzen"** überschreibt eine bereits laufende vorübergehende
-  Änderung durch eine neue, statt sie erst beenden zu müssen.
+Die Kioskansicht ist eine eigene Seite **mit JavaScript** (die frühere Kioskseite lief ohne).
+Oben wählt man die Ansicht — **Automatisch** (nach Bildschirmbreite), **Panel** (kompakte
+Kacheln, Antippen öffnet den Raum) oder **Tafel** (alle Räume als Karten) — und die
+Darstellung (System, Hell, Dunkel). Die Schaltflächen − und + am Sollwert erscheinen nur,
+wo die Aktion erlaubt ist.
 
-Ein „Problem melden" je Raum schickt eine Meldung an die Verwaltung — Raum, letzter
-Messwert und Sollwert werden automatisch angehängt, es sind keine technischen Angaben
-nötig.
+![Kiosk-Panel auf 480×480 Pixeln mit Raumkacheln, Ist- und Sollwert](bilder/kiosk-panel-uebersicht.png)
 
-### Wochenplan
-
-Anders als in der Anlagensicht trägt die Wohnungssicht keine Modi und keine Uhrzeiten
-minutengenau ein — sie fragt nur, wann es warm sein soll: eine Zeit für „Tag ab" und eine
-für „Nacht ab", je Wochentag, mit der Möglichkeit, einen Tag auf die ganze Woche oder auf
-Montag–Freitag zu übertragen. Eine Vorschau der nächsten 24 Stunden zeigt, wie der
-Sollwert dadurch verläuft — einschließlich einer gerade laufenden vorübergehenden
-Änderung. Ein kompletter Plan lässt sich auch hier auf einen anderen eigenen Raum übertragen.
-
-![Wochenplan des Wohnzimmers mit Raumauswahl und Wochenraster](bilder/wohnung-wohnzimmer-wochenplan.png)
-
-Weiter unten:
-
-![Wochenplan weiter unten: Vorschau der nächsten 24 Stunden und „Neue Zeit anlegen“](bilder/wohnung-wohnzimmer-wochenplan-2.png)
-
-### Heizzeit
-
-**Heizzeit** zeigt je Raum, für wie viele Stunden in den letzten 7, 30 oder 90 Tagen eine
-Heizanforderung bestand — als einfache Orientierung, ausdrücklich **kein** Energie- oder
-Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum dabei
-tatsächlich wurde, hängt zusätzlich von Außentemperatur, Gebäudezustand und Lüften ab.
-Läuft die Anlage im Trockenlauf, weist ein Hinweis darauf hin, dass die Balken zeigen,
-wann *geheizt worden wäre*, nicht was wirklich geschah.
-
-![Seite „Temperatur & Heizzeit“ der Wohnungssicht mit Erläuterung und Raumauswahl](bilder/wohnung-verlauf.png)
-
-### Verlauf
-
-**Verlauf** (Adresse `/temperature-history`) ist die Entsprechung der Seite „Verläufe aller
-Zonen" für die Wohnungssicht: je eigenem Raum eine Kachel mit derselben Zeichnung und denselben
-Zahlen (gemessene Temperatur, die beiden Zielwert-Stufen, Sonnenabsenkung als Band, Spur der
-Heizanforderung), mit Zeitraum 24 Stunden, 3 oder 7 Tage für alle Kacheln, **Vollbild** je Kachel
-und den Werten am Mauszeiger. Die Beschriftungen sind in Alltagssprache gehalten: „Gemessen",
-„Zielwert ohne Sonnenabsenkung", „Tatsächlicher Zielwert", „Heizanforderung", Sonnenabsenkung in
-Grad; die Sonnenabsenkung wird in einem Satz erklärt (wenn Sonne erwartet wird, kann die Regelung
-den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden) und mit dem
-Glossar verknüpft. Der Zielwert „ohne Sonnenabsenkung" ist der Sollwert vor dieser Korrektur und
-folgt damit außer dem Zeitplan auch einer Abwesenheit oder einer Änderung von Hand. Die Texte
-behaupten keine Wirkung im Raum, sondern nennen nur die Heizanforderung. Technische
-Einzelheiten der Anlagensicht (Fachbegriffe wie „Sollwert vor Sonnenabsenkung", „Wirksamer Soll") stehen hier
-nicht.
-
-Welche Räume erscheinen, bestimmt allein das Leserecht für Zonen (`zone.read`), dieselbe Prüfung
-wie bei Startseite, Zeitplan und Heizzeit: Ein Mieter sieht nur Kacheln seiner eigenen Räume.
-Die Adresse der Kachel eines fremden Raums antwortet wie die eines nicht vorhandenen Raums
-(404), auch mit ungültigem Zeitraum; ein ungültiger Zeitraum bei eigenen Räumen wird abgelehnt
-(422) wie in der Anlagensicht. Ohne Raum ist die Seite leer. Die Anlagenseiten
-`/zones/history` und `/zones/{id}/history` bleiben der Wohnungssicht verschlossen, ebenso sind
-die Wohnungsseiten für Verwaltungskonten nicht erreichbar.
-
-### Abwesenheit
-
-Direkt auf der Startseite **Zuhause**, oberhalb der Raumkarten, lässt sich eine
-Abwesenheit einstellen: „Zurück am" und eine Temperatur, auf die währenddessen **alle**
-eigenen Räume gemeinsam gehalten werden — nicht raumweise wählbar, weil eine Abwesenheit
-per Definition die ganze Wohnung betrifft. Der Wochenplan bleibt dabei unverändert und
-gilt automatisch wieder, sobald die Abwesenheit endet oder das Datum erreicht ist. Läuft
-gerade eine, erscheint sie als eigener Kasten mit Enddatum und einem „Abwesenheit
-beenden"-Knopf, unabhängig von einzelnen, parallel laufenden Raum-Übersteuerungen. Das
-ist eine eigene, wohnungsbezogene Funktion — zu unterscheiden vom anlagenweiten „Urlaub"
-in der Anlagensicht, der von der Verwaltung für die ganze Anlage gesetzt wird.
-
-*(Siehe Bildbeispiel im Abschnitt „Zuhause" oben — derselbe Screenshot zeigt eine laufende
-Abwesenheit.)*
-
-### Mehr: Konto und Sicherheit
-
-Unter **„Mehr"** (`/account`) liegt der persönliche Bereich — keine Anlagenparameter,
-unabhängig von jedem sonstigen Recht für jeden Angemeldeten erreichbar. Dort lässt sich
-das eigene Passwort ändern (danach bleibt nur das gerade genutzte Gerät angemeldet, alle
-anderen brauchen eine neue Anmeldung), jede andere Sitzung dieses Kontos auf einmal
-beenden, eine Kurzerklärung der Anzeigen aufrufen, und sich abmelden. Ist für die Anlage
-eine Passkey-Anmeldung eingerichtet, erscheint hier zusätzlich ein Verweis auf
-„Passkeys verwalten" — ohne diese Einrichtung bleibt der Abschnitt schlicht weg, statt
-eine Möglichkeit zu zeigen, die nicht funktioniert.
-
-![Konto & Sicherheit der Wohnungssicht mit Profil und Passwortänderung](bilder/wohnung-konto.png)
-
-### Temperaturverlauf einer Zone
-
-Unter **Zonen → Zonendaten** steht oberhalb des Formulars die Karte mit dem Verlauf der
-letzten 24 Stunden, 3 Tage oder 7 Tage. Blau ist die gemessene Temperatur, die durchgehende
-gelbbraune Linie der Sollwert vor der Sonnenabsenkung, die gestrichelte violette Linie der
-wirksame Sollwert. Der Sollwert vor der Sonnenabsenkung folgt außer dem Zeitplan auch einer
-Übersteuerung (etwa einem Boost), dem Urlaub, einer Abwesenheit und der Betriebsart Aus; die
-Linie heißt deshalb nicht „Zeitplan-Soll". Ein grünes Band mit Balken am oberen Rand und Angabe
-der Absenkung markiert die Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert
-unter dem Sollwert vor der Absenkung lag.
-Wechselt der Betrag innerhalb eines Bandes, steht der Bereich („1,5 bis 2,0 K"), nicht nur
-der Höchstwert.
-
-Das Diagramm zeichnet nur, was protokollierte Zeilen belegen. Jede Zeile gilt für ihren
-Zyklus (bis zur nächsten Zeile, höchstens 90 Sekunden). Sonnenband, unbekannter Bereich und
-Heizspur bestehen aus genau diesen Zeitspannen und werden weder verbreitert noch über
-Pausen hinweg zusammengezogen; Sollwertlinien verbinden Zeilen bis 10 Minuten Abstand und
-enden am letzten Wert. Eine Absenkung, die schmaler als rund drei Bildpunkte der Zeichnung
-ist (bei 7 Tagen am Desktop etwa 35 Minuten), bekommt zusätzlich zu ihrem Band ein kleines
-Dreieck über der Zeichnung, damit sie auffindbar bleibt; das Band selbst wird nie breiter
-gezeichnet, als die Zeilen es belegen. Ist sie schmaler als ein Viertel Bildpunkt (bei
-7 Tagen am Desktop etwa 3 Minuten), bleibt nur das Dreieck. Das Dreieck zeigt nur, dass dort
-etwas liegt, und behauptet keine Dauer. Auf dem Telefon sind die Bildpunkte gröber, die
-Schwellen entsprechend länger.
-
-Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen den **Anteil der Zeit
-mit Heizanforderung je Abschnitt**, nicht den genauen Zeitpunkt der Anforderung. Ein Strich
-deckt zusammenhängende Zeilen ab (zwischen zwei Zeilen höchstens 90 Sekunden) und reicht nie
-über einen Zeitabschnitt hinaus, aus dem auch die Kurve einen Punkt bildet (bei 7 Tagen bis
-zu 17 Minuten). Ganz deckungsgleich mit der Kurve ist das nicht: Die Spur zählt auch Zeilen
-ohne Temperaturwert und trennt schon bei mehr als 90 Sekunden Abstand, die Kurve nimmt nur
-Zeilen mit Temperaturwert und verbindet bis 10 Minuten Abstand. Die Deckkraft stuft den Anteil
-der **Zeit** (nicht der Zeilen) in Vierteln ab, derselbe Anteil wie die Prozentzahl unter dem
-Diagramm: Eine Sekunde Anforderung vor 90 Sekunden ohne ist das schwächste Viertel. Ein
-blasser Strich heißt also „in diesem Abschnitt nur zeitweise angefordert", nicht „durchgehend
-ein bisschen". Genaue Einzelstriche wären bei 7 Tagen kleiner als ein Bildpunkt und nicht
-mehr zu sehen. Gefärbt ist nur die Zeit, für die Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone
-auf runden Stunden, an Mitternacht mit Wochentag und Datum.
-
-Die blaue Linie ist verdichtet: Sie zeigt den Mittelwert je Abschnitt (die Legende nennt
-die Obergrenze seiner Länge, nach oben gerundet: bei 24 Stunden bis zu 3, bei 7 Tagen bis zu
-17 Minuten; ein Punkt kann auch aus einer einzigen Messung stammen). Der hellblaue Bereich
-darum zeigt den kleinsten bis größten gemessenen Wert. Ein kurzer Ausschlag ragt dort nur als
-feine Spitze heraus; ragt der Extremwert eines Abschnitts deutlich (um mehr als ein Zehntel
-der Zeichenhöhe) über den seiner Nachbarabschnitte hinaus, steht an dieser Stelle zusätzlich
-ein schmaler hellblauer Balken bis zum Extremwert. Gewöhnliches Messrauschen bekommt keinen
-Balken. Besteht ein Zeitraum oder ein durch Lücken abgetrennter Teil nur aus einem einzigen
-Abschnitt, gibt es keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein
-Balken vom kleinsten bis zum größten Wert. Die Breite der Balken ist nur Darstellung und sagt
-nichts über die Dauer. „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit;
-Sollwert vor Sonnenabsenkung und wirksamer Soll tragen einen „Stand"-Zeitpunkt, wenn die Daten veraltet sind
-(letzter Wert mehr als 15 Minuten vor dem Ende des Zeitraums). Liegen zwischen zwei Zeilen mehr als
-**10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
-jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
-Abschnitt liegt. Ein Hinweis unter dem Diagramm nennt dann die erfasste Zeit und den
-letzten Wert. Zeilen ohne Temperaturwert (etwa bei einem Sensorausfall) zählen zur erfassten
-Zeit, belegen aber keine Temperatur; der Hinweis nennt, für wie lange der Messwert fehlte.
-Die technische Markierungszeile, die beim Ende eines Notbetriebs den Schaltzustand übernimmt,
-trägt keinen Sollwert; die Sollwertlinien sind an dieser Stelle für etwa eine Minute
-unterbrochen. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
-führt zurück.
-
-**Werte an einer Stelle ablesen.** Mit der Maus über das Diagramm fahren (auf dem Telefon
-tippen oder ziehen) zeigt eine senkrechte Linie und eine Box mit der Ortszeit und den Werten
-an dieser Stelle: Ist, Sollwert vor Sonnenabsenkung, wirksamer Soll, Sonnenabsenkung und Heizanforderung.
-Mit den Pfeiltasten (links/rechts, Pos1/Ende, Umschalt für größere Schritte) lässt sich dasselbe
-bedienen, sobald das Diagramm den Fokus hat; Escape blendet die Box aus. Die Box zeigt nur, was
-protokollierte Zeilen belegen: In einer Lücke (mehr als 90 Sekunden ohne Zeile) und nach dem
-letzten Eintrag steht „keine Daten" mit der Dauer der Lücke, es wird nichts geschätzt oder über
-die Lücke hinweg angezeigt. Ältere Zeilen aus der Zeit vor der Aufzeichnung zeigen „unbekannt"
-bzw. „Absenkung unbekannt". Bei 3 und 7 Tagen ist der Istwert ein Mittelwert (die Box nennt die
-Zahl der Messungen und die Länge des Abschnitts, „bis zu 17 Minuten") mit kleinstem und größtem
-Wert. „Heizanforderung" ist „ja" oder „nein", wenn sie im ganzen Abschnitt durchgehend oder gar
-nicht vorlag, sonst der Anteil der Zeit in Prozent. Das ist die Anforderung des Reglers, keine
-Aussage über das, was am Gerät ankam.
-
-Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung des Sollwerts vor der Absenkung und
-der Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
-unbekannt (vor der Aufzeichnung)"; dort fehlt die Linie des Sollwerts vor der Absenkung, und der wirksame Sollwert
-ist der damals gespeicherte. Das heißt ausdrücklich nicht, dass es keine Absenkung gab. Die
-Zusammenfassung nennt die Dauer dieser unbekannten Zeit. Besteht ein Fenster aus alten und
-neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Teil („In den
-aufgezeichneten 30 Minuten keine Sonnenabsenkung"); der Satz „Keine Sonnenabsenkung" ohne
-Einschränkung steht nur, wenn jede Zeile des Fensters die Absenkung aufgezeichnet hat.
-
-### Datenfluss
-
-Unter **Analyse → Datenfluss** (und je Zone über den Knopf „Datenfluss“ im Zonenkopf) zeigt ein
-Flussdiagramm, welcher Wert von welchem Gerät kommt und wohin er geschrieben wird: links die
-Messquelle (Istwert), die Fensterkontakte und der aufgelöste Sollwert (Zeitplan, Übersteuerung,
-Boost, Urlaub), in der Mitte die Zone, rechts je Aktor, was thermoctl an ihn schreiben würde — je nach
-Betriebsart des Ventils:
-
-- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät, beschriftet mit dem echten
-  Kanal (Zigbee2MQTT-Schalter `state`, Meross-Schaltbefehl, bei einem Thermostat Sollwert und Modus
-  für Ein, Modus „off“ bzw. der Mindestsollwert für Aus).
-- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt (oder, ohne Kontakt, bei
-  eingeschalteter Temperaturabfall-Erkennung der Zone) zusätzlich der Frostschutz-Sollwert bei
-  offenem Fenster. Die Pfeile nennen die Geräteeigenschaft
-  (z. B. `occupied_heating_setpoint`, `external_temperature_input`).
-- **Nur Raumtemperatur melden:** nur der Istwert; es gibt bewusst keinen Sollwert-Pfeil, das
-  Gerät trägt den Vermerk „Sollwert bleibt am Gerät“.
-
-**Gestrichelt** ist, was fehlt: keine Messquelle, keine beschreibbare Temperatur- oder
-Sollwert-Eigenschaft, keine Schaltfähigkeit. Unter dem Bild stehen die Pfeile noch einmal als
-Text („Kanten als Text“); ohne JavaScript bleibt statt des Bildes der Diagramm-Quelltext
-sichtbar. Die Seite zeigt die Zonen, die man verwalten darf (wie die Verläufe), gehört zur
-Anlagensicht und ändert nichts an der Anlage; ob thermoctl gerade wirklich schreibt oder im
-Trockenlauf nur entscheidet, zeigt sie nicht, sondern nur den Weg der Werte.
-
-### Verläufe aller Zonen
-
-Unter **Analyse → Zonenverläufe** (auch über „Alle Verläufe" auf der Zonenliste) stehen die
-Verläufe aller Zonen auf einer Seite, je Zone eine Kachel mit demselben Diagramm. Der Zeitraum
-(24 Stunden, 3 oder 7 Tage) oben gilt für alle Kacheln und steht in der Adresse, sodass sich
-die Ansicht teilen oder neu laden lässt. Der Zonenname über der Kachel führt zur Zone; **Vollbild**
-vergrößert nur diese Kachel. Die Kacheln laden nacheinander nach, sobald sie ins Bild kommen
-(„Verlauf wird geladen …"); die Seite selbst enthält keine Messdaten. Nebeneinander stehen sie
-auf breiten Bildschirmen in zwei Spalten, auf dem Telefon untereinander. Gezeigt werden nur die
-Zonen, die man verwalten darf; ohne dieses Recht ist die Seite leer. Sie gehört zur
-Anlagensicht und steht in der Wohnungssicht nicht zur Verfügung.
-
-![Seite „Temperatur & Heizzeit“ mit Temperaturverlauf eines Raums über sieben Tage](bilder/anlage-verlauf.png)
-
+![Kiosk-Ansicht „Automatisch“ auf einem Tablet mit Raumkarten, Sollwert-Schaltflächen und Notbetriebs-Hinweis](bilder/kiosk-dashboard.png)

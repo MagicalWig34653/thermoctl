@@ -1,18 +1,27 @@
-"""Welche Oberfläche ein Principal bekommt -- nicht, was er darf.
+"""Das Oberflächenprofil eines Principals -- nicht, was er darf.
 
-Zwei Begriffe, die auseinandergehalten werden müssen, weil sie beim Lesen leicht
-zusammenfallen:
+Es gibt **eine** Weboberfläche (die Svelte-Anwendung unter ``/app``). Zwei Begriffe, die
+auseinandergehalten werden müssen, weil sie beim Lesen leicht zusammenfallen:
 
-* **UI-Profil** (hier) beantwortet *welche Weboberfläche wird gerendert*: die
-  Anlagensicht mit Betrieb, Geräten, Protokollen und Rechteverwaltung, oder die
-  Wohnungssicht mit Räumen, Zeitplan und Heizzeit.
-* **Grants** (``domain.authz``) beantworten *was tatsächlich erlaubt ist*.
+* **UI-Profil** (hier) beantwortet *welche Hälfte der Verwaltungs- und Wohnungsfunktionen
+  für diesen Principal gilt*. Heute wirkt es an wenigen, einzeln benennbaren Stellen:
+  die Navigation des Servers (``web.navigation``: Mieterprofil sieht nur Zeitplan,
+  Heizzeit, Verlauf und Konto, Anlagenprofil die übrigen Einträge), die Verwaltungsaktionen
+  und -seiten, die ``_require_admin_ui``/``_need_admin_ui``/``_need_profile`` in
+  ``web/ui_api*.py`` voranstellen (u. a. Geräte, Betrieb und Einstellungen,
+  Benutzer- und Gruppenverwaltung, Urlaub, Modus-Sollwerte und Betriebsart eines Raums),
+  die Abwesenheit (nur Mieterprofil), einzelne Dashboard-Kacheln und -Ziele sowie
+  Außentemperatur und Anlagenbild in der Raumliste. Welche das genau sind, steht an den
+  Aufrufstellen, nicht hier.
+* **Grants** (``domain.authz``) beantworten *was tatsächlich erlaubt ist* und entscheiden
+  über alles Übrige -- zum Beispiel das Bearbeiten von Wochenplan-Zeiten, das allein am
+  Recht ``schedule.manage`` je Raum hängt.
 
 Das Profil ist ausdrücklich **keine** Berechtigung und ersetzt keine Prüfung. Ein
 Admin-Profil ohne ``user.manage`` kommt weiterhin nicht an die Benutzerverwaltung,
 und ein Mieter-Profil mit ``zone.read`` auf einer Zone sieht weiterhin genau diese
-eine Zone. Der Profil-Wächter (``web.guards``) liegt *vor* den Rechteprüfungen der
-Endpunkte, nicht an ihrer Stelle.
+eine Zone. Die Profilprüfung steht in den Endpunkten *vor* der Rechteprüfung, nicht an
+ihrer Stelle.
 
 Das Profil hängt an der Gruppe, nicht am Benutzer: thermoctl ordnet Benutzer schon
 heute Gruppen zu, und die Gruppe ist auch der Ort, an dem die Rechte hängen. Ein
@@ -24,7 +33,7 @@ from enum import Enum
 
 
 class WebUiProfile(Enum):
-    """Die zwei Oberflächen. Als Enum und nicht als Zeichenkette im Vergleich, damit
+    """Die zwei Profile. Als Enum und nicht als Zeichenkette im Vergleich, damit
     ein Tippfehler beim Vergleich auffällt statt still ``False`` zu ergeben."""
 
     ADMIN = "admin"

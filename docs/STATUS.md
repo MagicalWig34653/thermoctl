@@ -14,6 +14,12 @@ Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf
 
 Bestehende:
 
+- **UI-Profil als Sichtbarkeitssperre:** Das Zielbild der neuen Oberfläche war „Sichtbarkeit folgt allein den
+  Rechten". Das gilt heute nur für den Wochenplan (`schedule.manage` je Raum, Entscheidung des Projektinhabers
+  2026-10-16). Geräte, Betrieb und Einstellungen, Personen und Gruppen, Berichte, Urlaub und Modi prüft der Server
+  weiter zuerst am Gruppenprofil (`_require_admin_ui`/`_need_profile` in `thermoctl/web/ui_api*.py`, Navigation in
+  `thermoctl/web/navigation.py`); ein Konto mit Mieterprofil sieht diese Bereiche auch mit passendem Recht nicht. Das
+  ist das Verhalten seit 0.9.0 und bricht nichts. Offen: soll das Profil entfallen und allein das Recht entscheiden?
 - **Impressum der öffentlichen Seite** (`site/`, GitHub Pages): bewusst **offen gelassen** (Projektinhaber,
   2026-10-10). Für eine öffentliche Seite aus Deutschland kann ein Impressum nötig sein; es wurde nichts
   erfunden. Die Seite setzt keine Cookies, speichert nichts im Browser und stellt keine Anfragen an Dritte
