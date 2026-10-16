@@ -1,10 +1,10 @@
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
@@ -13,9 +13,9 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.domain.audit_query import list_audit
 from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.time import local_day_start_utc
 from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.guards import admin_ui_only
 
@@ -31,8 +31,6 @@ router = APIRouter(
     dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
     include_in_schema=False,
 )
-
-ENTRIES_PER_PAGE = 50
 
 
 def _datum(value: str, field: str, errors: dict[str, str]) -> date | None:
@@ -80,46 +78,20 @@ async def audit_list(
     # `local_day_start_utc` uses for `timezone_name=None`.
     timezone_name = getattr(session.get(Setting, 1), "timezone", None)
 
-    query = (
-        select(AuditEvent, ActorSource, User, ApiToken)
-        .join(ActorSource, ActorSource.id == AuditEvent.source_id)
-        .outerjoin(User, User.id == AuditEvent.actor_user_id)
-        .outerjoin(ApiToken, ApiToken.id == AuditEvent.actor_token_id)
-    )
-    if not errors:
-        if from_day is not None:
-            query = query.where(
-                AuditEvent.occurred_at >= local_day_start_utc(from_day, timezone_name)
-            )
-        if to_day is not None:
-            # An exclusive bound on the following local day includes the whole "to"
-            # day and avoids database-specific date functions.
-            next_day = local_day_start_utc(to_day + timedelta(days=1), timezone_name)
-            query = query.where(AuditEvent.occurred_at < next_day)
-        if user:
-            query = query.where(
-                or_(User.username == user, ApiToken.name == user)
-            )
-        if action_code:
-            query = query.where(AuditEvent.action == action_code)
-        if source:
-            query = query.where(ActorSource.code == source)
-        if object:
-            object_type, separator, object_id = object.partition(":")
-            query = query.where(AuditEvent.object_type == object_type)
-            if separator:
-                query = query.where(AuditEvent.object_id == object_id)
-
     entries: Sequence[Row[tuple[AuditEvent, ActorSource, User, ApiToken]]] = ()
     has_more = False
     if not errors:
-        rows = session.execute(
-            query.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
-            .offset((page_number - 1) * ENTRIES_PER_PAGE)
-            .limit(ENTRIES_PER_PAGE + 1)
-        ).all()
-        has_more = len(rows) > ENTRIES_PER_PAGE
-        entries = rows[:ENTRIES_PER_PAGE]
+        entries, has_more = list_audit(
+            session,
+            from_day=from_day,
+            to_day=to_day,
+            user=user,
+            action_code=action_code,
+            source=source,
+            object=object,
+            page=page_number,
+            timezone_name=timezone_name,
+        )
 
     sources = session.execute(
         select(ActorSource.code, ActorSource.label).order_by(ActorSource.label)

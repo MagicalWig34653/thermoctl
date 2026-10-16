@@ -56,8 +56,16 @@ from thermoctl.web.start_views import MINUTES_PER_DAY, zone_status_context
 class RoomApiError(Exception):
     """Ein erwarteter Fehlschlag, der als `{detail, code}` beim Aufrufer ankommt."""
 
-    def __init__(self, status_code: int, detail: str, code: str, field: str | None = None):
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: str,
+        field: str | None = None,
+        extra: dict[str, object] | None = None,
+    ):
         super().__init__(detail)
+        self.extra = extra
         self.status_code = status_code
         self.detail = detail
         self.code = code
@@ -80,9 +88,11 @@ class _RoomsRoute(APIRoute):
             try:
                 return await original(request)
             except RoomApiError as exc:
-                content: dict[str, str] = {"detail": exc.detail, "code": exc.code}
+                content: dict[str, object] = {"detail": exc.detail, "code": exc.code}
                 if exc.field is not None:
                     content["field"] = exc.field
+                if exc.extra is not None:
+                    content.update(exc.extra)
                 return JSONResponse(content, status_code=exc.status_code)
             except RequestValidationError:
                 return JSONResponse(

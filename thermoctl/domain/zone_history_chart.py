@@ -276,9 +276,19 @@ class Chart:
     wording: Wording = TECHNICAL
 
 
-def read_samples(session: Session, zone_id: int, start: datetime, end: datetime) -> list[Sample]:
-    """Liest ausschließlich die indizierten Spalten einer Zone im Zeitfenster."""
-    rows = session.execute(
+def read_samples(
+    session: Session,
+    zone_id: int,
+    start: datetime,
+    end: datetime,
+    limit: int | None = None,
+) -> list[Sample]:
+    """Liest ausschließlich die indizierten Spalten einer Zone im Zeitfenster.
+
+    `limit` begrenzt die Zeilenzahl hart (die ältesten zuerst); der Aufrufer, der ein
+    Überschreiten erkennen will, fragt `limit + 1` an.
+    """
+    query = (
         select(
             ShadowDecision.decided_at,
             ShadowDecision.temperature_c,
@@ -294,6 +304,9 @@ def read_samples(session: Session, zone_id: int, start: datetime, end: datetime)
         )
         .order_by(ShadowDecision.decided_at, ShadowDecision.id)
     )
+    if limit is not None:
+        query = query.limit(limit)
+    rows = session.execute(query)
     return [
         Sample(
             at,
