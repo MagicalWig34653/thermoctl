@@ -216,7 +216,7 @@ def _permissions_for_setup_wizard(
     `test_setup.py`, and through the same session as the test itself — the
     rows disappear again with its rollback.
     """
-    if request.node.fspath.basename != "test_setup.py":
+    if request.node.fspath.basename not in {"test_setup.py", "test_ui_api_auth.py"}:
         return
     # Das Setup benötigt auch das durch a0110b03c001 angelegte Vorgabeprofil.
     from decimal import Decimal

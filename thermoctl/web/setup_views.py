@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, get_session
 from thermoctl.auth.passwords import PasswordTooShort
-from thermoctl.setup import run_setup, setup_needed
+from thermoctl.setup import InvalidTimezone, run_setup, setup_needed
 from thermoctl.web import templates
-from thermoctl.web.forms import form_again, password_form_error
+from thermoctl.web.forms import FormError, form_again, password_form_error
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -63,6 +63,10 @@ async def setup(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except InvalidTimezone as exc:
+        return form_again(
+            request, "setup.html", form_values, FormError(field="timezone", notice=str(exc))
+        )
     except PasswordTooShort as exc:
         # Input that's too short is a user form error, not a fault of the service --
         # back to the form with an understandable message instead of 500.

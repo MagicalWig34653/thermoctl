@@ -24,6 +24,14 @@ export function isKioskPath(pathname: string, prefix: string): boolean {
   return path === '/kiosk';
 }
 
+/** Die Ersteinrichtung (`{prefix}/app/setup`) ist wie der Kiosk eine eigenständige Ansicht ohne
+ *  Hülle und ohne Bootstrap: Es gibt zu dem Zeitpunkt noch keinen Benutzer. `main.ts` wählt sie
+ *  vor allem anderen; Verweise der Hauptanwendung führen nur per Neuladen dorthin. */
+export function isSetupPath(pathname: string, prefix: string): boolean {
+  const { path } = splitTarget(relativePath(pathname, prefix));
+  return path === '/setup';
+}
+
 /** Vollständige Browseradresse einer Ansicht der Oberfläche. */
 export function appHref(prefix: string, to: string): string {
   const target = to.startsWith('/') ? to : `/${to}`;
@@ -55,7 +63,7 @@ export function internalTarget(href: string, prefix: string, origin: string): st
   if (url.origin !== origin) return null;
   const base = `${prefix}${APP_SEGMENT}`;
   if (url.pathname !== base && !url.pathname.startsWith(`${base}/`)) return null;
-  if (isKioskPath(url.pathname, prefix)) return null;
+  if (isKioskPath(url.pathname, prefix) || isSetupPath(url.pathname, prefix)) return null;
   return `${relativePath(url.pathname, prefix)}${url.search}${url.hash}`;
 }
 

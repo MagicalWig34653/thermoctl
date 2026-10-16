@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,6 +57,20 @@ SETUP_TOKEN_LIFETIME = timedelta(hours=1)
 BUILTIN_MODES = [("tag", "Tag", 0), ("nacht", "Nacht", 1), ("frostschutz", "Frostschutz", 2)]
 
 
+class InvalidTimezone(ValueError):
+    """The timezone name is not one the system knows -- a correctable input."""
+
+
+def _check_timezone(name: str) -> None:
+    # An unknown name stored in the settings would make every later `ZoneInfo(...)`
+    # call (schedule, history) fail; it is cheaper to refuse it here, before anything
+    # is written. `ZoneInfo` also rejects absolute or path-like keys with ValueError.
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise InvalidTimezone("Diese Zeitzone ist nicht bekannt.") from exc
+
+
 def setup_needed(session: Session) -> bool:
     return session.scalar(select(User.id).limit(1)) is None
 
@@ -97,6 +112,7 @@ def run_setup(
     # view deliberately catches PasswordTooShort; later writes must therefore not
     # accidentally get committed as if the request had succeeded.
     password_hash = hash_password(password)
+    _check_timezone(timezone_name)
     default_profile_id = migration_default_profile_id(session)
 
     for code, name, order in BUILTIN_MODES:

@@ -72,3 +72,13 @@ test('resolveRoute: Raumdetail unter /raeume/{id}', () => {
   assert.equal(resolveRoute('/raeume/12/x', []).kind, 'notfound');
   assert.equal(resolveRoute('/raeume', []).kind, 'notfound');
 });
+
+test('isSetupPath: nur /app/setup mit Grenzprüfung; Verweise der Hauptanwendung führen nicht ohne Neuladen dorthin', async () => {
+  const { isSetupPath, internalTarget } = await import('../src/lib/paths.ts');
+  assert.equal(isSetupPath('/app/setup', ''), true);
+  assert.equal(isSetupPath('/ing/app/setup/', '/ing'), true);
+  assert.equal(isSetupPath('/app/setup2', ''), false);
+  assert.equal(isSetupPath('/app/zonen', ''), false);
+  assert.equal(isSetupPath('/setup', ''), false);
+  assert.equal(internalTarget('http://h/app/setup', '', 'http://h'), null);
+});

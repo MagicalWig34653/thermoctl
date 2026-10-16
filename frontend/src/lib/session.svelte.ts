@@ -5,6 +5,7 @@
 // steht dieselbe Ansicht wieder da.
 
 import { ApiError, type Api } from './api';
+import { replyTarget, type LoginReply } from './auth/target';
 import type { ServerNavItem } from './navigation';
 
 export interface Bootstrap {
@@ -65,15 +66,36 @@ export function createSession(api: Api) {
     }
   }
 
-  async function login(username: string, password: string): Promise<string | null> {
-    try {
-      await api.post('/ui-api/login', { username, password });
-    } catch (error) {
-      return loginMessage(error);
-    }
+  /** Übernimmt eine soeben eröffnete Sitzung (Cookie ist gesetzt): Bootstrap laden.
+   *  Liefert null bei Erfolg, sonst die Meldung. */
+  async function finishLogin(): Promise<string | null> {
     notice = null;
     await load();
     return status === 'ready' ? null : (failure ?? MESSAGES.loginFailed);
+  }
+
+  /** Meldet mit Passwort an. `returnTo` ist nur ein Wunsch; zurück kommt das vom Server
+   *  bestätigte Ziel (oder null). Bei Erfolg ist `error` null. */
+  async function login(
+    username: string,
+    password: string,
+    returnTo: string | null = null,
+  ): Promise<{ error: string | null; target: string | null }> {
+    let target: string | null = null;
+    try {
+      const reply = await api.post<LoginReply>('/ui-api/login', {
+        username,
+        password,
+        ...(returnTo !== null ? { return_to: returnTo } : {}),
+      });
+      target = replyTarget(reply);
+    } catch (error) {
+      return { error: loginMessage(error), target: null };
+    }
+    // Mit bestätigtem Ziel verlässt die Seite die Oberfläche gleich (Voll-Seitenwechsel);
+    // den Bootstrap braucht dann niemand mehr.
+    if (target !== null) return { error: null, target };
+    return { error: await finishLogin(), target: null };
   }
 
   /** Meldet ab; liefert eine Fehlermeldung, wenn der Server nicht geantwortet hat. */
@@ -106,6 +128,7 @@ export function createSession(api: Api) {
     },
     load,
     login,
+    finishLogin,
     logout,
     expire,
   };
