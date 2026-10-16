@@ -230,6 +230,26 @@ Jede Zeile: Alttest -> was keine neue Prüfung hat. Rechte-, Sichtbarkeits- und 
 | `test_zone_views` | the_delete_confirmation_names_every_dependency | Lücke: UAZ::test_delete_impact_counts_what_goes_with_the_room prüft nur setpoints=1 (übrige Zähler 0); Zähler schedule_points, devices, overrides, shadow_decisions werden nie > 0 geprüft; auch nicht mit zonengebundenem manage (nur anlagenweit). Funktion vorhanden (delete-impact liefert alle fünf). Typ: Test |
 | `test_zone_views` | the_empty_zone_form_needs_an_installation_wide_permission | Lücke: GET /ui-api/room-form ohne zone_id mit nur zonengebundenem zone.manage -> 403 ist nicht getestet (nur POST /ui-api/rooms in test_manage_on_another_zone_does_not_reach_this_zone und GET mit nur zone.read); anlagenweit 200 gedeckt (UAZ::test_form_options_for_a_new_room). Code: _need in room_form ist anlagenweit. Typ: Test |
 
+## Blocker vor dem Löschen (Funktionsparität)
+
+Strenger Nachweis, Prüfung 2026-10-16, Einzelheiten und Belege je Funktion in `FUNKTIONSMATRIX.md`, Abschnitt „Funktionsparität je Alt-Seite“ (118 Funktionen: 80 vorhanden, 13 bewusst anders, 17 teilweise, 8 fehlt). Freigabe des Projektinhabers gilt nur, „wenn wirklich alle Funktionen in der neuen UI verfügbar sind“: Die folgenden Punkte sind die echten Lücken (keine Tests), nach Aufwand sortiert, kleinster zuerst. Punkt 8 ist sicherheitsrelevant (Grundsatz 7).
+
+| Nr | Aufwand | Lücke | Alt-Funktion (Datei) |
+|---|---|---|---|
+| 1 | klein | Homebridge „Konfiguration kopieren“ mit Rückmeldung und Auswahl-Fallback; Dauerwarnung „Platzhalter-Zugangsdaten“ auch bei gesetztem Broker | `static/homebridge_copy.js`, `templates/interfaces.html` |
+| 2 | klein | Schaltprotokoll: Kennzeichnung Befehl / Entscheidung / Absenkung und Erklärtext (`kind` kommt schon vom Server) | `templates/device_commands.html`, `device_commands_views.py` |
+| 3 | klein | Relaisverschleiß: Tagestabelle, „% der Lebensdauer je Jahr“, Definition Schaltspiel, Link zum Schaltprotokoll (Daten kommen schon) | `templates/relay_wear.html`, `report_views.py` |
+| 4 | klein | Gerätekarte: „Alle einklappen / Alle ausklappen“ | `templates/mapping_map.html`, `static/mapping_map.js` |
+| 5 | klein | Hinweis- und Leerzustandstexte: Modus löschen („Sollwerte werden mitgelöscht“), Frostschutz bei leerem Plan, „Noch kein Gerät bekannt“ mit MQTT-Hinweis, Urlaub-Erklärtext, „Mindestens 12 Zeichen“ / „Benutzername unveränderlich“ / „Ohne Gruppe keine Rechte“, Räume-Liste mit Sortierwert und Links | `templates/mode_delete.html`, `schedule.html`, `devices.html`, `vacation.html`, `users.html`, `zones.html` |
+| 6 | klein | Rechte-Matrix: Raumfelder sperren, wenn das Recht anlagenweit gilt | `static/permissions.js`, `templates/groups.html` |
+| 7 | klein bis mittel | Bediengeräte: „Letzter Wert“ mit Alter je lesbarem Merkmal (Server liefert ihn nicht: `ui_api_devices.py` plus Seite) | `templates/controllers.html`, `controller_views.py` |
+| 8 | mittel | Startseite: dauerhafte Anlagenhinweise wie im Alt-System: Aktorfreigabe (Scharf / Neustart fehlt / Trockenlauf), MQTT-Ausgabe, Verbundrolle, Brücke nicht erreichbar, Sammelchips Kein Messwert / Messwert unverändert / Fenster vergessen, Urlaub läuft; Mieter: „Heizung läuft normal“; Leerzustand „Erste Zone anlegen“. Heute ist `comp/rooms/ActuationPanel.svelte` unbenutzt und die Kachel `system` nicht im Standard-Layout | `templates/start.html`, `tenant_start.html`, `start_views.py` |
+| 9 | mittel | Raumkontext: Sprunglinks aus dem Raumdetail zu Zeitplan, Geräten, Datenfluss und Raumvorwahl über die Adresse (`?zone=`); Direktlinks `?period=`, `?zone=`, `?ansicht=`, Glossar-Fragment werden von den Umleitungen und der Oberfläche heute verworfen | `templates/zone_header.html`, `schedule_views.py`, `templates/tenant_schedule.html`, `zones_history_body.html`, `kiosk_views.py`, `legacy_redirects.py` |
+| 10 | mittel | Mieter „Einrichten“: zwei Zeiten für leeren Tag mit vorgeschlagenen Zeiten und vereinfachtes Zwei-Zeiten-Bearbeiten (bekannt offen) | `templates/tenant_schedule.html`, `tenant_views.py` |
+| 11 | klein (Aufräumen) | Verweise der Oberfläche auf Alt-Pfade auf `/app/...` umstellen (`more` in `domain/interfaces.py`: /devices, /tokens, /passkeys, /control; `legacyHref` in `AreaView.svelte`, `Placeholder.svelte`, `ConnectionsPage.svelte`); sie funktionieren heute nur über die Umleitung | `domain/interfaces.py`, `frontend/src/lib/views/AreaView.svelte` |
+
+Nicht als Blocker gewertet (begründet anders): Ziehen von Gerätekarten (`assignment.js`) ersetzt durch Auswahlfelder, Zeit-malen-Formular durch Ziehen und Inspektor, Mermaid durch SVG, globale Ladeanzeige durch lokale Ladezustände, Passkey-Autofill (Entscheidung Auth-Flows), OAuth-Zustimmung bleibt serverseitig.
+
 ## 9. Alle Zuordnungen im Einzelnen
 
 ### tests/test_account_views.py (2)
