@@ -1,0 +1,126 @@
+/* Dashboard: Raster, Anpassungsmodus, dezente Glasflächen. Text bleibt immer deckend. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+  container-type: inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dash-tile {
+  grid-column: span 12;
+  min-width: 0;
+  position: relative;
+}
+.dash-tile[data-w='3'] {
+  grid-column: span 6;
+}
+@container (min-width: 560px) {
+  .dash-tile[data-w='3'],
+  .dash-tile[data-w='4'],
+  .dash-tile[data-w='6'] {
+    grid-column: span 6;
+  }
+}
+@container (min-width: 900px) {
+  .dash-tile[data-w='3'] {
+    grid-column: span 3;
+  }
+  .dash-tile[data-w='4'] {
+    grid-column: span 4;
+  }
+  .dash-tile[data-w='8'] {
+    grid-column: span 8;
+  }
+}
+
+/* Leiste im Anpassungsmodus: haftet oben, dezent verglast. */
+.dash-bar {
+  position: relative;
+  z-index: 20;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+  backdrop-filter: blur(16px) saturate(1.1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl, 0.75rem);
+}
+/* Nur wo Platz ist, haftet die Leiste; auf dem Telefon würde sie den Bildschirm verdecken. */
+@media (min-width: 768px) and (min-height: 640px) {
+  .dash-bar {
+    position: sticky;
+    top: 0.5rem;
+  }
+}
+/* Galerie: verglaste Fläche, Karten bleiben deckend. */
+.dash-gallery {
+  background: color-mix(in srgb, var(--background) 90%, transparent) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+  backdrop-filter: blur(26px) saturate(1.2);
+}
+.dash-edit-frame {
+  border: 1.5px dashed color-mix(in srgb, var(--foreground) 28%, transparent);
+  border-radius: var(--radius-xl, 0.75rem);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.dash-handle {
+  touch-action: none;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dash-dragging {
+  opacity: 0.45;
+}
+.dash-tile[data-drop='before']::before,
+.dash-tile[data-drop='after']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border-radius: 3px;
+  background: var(--ui-accent, var(--primary));
+  z-index: 5;
+}
+.dash-tile[data-drop='before']::before {
+  left: -0.7rem;
+}
+.dash-tile[data-drop='after']::after {
+  right: -0.7rem;
+}
+.dash-section[data-drop='end'] > .dash-grid {
+  box-shadow: 0 6px 0 -1px var(--ui-accent, var(--primary));
+}
+.dash-section[data-drop='section-before'] {
+  box-shadow: 0 -6px 0 -1px var(--ui-accent, var(--primary));
+}
+.dash-section[data-drop='section-after'] {
+  box-shadow: 0 6px 0 -1px var(--ui-accent, var(--primary));
+}
+.dash-flash {
+  animation: dash-flash 1.6s ease-out 1;
+}
+@keyframes dash-flash {
+  from {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent, var(--primary)) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.dash-slot {
+  border: 1.5px dashed var(--ui-accent, var(--primary));
+  background: color-mix(in srgb, var(--ui-accent, var(--primary)) 14%, transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dash-bar,
+  .dash-gallery {
+    background: var(--background) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .dash-gallery {
+    background: var(--background) !important;
+  }
+}
