@@ -1,20 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Block } from '../src/lib/schedule/geometry.ts';
 import { clockValue, exactTimes, nudge, parseClock, toDay } from '../src/lib/schedule/inspector.ts';
-import { describeIntent, ghostOf, isNoop, selectionAfter, type Intent } from '../src/lib/schedule/intents.ts';
+import { describeIntent, ghostOf, isNoop, range, selectionAfter, type Intent } from '../src/lib/schedule/intents.ts';
 import { localClock, stripParts, zoneLabel } from '../src/lib/schedule/format.ts';
 
-const block = (weekday: number, start: number, end: number): Block => ({
-  weekday,
-  start,
-  end,
-  modeId: 1,
-  modeName: 'Tag',
-  warmth: 0.8,
-  temperatureC: null,
-  carry: false,
-});
+import { ring } from './schedule-fixture.ts';
 
 test('Uhrzeiten: Mitternacht als Ende', () => {
   assert.equal(parseClock('07:30'), 450);
@@ -28,63 +18,80 @@ test('Uhrzeiten: Mitternacht als Ende', () => {
   assert.equal(clockValue(450), '07:30');
 });
 
-test('Exakte Zeiten halten Spielraum und Mindestdauer ein', () => {
-  const a = block(1, 420, 540);
-  const b = block(1, 600, 720);
-  const ok = exactTimes(a, [a, b], 400, 590);
-  assert.deepEqual(ok, { intent: { type: 'resize', block: a, newStart: 400, newEnd: 590, adjacent: false } });
-  const hit = exactTimes(a, [a, b], 400, 610);
-  assert.ok('error' in hit && /bereits/.test(hit.error));
-  assert.ok('error' in exactTimes(a, [a, b], 500, 500));
-  assert.ok('error' in exactTimes(a, [a, b], 500.5, 560));
-  const toMidnight = exactTimes(b, [a, b], 600, 1440);
-  assert.ok('intent' in toMidnight);
-});
+// Di 07:00 „Tag“ (120 Minuten), Di 09:00 „Nacht“ (Rest der Woche), Do 12:00 „Komfort“ (bis Di 07:00).
+const [tag, nacht, komfort] = ring([
+  [2, 420, 1],
+  [2, 540, 2],
+  [4, 720, 3],
+]);
+const plan = [tag, nacht, komfort];
 
-test('Exakte Zeiten an einer angrenzenden Grenze schieben den Nachbarn mit', () => {
-  const a = block(1, 420, 540);
-  const b = { ...block(1, 540, 720), modeId: 2 };
-  const moved = exactTimes(a, [a, b], 420, 600);
-  assert.deepEqual((moved as { intent: { adjacent: boolean } }).intent.adjacent, true);
-  const tooFar = exactTimes(a, [a, b], 420, 719);
+test('Exakte Zeiten: eine Kante, im Spielraum, mit gemeinsamer Kante', () => {
+  const later = exactTimes(tag, plan, 420, 580);
+  assert.deepEqual(later, { intent: { type: 'resize', block: tag, newStart: 420, newEnd: 580, adjacent: true } });
+  const earlier = exactTimes(tag, plan, 400, 540);
+  assert.deepEqual(earlier, { intent: { type: 'resize', block: tag, newStart: 400, newEnd: 540, adjacent: true } });
+  // Beide Kanten auf einmal: der Server ändert immer nur eine.
+  assert.ok('error' in exactTimes(tag, plan, 400, 560));
+  // Kürzer als 5 Minuten.
+  assert.ok('error' in exactTimes(tag, plan, 420, 421));
+  assert.ok('error' in exactTimes(tag, plan, 420.5, 560));
+  // Das Ende von „Tag“ darf den Nachbarn „Nacht“ bis 5 Minuten vor den Beginn von „Komfort“ (Do 12:00 = 3600 ab Di) verdrängen.
+  assert.ok('intent' in exactTimes(tag, plan, 420, 3595));
+  const tooFar = exactTimes(tag, plan, 420, 3600);
   assert.ok('error' in tooFar && /5 Minuten/.test(tooFar.error));
 });
 
+test('Block über Mitternacht: Ende liegt am Folgetag und zählt über 1440', () => {
+  const [late, rest] = ring([
+    [2, 1380, 1],
+    [3, 360, 2],
+  ]);
+  assert.equal(late.end, 1380 + 420);
+  const ok = exactTimes(late, [late, rest], 1380, 1860);
+  assert.ok('intent' in ok && ok.intent.type === 'resize' && ok.intent.newEnd === 1860);
+});
+
 test('Nudge und Tagwechsel', () => {
-  const a = block(1, 420, 540);
-  const n = nudge(a, [a], 'end', 15);
+  const n = nudge(tag, plan, 'end', 15);
   assert.equal((n as { intent: { newEnd: number } }).intent.newEnd, 555);
-  assert.ok('error' in nudge(a, [a], 'start', -500));
-  const other = block(3, 400, 600);
-  assert.ok('error' in toDay(a, [a, other], 3, false));
-  assert.ok('error' in toDay(a, [a], 1, false));
-  assert.deepEqual(toDay(a, [a], 1, true), { error: 'Hier ist bereits eine Zeit geplant.' });
-  assert.deepEqual(toDay(a, [a], 2, true), {
-    intent: { type: 'duplicate', block: a, toWeekday: 2, toStart: 420 },
+  assert.ok('error' in nudge(tag, plan, 'start', -20000));
+  assert.ok('error' in toDay(tag, plan, 2, false)); // bereits dieser Tag
+  // Mittwoch 07:00: mitten in der „Nacht“, nichts beginnt dort -> frei.
+  assert.deepEqual(toDay(tag, plan, 3, false), { intent: { type: 'move', block: tag, toWeekday: 3, toStart: 420 } });
+  // Donnerstag 07:00..09:00: frei (Komfort beginnt erst 12:00); Do 11:30 würde ihn überdecken.
+  const [x, y, z] = ring([[2, 690, 1], [2, 810, 2], [4, 720, 3]]);
+  assert.deepEqual(toDay(x, [x, y, z], 4, true), { error: 'Dort beginnt bereits ein anderer Zeitbereich.' });
+  assert.deepEqual(toDay(tag, plan, 2, true), { error: 'Dort beginnt bereits ein anderer Zeitbereich.' });
+  assert.deepEqual(toDay(tag, plan, 6, true), {
+    intent: { type: 'duplicate', block: tag, toWeekday: 6, toStart: 420 },
   });
 });
 
 test('Ghost und Auswahl nach der Absicht', () => {
-  const a = block(2, 420, 540);
-  const move: Intent = { type: 'move', block: a, toWeekday: 4, toStart: 600 };
-  assert.deepEqual(ghostOf(move), { weekday: 4, start: 600, end: 720, source: a, label: 'Wird gespeichert' });
-  const dup = ghostOf({ type: 'duplicate', block: a, toWeekday: 4, toStart: 600 });
+  const move: Intent = { type: 'move', block: tag, toWeekday: 5, toStart: 600 };
+  assert.deepEqual(ghostOf(move), { weekday: 5, start: 600, end: 720, source: tag, label: 'Wird gespeichert' });
+  const dup = ghostOf({ type: 'duplicate', block: tag, toWeekday: 5, toStart: 600 });
   assert.equal(dup?.source, null);
   assert.equal(ghostOf({ type: 'copyDay', weekday: 1, scope: 'all' }), null);
-  assert.equal(ghostOf({ type: 'delete', block: a })?.label, 'Wird entfernt');
-  assert.deepEqual(selectionAfter(move), { weekday: 4, start: 600, end: 720 });
-  assert.deepEqual(selectionAfter({ type: 'resize', block: a, newStart: 400, newEnd: 560, adjacent: false }), {
-    weekday: 2,
-    start: 400,
-    end: 560,
+  assert.equal(ghostOf({ type: 'delete', block: tag })?.label, 'Wird entfernt');
+  assert.deepEqual(selectionAfter(move), { weekday: 5, start: 600, end: 720 });
+  // Vor Mitternacht beginnen: der Beginn rutscht auf den Vortag.
+  assert.deepEqual(selectionAfter({ type: 'resize', block: tag, newStart: -60, newEnd: 540, adjacent: true }), {
+    weekday: 1,
+    start: 1380,
+    end: 1380 + 600,
   });
-  assert.equal(selectionAfter({ type: 'delete', block: a }), null);
-  assert.equal(isNoop({ type: 'move', block: a, toWeekday: 2, toStart: 420 }), true);
-  assert.equal(isNoop({ type: 'resize', block: a, newStart: 420, newEnd: 540, adjacent: false }), true);
+  assert.equal(selectionAfter({ type: 'delete', block: tag }), null);
+  assert.deepEqual(selectionAfter({ type: 'setMode', block: tag, pointId: 1, modeId: 2 }), tag);
+  assert.equal(isNoop({ type: 'move', block: tag, toWeekday: 2, toStart: 420 }), true);
+  assert.equal(isNoop({ type: 'resize', block: tag, newStart: 420, newEnd: 540, adjacent: false }), true);
   assert.equal(isNoop(move), false);
-  assert.match(describeIntent(move), /Verschoben nach Donnerstag, 10:00 bis 12:00/);
+  assert.match(describeIntent(move), /Verschoben nach Freitag, 10:00 bis 12:00/);
   assert.match(describeIntent({ type: 'copyDay', weekday: 6, scope: 'workdays' }), /Samstag kopiert \(Montag bis Freitag\)/);
-  assert.match(describeIntent({ type: 'delete', block: a }), /Dienstag, 07:00 bis 09:00/);
+  assert.match(describeIntent({ type: 'delete', block: tag }), /Dienstag, 07:00 bis 09:00/);
+  assert.match(describeIntent({ type: 'delete', block: nacht }), /Dienstag, 09:00 bis Donnerstag 12:00/);
+  assert.match(range({ weekday: 7, start: 1380, end: 1500 }), /Sonntag, 23:00 bis Montag 01:00/);
 });
 
 test('Vorschau: Anteile summieren sich auf 100 und die Uhrzeit bleibt lokal', () => {

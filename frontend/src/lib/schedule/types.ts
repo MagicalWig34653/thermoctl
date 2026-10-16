@@ -15,7 +15,7 @@ export interface PlanSegment {
   end_minute: number;
   mode_id: number;
   mode_name: string;
-  /** Schaltpunkt, der den Balken beginnt; `null` für den Rest vom Vortag. */
+  /** Schaltpunkt, der den Balken beginnt; `null` für den Rest eines Blocks, der von davor herüberreicht. */
   point_id: number | null;
   temperature_c: string | null;
   warmth: number;
@@ -52,8 +52,8 @@ export interface Plan {
 /** Antwort auf eine Schreibabsicht: der neue Stand und die Rücknahme-Marke(n). */
 export interface PlanChange extends Plan {
   changed: boolean;
-  /** Marken, in der Reihenfolge, in der sie zurückzunehmen sind (zuletzt entstandene zuerst). */
-  undo_tokens: string[];
+  /** Marke für den nächsten Rücknahme-Schritt; `null`, wenn es nichts (mehr) zurückzunehmen gibt. */
+  undo_token: string | null;
 }
 
 export interface ForecastSegment {

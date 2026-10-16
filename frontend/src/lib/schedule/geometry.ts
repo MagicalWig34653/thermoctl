@@ -4,10 +4,18 @@
 // Das hier ist ausschließlich Vorschau und Bedienhilfe. Ob eine Änderung gilt, welche
 // Schaltpunkte daraus werden und wie Sommerzeit oder Überschneidungen behandelt werden, entscheidet
 // allein der Server (`domain.schedule`); jede Absicht geht dorthin und kommt als Plan zurück.
+//
+// Modell des Servers: Der Plan ist ein lückenloser RING von Schaltpunkten. Ein Block ist der Lauf
+// von einem Schaltpunkt bis zum nächsten; er darf über Mitternacht und die Wochennaht reichen
+// (`end` zählt dann über 1440 hinaus, höchstens `start + 10080`). Es gibt keinen „Grundmodus“ und
+// keine Lücken. „Frei“ heißt: im Zielbereich beginnt kein anderer Block.
 
-import type { PlanMode, PlanSegment } from './types';
+import type { PlanSegment } from './types';
 
 export const DAY_END = 1440;
+export const WEEK = 7 * 1440;
+/** Blöcke unter dieser Länge (ein Tagesabschnitt) zieht man mit der Maus; längere sind Hintergrund. */
+export const DRAG_MAX = 720;
 /** Raster der Bedienung in Minuten (Einrasten beim Ziehen). */
 export const SNAP = 5;
 export const MIN_BLOCK = 5;
@@ -35,20 +43,33 @@ export const DAY_SHORT: Record<number, string> = {
   7: 'So',
 };
 
+/** Adresse eines Blocks wie beim Server: Wochentag, Beginn (0..1439) und Ende (`end` > 1440 möglich). */
 export interface BlockRef {
   weekday: number;
   start: number;
   end: number;
 }
 
-/** Ein bearbeitbarer Zeitbereich: ein Balken der Woche, dessen Modus nicht der Grundmodus ist. */
+/** Der Teil eines Blocks, der auf einen Wochentag fällt (Tagesspur), `end` höchstens 1440. */
+export interface Piece {
+  weekday: number;
+  start: number;
+  end: number;
+  /** Beginn des Blocks (hier sitzt der Schaltpunkt; nur hier lässt er sich greifen). */
+  first: boolean;
+  /** Ende des Blocks. */
+  last: boolean;
+}
+
+/** Ein Block des Plans: Lauf von einem Schaltpunkt bis zum nächsten, in Tagesstücke geschnitten. */
 export interface Block extends BlockRef {
+  /** Schaltpunkt, der den Block beginnt. */
+  pointId: number;
   modeId: number;
   modeName: string;
   warmth: number;
   temperatureC: string | null;
-  /** Rest, der vom Vortag herüberreicht (kein eigener Schaltpunkt): nicht ziehbar. */
-  carry: boolean;
+  pieces: Piece[];
 }
 
 /** Ergebnis einer Geste oder Tastenabsicht, bevor sie gesendet wird. */
@@ -57,17 +78,18 @@ export interface Shape extends BlockRef {
   reason: string;
   /** Die Quelle bleibt unverändert und die Form entsteht daneben (Alt + Ziehen). */
   copy?: boolean;
-  /** Eine Modusgrenze zu einem unmittelbar angrenzenden Bereich wird gemeinsam verschoben. */
+  /** Die gemeinsame Kante zum angrenzenden Block wandert mit (Server: `adjacent`). */
   adjacent?: boolean;
 }
 
-export const OCCUPIED = 'Hier ist bereits eine Zeit geplant.';
+export const OCCUPIED = 'Dort beginnt bereits ein anderer Zeitbereich.';
 
 export const refOf = (b: BlockRef): BlockRef => ({ weekday: b.weekday, start: b.start, end: b.end });
 export const sameRef = (a: BlockRef, b: BlockRef): boolean =>
   a.weekday === b.weekday && a.start === b.start && a.end === b.end;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const mod = (v: number, m: number) => ((v % m) + m) % m;
 
 /** Auf das Raster einrasten (Standard 5 Minuten). */
 export function snapMinute(minute: number, step: number = SNAP): number {
@@ -93,69 +115,101 @@ export function dayAt(
   return rows.find((r) => y >= r.top && y <= r.bottom)?.weekday ?? null;
 }
 
-/**
- * Grundmodus = „freie Zeit“: der kälteste Modus. Der Server kennt kein „frei“; die Oberfläche
- * zeichnet nur die wärmeren Bereiche als Blöcke. Bei Gleichstand gilt der erste der Liste.
- */
-export function baseModeId(modes: readonly PlanMode[]): number | null {
-  let best: PlanMode | null = null;
-  for (const mode of modes) {
-    if (best === null || mode.warmth < best.warmth) best = mode;
-  }
-  return best?.id ?? null;
+/** Minute der Woche (0..10079) eines Wochentags (1..7) und einer Minute (auch außerhalb 0..1440). */
+export const weekMinute = (weekday: number, minute: number): number => mod((weekday - 1) * DAY_END + minute, WEEK);
+
+/** Beginn eines Blocks als Minute der Woche. */
+export const absOf = (r: BlockRef): number => weekMinute(r.weekday, r.start);
+
+/** Wochentag und Minute (0..1439) zu einer Minute der Woche. */
+export function dayMinute(week: number): { weekday: number; minute: number } {
+  const w = mod(week, WEEK);
+  return { weekday: Math.floor(w / DAY_END) + 1, minute: w % DAY_END };
 }
 
-/** Alle Balken der Woche, die nicht der Grundmodus sind, nach Tag und Beginn geordnet. */
-export function blocksOf(segments: readonly PlanSegment[], base: number | null): Block[] {
-  return segments
-    .filter((s) => s.mode_id !== base && s.end_minute > s.start_minute)
-    .map((s) => ({
-      weekday: s.weekday,
-      start: s.start_minute,
-      end: s.end_minute,
-      modeId: s.mode_id,
-      modeName: s.mode_name,
-      warmth: s.warmth,
-      temperatureC: s.temperature_c,
-      carry: s.point_id === null,
-    }))
-    .sort((a, b) => a.weekday - b.weekday || a.start - b.start);
+/** Adresse eines Bereichs, normalisiert (Beginn 0..1439, Wochentag entsprechend verschoben). */
+export function normalizeRef(weekday: number, start: number, end: number): BlockRef {
+  const { weekday: w, minute } = dayMinute(weekMinute(weekday, start));
+  return { weekday: w, start: minute, end: minute + (end - start) };
+}
+
+/** Einen (ggf. über Mitternacht reichenden) Bereich in Tagesstücke schneiden. */
+export function splitRange(weekday: number, start: number, end: number): Piece[] {
+  const out: Piece[] = [];
+  const ref = normalizeRef(weekday, start, end);
+  let day = ref.weekday;
+  let from = ref.start;
+  let left = Math.min(ref.end - ref.start, WEEK);
+  let first = true;
+  while (left > 0) {
+    const take = Math.min(DAY_END - from, left);
+    left -= take;
+    out.push({ weekday: day, start: from, end: from + take, first, last: left === 0 });
+    first = false;
+    day = day === 7 ? 1 : day + 1;
+    from = 0;
+  }
+  return out;
+}
+
+/**
+ * Die Blöcke des Plans aus den Balken des Servers (Tagesstücke): ein Balken mit `point_id` beginnt
+ * einen Block, die folgenden ohne `point_id` (Rest vom Vortag, auch über die Wochennaht) gehören
+ * dazu. Was der Server liefert, ist die Wahrheit: es entsteht nichts dazu, nichts fällt weg.
+ */
+export function blocksOf(segments: readonly PlanSegment[]): Block[] {
+  const list = segments
+    .filter((s) => s.end_minute > s.start_minute)
+    .slice()
+    .sort((a, b) => a.weekday - b.weekday || a.start_minute - b.start_minute);
+  const heads = list.map((s, i) => (s.point_id !== null ? i : -1)).filter((i) => i >= 0);
+  const blocks: Block[] = [];
+  for (const i of heads) {
+    const head = list[i];
+    const group = [head];
+    for (let k = 1; k < list.length; k += 1) {
+      const next = list[(i + k) % list.length];
+      if (next.point_id !== null) break;
+      group.push(next);
+    }
+    const length = group.reduce((sum, s) => sum + (s.end_minute - s.start_minute), 0);
+    blocks.push({
+      weekday: head.weekday,
+      start: head.start_minute,
+      end: head.start_minute + length,
+      pointId: head.point_id as number,
+      modeId: head.mode_id,
+      modeName: head.mode_name,
+      warmth: head.warmth,
+      temperatureC: head.temperature_c,
+      pieces: group.map((s, k) => ({
+        weekday: s.weekday,
+        start: s.start_minute,
+        end: s.end_minute,
+        first: k === 0,
+        last: k === group.length - 1,
+      })),
+    });
+  }
+  return blocks.sort((a, b) => a.weekday - b.weekday || a.start - b.start);
 }
 
 export function findBlock(blocks: readonly Block[], ref: BlockRef | null): Block | null {
   return ref ? (blocks.find((b) => sameRef(b, ref)) ?? null) : null;
 }
 
-/** Block, der die Minute überdeckt. */
+/** Block, der an diesem Wochentag zu dieser Minute beginnt (Beginn genügt, das Ende kann sich geändert haben). */
+export function blockStartingAt(blocks: readonly Block[], ref: BlockRef | null): Block | null {
+  return ref ? (blocks.find((b) => b.weekday === ref.weekday && b.start === ref.start) ?? null) : null;
+}
+
+/** Block, der die Minute (eines Wochentags) überdeckt. */
 export function blockAt(blocks: readonly Block[], weekday: number, minute: number): Block | null {
-  return blocks.find((b) => b.weekday === weekday && b.start <= minute && minute < b.end) ?? null;
+  const at = weekMinute(weekday, minute);
+  return blocks.find((b) => mod(at - absOf(b), WEEK) < b.end - b.start) ?? null;
 }
 
-/** Block, der den Bereich [start, end) ganz enthält (um nach einer Änderung neu zu markieren). */
-export function blockCovering(
-  blocks: readonly Block[],
-  weekday: number,
-  start: number,
-  end: number,
-): Block | null {
-  return blocks.find((b) => b.weekday === weekday && b.start <= start && b.end >= end) ?? null;
-}
-
-/** Freie Lücke (zwischen Blöcken) um eine Minute, sonst null wenn dort ein Block liegt. */
-export function gapAround(
-  blocks: readonly Block[],
-  weekday: number,
-  minute: number,
-): { start: number; end: number } | null {
-  const m = clamp(minute, 0, DAY_END - 1);
-  if (blockAt(blocks, weekday, m)) return null;
-  const day = blocks.filter((b) => b.weekday === weekday);
-  const before = day.filter((b) => b.end <= m).reduce((acc, b) => Math.max(acc, b.end), 0);
-  const after = day.filter((b) => b.start > m).reduce((acc, b) => Math.min(acc, b.start), DAY_END);
-  return { start: before, end: after };
-}
-
-/** Der erste Block, der [start, end) am Wochentag überschneidet (ohne `except`). */
+/** Der erste Block (ohne `except`), der innerhalb von [start, start + Länge) beginnt -- „dort ist besetzt“. */
 export function collision(
   blocks: readonly Block[],
   weekday: number,
@@ -163,18 +217,20 @@ export function collision(
   end: number,
   except: BlockRef | null = null,
 ): Block | null {
+  const from = weekMinute(weekday, start);
+  const length = end - start;
   return (
     blocks.find(
-      (b) =>
-        b.weekday === weekday &&
-        b.start < end &&
-        b.end > start &&
-        !(except !== null && sameRef(b, except)),
+      (b) => !(except !== null && sameRef(b, except)) && mod(absOf(b) - from, WEEK) < length,
     ) ?? null
   );
 }
 
-/** Neue Zeit durch Ziehen auf freier Fläche; mit `overpaint` (Umschalt) auch über Blöcke. */
+/**
+ * Neue Zeit durch Ziehen. Ohne `overpaint` darf im Bereich kein anderer Block beginnen (er liegt
+ * im Inneren des Blocks unter dem Ankerpunkt, den er teilt); mit `overpaint` (Umschalt) übermalt
+ * er die Blöcke, die dort beginnen.
+ */
 export function drawShape(
   blocks: readonly Block[],
   weekday: number,
@@ -182,15 +238,16 @@ export function drawShape(
   current: number,
   overpaint: boolean,
 ): Shape {
-  const a = snapMinute(anchor);
-  const c = snapMinute(current);
-  let start = Math.min(a, c);
-  let end = Math.max(a, c);
+  let start = Math.min(snapMinute(anchor), snapMinute(current));
+  let end = Math.max(snapMinute(anchor), snapMinute(current));
   if (!overpaint) {
-    const gap = gapAround(blocks, weekday, anchor);
-    if (gap === null) return { weekday, start, end, valid: false, reason: OCCUPIED };
-    start = Math.max(start, gap.start);
-    end = Math.min(end, gap.end);
+    const starts = blocks.filter((b) => b.weekday === weekday).map((b) => b.start);
+    const before = starts.filter((m) => m <= anchor).reduce((acc, m) => Math.max(acc, m), -1);
+    const after = starts.filter((m) => m > anchor).reduce((acc, m) => Math.min(acc, m), DAY_END);
+    // Beginn muss echt hinter dem vorigen Schaltpunkt liegen (ein Schaltpunkt dort wäre Überschneidung).
+    const lowest = before < 0 ? 0 : Math.floor(before / SNAP) * SNAP + SNAP;
+    start = Math.max(start, lowest);
+    end = Math.min(end, after);
   }
   start = clamp(start, 0, DAY_END);
   end = clamp(end, 0, DAY_END);
@@ -208,8 +265,7 @@ export function moveShape(
   copy: boolean,
 ): Shape {
   const length = block.end - block.start;
-  const latest = Math.floor((DAY_END - length) / SNAP) * SNAP;
-  const start = clamp(snapMinute(pointerMinute - grabOffset), 0, latest);
+  const start = clamp(snapMinute(pointerMinute - grabOffset), 0, DAY_END - SNAP);
   const end = start + length;
   const hit = collision(blocks, toWeekday, start, end, copy ? null : block);
   return {
@@ -224,44 +280,67 @@ export function moveShape(
 
 export type Edge = 'start' | 'end';
 
-/** Spielraum einer Kante: bis wohin sie darf und ob dort ein Block unmittelbar angrenzt. */
+/**
+ * Spielraum einer Kante in Minuten ab Mitternacht des Block-Wochentags (kann negativ sein oder über
+ * 1440 liegen). `neighbor` ist der Block, der an dieser Kante unmittelbar anschließt (die gemeinsame
+ * Kante wandert mit); `null` nur beim einzigen Block.
+ */
 export function edgeLimits(
   block: BlockRef,
   edge: Edge,
   blocks: readonly Block[],
 ): { min: number; max: number; neighbor: Block | null } {
-  const day = blocks.filter((b) => b.weekday === block.weekday && !sameRef(b, block));
+  const length = block.end - block.start;
+  const offsets = blocks
+    .filter((b) => !sameRef(b, block))
+    .map((b) => ({ b, at: mod(absOf(b) - absOf(block), WEEK) }))
+    .filter((o) => o.at > 0);
   if (edge === 'start') {
-    const neighbor = day.find((b) => b.end === block.start) ?? null;
-    if (neighbor) return { min: neighbor.start + MIN_BLOCK, max: block.end - MIN_BLOCK, neighbor };
-    const min = day.filter((b) => b.end <= block.start).reduce((acc, b) => Math.max(acc, b.end), 0);
-    return { min, max: block.end - MIN_BLOCK, neighbor: null };
+    const prev = offsets.reduce<{ b: Block; at: number } | null>((acc, o) => (!acc || o.at > acc.at ? o : acc), null);
+    const low = prev ? prev.at - WEEK + MIN_BLOCK : length - WEEK;
+    return {
+      min: block.start + Math.max(low, length - WEEK),
+      max: block.end - MIN_BLOCK,
+      neighbor: prev?.b ?? null,
+    };
   }
-  const neighbor = day.find((b) => b.start === block.end) ?? null;
-  if (neighbor) return { min: block.start + MIN_BLOCK, max: neighbor.end - MIN_BLOCK, neighbor };
-  const max = day.filter((b) => b.start >= block.end).reduce((acc, b) => Math.min(acc, b.start), DAY_END);
-  return { min: block.start + MIN_BLOCK, max, neighbor: null };
+  const next = offsets.find((o) => o.at === length) ?? null;
+  let high = length;
+  if (next) {
+    const second = offsets
+      .filter((o) => o !== next && o.at > length)
+      .reduce((acc, o) => Math.min(acc, o.at), WEEK);
+    high = second - MIN_BLOCK;
+  }
+  return { min: block.start + MIN_BLOCK, max: block.start + high, neighbor: next?.b ?? null };
 }
 
-/** Eine Kante auf eine Minute ziehen (auf das Raster und in den Spielraum begrenzt). */
+/** Eine Kante auf eine Minute der Woche ziehen (eingerastet, im Spielraum). `pointerWeek` = Minute der Woche. */
 export function resizeShape(
   block: BlockRef,
   edge: Edge,
   blocks: readonly Block[],
-  pointerMinute: number,
+  pointerWeek: number,
+  independent = false,
 ): Shape {
   const limits = edgeLimits(block, edge, blocks);
-  const value = clamp(snapMinute(pointerMinute), limits.min, limits.max);
+  const edgeAt = edge === 'start' ? block.start : block.end;
+  // Die Woche ist ein Ring: den Zeigerpunkt in die Nähe der Kante rücken.
+  const delta = mod(pointerWeek - weekMinute(block.weekday, edgeAt) + WEEK / 2, WEEK) - WEEK / 2;
+  const value = clamp(snapMinute(edgeAt + delta), limits.min, limits.max);
   const start = edge === 'start' ? value : block.start;
   const end = edge === 'end' ? value : block.end;
   const changed = start !== block.start || end !== block.end;
+  const shrink = edge === 'start' ? start > block.start : end < block.end;
   return {
     weekday: block.weekday,
     start,
     end,
-    valid: end - start >= MIN_BLOCK,
+    valid: end - start >= MIN_BLOCK && end - start <= WEEK,
     reason: '',
-    adjacent: changed && limits.neighbor !== null,
+    // Verlängern geht nur mit gemeinsamer Kante; Verkleinern wahlweise ohne (Alt): der freie Rest
+    // erbt dann den Modus davor statt dem Nachbarn.
+    adjacent: changed && limits.neighbor !== null && !(shrink && independent),
   };
 }
 

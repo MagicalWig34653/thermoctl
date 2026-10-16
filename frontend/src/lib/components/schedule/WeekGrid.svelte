@@ -3,10 +3,10 @@
   // sie entscheidet nichts Fachliches: jede Geste wird zu einer Absicht (`onintent`), die der
   // Server prüft. Vorschau während der Geste und der Ghost während des Speicherns sind reine Darstellung.
   import { formatCelsius } from '$lib/rooms/decimal';
-  import { formatMinute } from '$lib/rooms/logic';
   import {
-    DAY_NAMES,
     DAY_SHORT,
+    DAY_NAMES,
+    DRAG_MAX,
     WEEKDAYS,
     dayAt,
     drawShape,
@@ -17,12 +17,15 @@
     refOf,
     resizeShape,
     sameRef,
+    splitRange,
+    weekMinute,
     type Block,
     type BlockRef,
     type Edge,
+    type Piece,
     type Shape,
   } from '$lib/schedule/geometry';
-  import type { Ghost, Intent } from '$lib/schedule/intents';
+  import { range, type Ghost, type Intent } from '$lib/schedule/intents';
   import { blockKeyAction, deleteKeyAllowed, historyKey, TEXT_CONTEXT } from '$lib/schedule/keyboard';
 
   let {
@@ -74,7 +77,16 @@
   let ignoreClick = false;
   let refocus = false;
 
-  const dayBlocks = (weekday: number) => blocks.filter((b) => b.weekday === weekday);
+  /** Die Tagesstücke aller Blöcke auf einer Tagesspur (ein Block über Mitternacht hat mehrere). */
+  const dayPieces = (weekday: number) =>
+    blocks.flatMap((block) =>
+      block.pieces.filter((piece) => piece.weekday === weekday).map((piece) => ({ block, piece })),
+    );
+  const onDay = (pieces: Piece[], weekday: number) => pieces.filter((p) => p.weekday === weekday);
+  const ghostPieces = $derived(ghost ? splitRange(ghost.weekday, ghost.start, ghost.end) : []);
+  const shapePieces = $derived(
+    gesture?.moved && gesture.shape ? splitRange(gesture.shape.weekday, gesture.shape.start, gesture.shape.end) : [],
+  );
 
   function tracks(): { weekday: number; el: HTMLElement; rect: DOMRect }[] {
     if (!root) return [];
@@ -104,18 +116,18 @@
     return { weekday, minute: minuteAt(x, rect.left, rect.width) };
   }
 
-  function begin(e: PointerEvent, weekday: number, block: Block | null, kind: Kind | null) {
+  function begin(e: PointerEvent, weekday: number, block: Block | null, piece: Piece | null, kind: Kind | null) {
     if (!editable || e.button !== 0 || !e.isPrimary) return;
     const where = locate(e.clientX, e.clientY);
     if (!where) return;
     e.stopPropagation();
-    // Rest vom Vortag: nicht ziehbar (der Server kennt dafür keinen eigenen Schaltpunkt).
-    if (block?.carry) return;
     ignoreClick = false;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     activeDay = weekday;
-    const overpaint = e.shiftKey;
-    const drawing = block === null || (overpaint && kind === 'move');
+    // Auf der Fläche eines Blocks gilt: Kurze Blöcke greift man am Beginn (Ziehen verschiebt, Alt dupliziert);
+    // lange Blöcke (Hintergrund), Fortsetzungen über Mitternacht und Umschalt + Ziehen legen eine neue Zeit an.
+    const movable = !!block && !!piece?.first && block.end - block.start <= DRAG_MAX;
+    const drawing = block === null || (kind === 'move' && (!movable || e.shiftKey));
     gesture = {
       kind: drawing ? 'draw' : (kind ?? 'move'),
       pointerId: e.pointerId,
@@ -138,7 +150,8 @@
     if (!g.block) return null;
     if (g.kind === 'move')
       return moveShape(g.block, blocks, where.minute, g.grabOffset, where.weekday, e.altKey);
-    return resizeShape(g.block, g.kind as Edge, blocks, where.minute);
+    // Alt beim Verkleinern: die freigewordene Zeit erbt den Modus davor, die Nachbarkante bleibt stehen.
+    return resizeShape(g.block, g.kind as Edge, blocks, weekMinute(where.weekday, where.minute), e.altKey);
   }
 
   function move(e: PointerEvent) {
@@ -271,10 +284,10 @@
   });
 
   const tempText = (b: Block) => (b.temperatureC ? formatCelsius(b.temperatureC) : '');
-  const label = (b: Block, isSelected: boolean) =>
-    `${DAY_NAMES[b.weekday]}, ${formatMinute(b.start)} bis ${formatMinute(b.end)}, ${b.modeName}${
-      b.temperatureC ? ', ' + formatCelsius(b.temperatureC) : ''
-    }${b.carry ? ', setzt sich vom Vortag fort' : ''}${isSelected ? ', ausgewählt' : ''}`;
+  const label = (b: Block, p: Piece, isSelected: boolean) =>
+    `${range(b)}, ${b.modeName}${b.temperatureC ? ', ' + formatCelsius(b.temperatureC) : ''}${
+      p.first ? '' : ', setzt sich vom Vortag fort'
+    }${isSelected ? ', ausgewählt' : ''}`;
 
   const box = (start: number, end: number) =>
     `left:${percentOf(start)}%;width:${percentOf(end) - percentOf(start)}%`;
@@ -316,82 +329,92 @@
         data-track={weekday}
         role="group"
         aria-label={DAY_NAMES[weekday]}
-        onpointerdown={(e) => begin(e, weekday, null, 'draw')}
+        onpointerdown={(e) => begin(e, weekday, null, null, 'draw')}
       >
-        {#each dayBlocks(weekday) as block (`${block.weekday}-${block.start}-${block.end}`)}
+        {#each dayPieces(weekday) as { block, piece } (`${block.weekday}-${block.start}-${block.end}-${piece.weekday}-${piece.start}`)}
           {@const isSelected = !!selected && sameRef(selected, block)}
           {@const dimmed = !!ghost?.source && sameRef(ghost.source, block)}
           <div
-            class="absolute inset-y-0.5 rounded-md border border-black/10 {dimmed ? 'opacity-40' : ''} {block.carry
-              ? 'border-dashed'
-              : ''}"
+            class="absolute inset-y-0.5 rounded-md border border-black/10 {dimmed ? 'opacity-40' : ''} {piece.first
+              ? ''
+              : 'rounded-l-none border-l-dashed'} {piece.last ? '' : 'rounded-r-none border-r-dashed'}"
             class:ring-2={isSelected}
             class:ring-foreground={isSelected}
             class:z-10={isSelected}
-            style="{box(block.start, block.end)};background:{modeColor(block.warmth)}"
+            style="{box(piece.start, piece.end)};background:{modeColor(block.warmth)}"
           >
             <button
               type="button"
               class="absolute inset-0 flex min-w-0 touch-pan-y items-center gap-1 overflow-hidden rounded-md px-1.5 text-left text-xs font-medium text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.55)] {editable &&
-              !block.carry
+              piece.first &&
+              block.end - block.start <= DRAG_MAX
                 ? 'cursor-grab'
                 : ''}"
-              data-block="{block.weekday}-{block.start}-{block.end}"
-              aria-label={label(block, isSelected)}
+              data-block={piece.first ? `${block.weekday}-${block.start}-${block.end}` : undefined}
+              data-piece="{block.weekday}-{block.start}-{block.end}"
+              tabindex={piece.first ? 0 : -1}
+              aria-label={label(block, piece, isSelected)}
               aria-pressed={isSelected}
-              title="{DAY_NAMES[block.weekday]} · {formatMinute(block.start)}–{formatMinute(block.end)} · {block.modeName}"
-              onpointerdown={(e) => begin(e, weekday, block, 'move')}
+              title="{range(block)} · {block.modeName}"
+              onpointerdown={(e) => begin(e, weekday, block, piece, 'move')}
               onclick={() => {
                 if (ignoreClick) return;
                 onselect(refOf(block));
               }}
               onkeydown={(e) => blockKeydown(e, block)}
             >
-              {#if block.carry}<span aria-hidden="true">↤</span>{/if}
+              {#if !piece.first}<span aria-hidden="true">↤</span>{/if}
               <span class="truncate">{block.modeName}</span>
-              {#if block.end - block.start >= 180}<span class="shrink-0 opacity-90">{tempText(block)}</span>{/if}
+              {#if piece.end - piece.start >= 180}<span class="shrink-0 opacity-90">{tempText(block)}</span>{/if}
+              {#if !piece.last}<span class="ml-auto shrink-0" aria-hidden="true">↦</span>{/if}
             </button>
-            {#if editable && !block.carry}
+            {#if editable && piece.first}
               <span
                 class="absolute inset-y-0 left-0 z-10 w-[min(12px,25%)] cursor-ew-resize touch-pan-y rounded-l-md bg-black/20 hover:bg-black/40"
                 role="presentation"
                 data-grip="start"
-                onpointerdown={(e) => begin(e, weekday, block, 'start')}
+                onpointerdown={(e) => begin(e, weekday, block, piece, 'start')}
               ></span>
+            {/if}
+            {#if editable && piece.last}
               <span
                 class="absolute inset-y-0 right-0 z-10 w-[min(12px,25%)] cursor-ew-resize touch-pan-y rounded-r-md bg-black/20 hover:bg-black/40"
                 role="presentation"
                 data-grip="end"
-                onpointerdown={(e) => begin(e, weekday, block, 'end')}
+                onpointerdown={(e) => begin(e, weekday, block, piece, 'end')}
               ></span>
             {/if}
           </div>
         {/each}
 
-        {#if gesture?.moved && gesture.shape && gesture.shape.weekday === weekday}
+        {#if gesture?.moved && gesture.shape}
           {@const s = gesture.shape}
-          <div
-            class="pointer-events-none absolute inset-y-0.5 z-20 grid place-items-center overflow-hidden rounded-md border-2 border-dashed text-xs font-semibold {s.valid
-              ? 'border-foreground bg-foreground/15'
-              : 'border-destructive bg-destructive/20 text-destructive'}"
-            style={box(s.start, s.end)}
-            data-testid="gesture-ghost"
-            data-valid={s.valid}
-          >
-            <span class="truncate px-1"
-              >{s.valid ? `${s.copy ? 'Kopie · ' : ''}${formatMinute(s.start)}–${formatMinute(s.end)}` : 'Belegt'}</span
+          {#each onDay(shapePieces, weekday) as p (p.start)}
+            <div
+              class="pointer-events-none absolute inset-y-0.5 z-20 grid place-items-center overflow-hidden rounded-md border-2 border-dashed text-xs font-semibold {s.valid
+                ? 'border-foreground bg-foreground/15'
+                : 'border-destructive bg-destructive/20 text-destructive'}"
+              style={box(p.start, p.end)}
+              data-testid="gesture-ghost"
+              data-valid={s.valid}
             >
-          </div>
+              <span class="truncate px-1"
+                >{s.valid ? `${s.copy ? 'Kopie · ' : ''}${range(s)}` : 'Besetzt'}</span
+              >
+            </div>
+          {/each}
         {/if}
 
-        {#if ghost && ghost.weekday === weekday}
-          <div
-            class="pointer-events-none absolute inset-y-0.5 z-20 grid place-items-center overflow-hidden rounded-md border-2 border-dashed border-foreground bg-foreground/10 text-xs font-semibold motion-safe:animate-pulse"
-            style={box(ghost.start, ghost.end)}
-            data-testid="pending-ghost"
-          >
-            <span class="truncate px-1">{ghost.label}</span>
-          </div>
+        {#if ghost}
+          {#each onDay(ghostPieces, weekday) as p (p.start)}
+            <div
+              class="pointer-events-none absolute inset-y-0.5 z-20 grid place-items-center overflow-hidden rounded-md border-2 border-dashed border-foreground bg-foreground/10 text-xs font-semibold motion-safe:animate-pulse"
+              style={box(p.start, p.end)}
+              data-testid="pending-ghost"
+            >
+              <span class="truncate px-1">{ghost.label}</span>
+            </div>
+          {/each}
         {/if}
       </div>
     {/each}

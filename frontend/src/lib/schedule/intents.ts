@@ -3,7 +3,7 @@
 // geprüft. Hier steht nur, was die Oberfläche über die Absicht wissen muss: wie sie in der
 // Vorschau (Ghost) aussieht und was danach markiert sein soll.
 
-import { DAY_NAMES, refOf, type BlockRef } from './geometry';
+import { DAY_NAMES, normalizeRef, type BlockRef } from './geometry';
 import { formatMinute } from '../rooms/logic';
 
 export type Intent =
@@ -12,12 +12,14 @@ export type Intent =
   | { type: 'duplicate'; block: BlockRef; toWeekday: number; toStart: number }
   | { type: 'resize'; block: BlockRef; newStart: number; newEnd: number; adjacent: boolean }
   | { type: 'delete'; block: BlockRef }
+  | { type: 'setMode'; block: BlockRef; pointId: number; modeId: number }
   | { type: 'copyDay'; weekday: number; scope: 'workdays' | 'all' }
   | { type: 'copyWeek'; targets: { zone_id: number; version: string }[] };
 
 /** Was während eines laufenden Schreibaufrufs als Ghost gezeigt wird. */
 export interface Ghost {
   weekday: number;
+  /** Beginn und Ende wie bei einem Block: `end` darf über 1440 reichen, `start` auch negativ sein. */
   start: number;
   end: number;
   /** Die Quelle wird nach dem Speichern verschwinden (Verschieben, Größe, Löschen). */
@@ -56,12 +58,14 @@ export function ghostOf(intent: Intent): Ghost | null {
       };
     case 'delete':
       return { ...intent.block, source: intent.block, label: 'Wird entfernt' };
+    case 'setMode':
+      return { ...intent.block, source: intent.block, label: 'Wird gespeichert' };
     default:
       return null;
   }
 }
 
-/** Nach dem Speichern zu markierender Bereich (der Block, der ihn enthält), sonst nichts. */
+/** Nach dem Speichern zu markierender Block (gesucht wird der, der dort beginnt), sonst nichts. */
 export function selectionAfter(intent: Intent): BlockRef | null {
   switch (intent.type) {
     case 'paint':
@@ -74,13 +78,22 @@ export function selectionAfter(intent: Intent): BlockRef | null {
         end: intent.toStart + (intent.block.end - intent.block.start),
       };
     case 'resize':
-      return { weekday: intent.block.weekday, start: intent.newStart, end: intent.newEnd };
+      return normalizeRef(intent.block.weekday, intent.newStart, intent.newEnd);
+    case 'setMode':
+      return intent.block;
     default:
       return null;
   }
 }
 
-const range = (r: BlockRef) => `${DAY_NAMES[r.weekday]}, ${formatMinute(r.start)} bis ${formatMinute(r.end)}`;
+/** „Montag, 06:00 bis 08:00“, über Mitternacht „Montag, 22:00 bis Dienstag 06:00“. */
+export const range = (raw: BlockRef): string => {
+  const r = normalizeRef(raw.weekday, raw.start, raw.end);
+  const days = Math.floor((r.end - 1) / 1440);
+  const endDay = ((r.weekday - 1 + days) % 7) + 1;
+  const endMinute = r.end - days * 1440;
+  return `${DAY_NAMES[r.weekday]}, ${formatMinute(r.start)} bis ${days > 0 ? DAY_NAMES[endDay] + ' ' : ''}${formatMinute(endMinute)}`;
+};
 
 /** Satz für Statuszeile und Vorlesen. */
 export function describeIntent(intent: Intent): string {
@@ -88,13 +101,15 @@ export function describeIntent(intent: Intent): string {
     case 'paint':
       return `Zeit angelegt: ${range({ weekday: intent.weekday, start: intent.start, end: intent.end })}`;
     case 'move':
-      return `Verschoben nach ${range({ ...refOf(intent.block), weekday: intent.toWeekday, start: intent.toStart, end: intent.toStart + intent.block.end - intent.block.start })}`;
+      return `Verschoben nach ${range({ weekday: intent.toWeekday, start: intent.toStart, end: intent.toStart + intent.block.end - intent.block.start })}`;
     case 'duplicate':
-      return `Dupliziert nach ${range({ ...refOf(intent.block), weekday: intent.toWeekday, start: intent.toStart, end: intent.toStart + intent.block.end - intent.block.start })}`;
+      return `Dupliziert nach ${range({ weekday: intent.toWeekday, start: intent.toStart, end: intent.toStart + intent.block.end - intent.block.start })}`;
     case 'resize':
       return `Zeit geändert: ${range({ weekday: intent.block.weekday, start: intent.newStart, end: intent.newEnd })}`;
     case 'delete':
       return `Zeit entfernt: ${range(intent.block)}`;
+    case 'setMode':
+      return `Temperatur geändert: ${range(intent.block)}`;
     case 'copyDay':
       return `${DAY_NAMES[intent.weekday]} kopiert (${intent.scope === 'workdays' ? 'Montag bis Freitag' : 'alle Tage'})`;
     case 'copyWeek':

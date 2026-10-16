@@ -33,6 +33,9 @@ export function exactTimes(
 ): Planned {
   if (!Number.isInteger(newStart) || !Number.isInteger(newEnd)) return { error: 'Bitte gültige Uhrzeiten eingeben.' };
   if (newEnd - newStart < MIN_BLOCK) return { error: 'Das Ende muss nach dem Beginn liegen.' };
+  if (newStart !== block.start && newEnd !== block.end) {
+    return { error: 'Beginn und Ende bitte nacheinander ändern: Der Server ändert immer nur eine Kante.' };
+  }
   const startLimits = edgeLimits(block, 'start', blocks);
   const endLimits = edgeLimits(block, 'end', blocks);
   const startChanged = newStart !== block.start;

@@ -2,18 +2,15 @@
   import { Trash2, X } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { formatCelsius } from '$lib/rooms/decimal';
-  import { formatMinute } from '$lib/rooms/logic';
-  import { DAY_NAMES, WEEKDAYS, modeColor, type Block } from '$lib/schedule/geometry';
+  import { DAY_NAMES, DAY_END, WEEKDAYS, modeColor, type Block } from '$lib/schedule/geometry';
   import { clockValue, exactTimes, nudge, parseClock, toDay, type Planned } from '$lib/schedule/inspector';
-  import type { Intent } from '$lib/schedule/intents';
+  import { range, type Intent } from '$lib/schedule/intents';
   import type { PlanMode } from '$lib/schedule/types';
-  import { CARRY_REASON } from '$lib/schedule/keyboard';
 
   let {
     block,
     blocks,
     modes,
-    baseId,
     editable,
     onintent,
     onmessage,
@@ -22,7 +19,6 @@
     block: Block;
     blocks: Block[];
     modes: PlanMode[];
-    baseId: number | null;
     editable: boolean;
     onintent: (intent: Intent) => void;
     onmessage: (text: string) => void;
@@ -33,13 +29,15 @@
   let startText = $state('');
   let endText = $state('');
   let otherDay = $state(1);
-  const brushModes = $derived(modes.filter((m) => m.id !== baseId));
-  const locked = $derived(!editable || block.carry);
+  const locked = $derived(!editable);
+  /** Tage nach dem Beginn, an dem der Block endet (0 = am selben Tag), und sein Ende in Minuten dieses Tages. */
+  const endDays = $derived(Math.floor((block.end - 1) / DAY_END));
+  const endOfDay = $derived(block.end - endDays * DAY_END);
 
   // Eingabefelder folgen dem Serverstand (neuer Block -> neue Werte).
   $effect(() => {
     startText = clockValue(block.start);
-    endText = clockValue(block.end);
+    endText = clockValue(endOfDay);
     otherDay = block.weekday === 7 ? 6 : block.weekday + 1;
   });
 
@@ -51,7 +49,7 @@
     if ('error' in planned) {
       onmessage(planned.error);
       startText = clockValue(block.start);
-      endText = clockValue(block.end);
+      endText = clockValue(endOfDay);
     } else {
       onintent(planned.intent);
     }
@@ -63,16 +61,17 @@
     if (start === null || end === null) {
       onmessage('Bitte gültige Uhrzeiten eingeben.');
       startText = clockValue(block.start);
-      endText = clockValue(block.end);
+      endText = clockValue(endOfDay);
       return;
     }
-    if (start === block.start && end === block.end) return;
-    run(exactTimes(block, blocks, start, end));
+    const newEnd = endDays * DAY_END + end;
+    if (start === block.start && newEnd === block.end) return;
+    run(exactTimes(block, blocks, start, newEnd));
   }
 
   function setMode(modeId: number) {
     if (modeId === block.modeId) return;
-    onintent({ type: 'paint', weekday: block.weekday, start: block.start, end: block.end, modeId });
+    onintent({ type: 'setMode', block, pointId: block.pointId, modeId });
   }
 </script>
 
@@ -88,7 +87,7 @@
         {DAY_NAMES[block.weekday]}
       </h3>
       <p class="m-0 text-sm text-muted-foreground" data-testid="inspector-range">
-        {formatMinute(block.start)}–{formatMinute(block.end)} · {block.modeName}{block.temperatureC
+        {range(block).replace(`${DAY_NAMES[block.weekday]}, `, '').replace(' bis ', '–')} · {block.modeName}{block.temperatureC
           ? ` · ${formatCelsius(block.temperatureC)}`
           : ''}
       </p>
@@ -98,16 +97,14 @@
     </Button>
   </div>
 
-  {#if block.carry}
-    <p class="m-0 rounded-md border bg-muted px-3 py-2 text-sm">{CARRY_REASON}</p>
-  {:else if !editable}
+  {#if !editable}
     <p class="m-0 text-sm text-muted-foreground">Du kannst diesen Plan ansehen, aber nicht ändern.</p>
   {/if}
 
   <fieldset class="m-0 border-0 p-0" disabled={locked}>
     <legend class="mb-2 text-sm font-medium">Temperatur</legend>
     <div class="flex flex-wrap gap-2">
-      {#each brushModes as mode (mode.id)}
+      {#each modes as mode (mode.id)}
         <button
           type="button"
           class="flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted disabled:opacity-60 aria-pressed:border-foreground aria-pressed:bg-muted"
@@ -144,7 +141,9 @@
         data-testid="end-time"
       />
     </label>
-    <p class="col-span-2 m-0 -mt-1 text-xs text-muted-foreground">Ende 00:00 bedeutet Mitternacht.</p>
+    <p class="col-span-2 m-0 -mt-1 text-xs text-muted-foreground">
+      Ende 00:00 bedeutet Mitternacht{endDays > 0 ? `; der Bereich endet am ${DAY_NAMES[((block.weekday - 1 + endDays) % 7) + 1]}` : ''}. Beginn und Ende einzeln ändern.
+    </p>
     <div class="flex gap-2">
       <Button variant="outline" size="sm" class="min-h-9 flex-1" onclick={() => run(nudge(block, blocks, 'start', -15))}>Beginn −15</Button>
       <Button variant="outline" size="sm" class="min-h-9 flex-1" onclick={() => run(nudge(block, blocks, 'start', 15))}>+15</Button>

@@ -1,14 +1,14 @@
 // Tastaturlogik des Wochenplan-Editors (rein, mit node:test geprüft).
 //
 //  - Pfeile am Block: verschieben (links/rechts um 15 Minuten, Umschalt 5; hoch/runter auf den
-//    Vor- bzw. Folgetag, ohne Umbruch).
+//    Vor- bzw. Folgetag, ohne Umbruch). Das Ziel muss frei sein: kein anderer Block beginnt darin.
 //  - Alt + links/rechts: Ende, Alt + hoch/runter: Beginn ändern (derselbe Spielraum wie beim Ziehen).
 //  - Enter/Leertaste: Inspektor öffnen.
 //  - Backspace/Entf: markierten Block löschen -- nicht in Eingaben, Auswahlfeldern,
 //    editierbarem Inhalt oder Dialogen.
 //  - Strg/Cmd+Z: rücknehmen, mit Umschalt: wiederholen -- nicht in Eingaben.
 
-import { collision, DAY_END, edgeLimits, KEY_STEP, KEY_STEP_FINE, OCCUPIED, type Block } from './geometry';
+import { collision, DAY_END, edgeLimits, KEY_STEP, KEY_STEP_FINE, OCCUPIED, SNAP, type Block } from './geometry';
 import type { Intent } from './intents';
 
 export interface KeyLike {
@@ -26,14 +26,11 @@ export type KeyAction =
   | { type: 'intent'; intent: Intent };
 
 const NONE: KeyAction = { type: 'none' };
-export const CARRY_REASON =
-  'Dieser Bereich setzt sich vom Vortag fort. Bearbeite seinen Beginn am Vortag.';
 
 export function blockKeyAction(e: KeyLike, block: Block, blocks: readonly Block[]): KeyAction {
   if (e.key === 'Enter' || e.key === ' ') return { type: 'open' };
   const arrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
   if (!arrow || e.ctrlKey || e.metaKey) return NONE;
-  if (block.carry) return { type: 'blocked', reason: CARRY_REASON };
   const step = e.shiftKey ? KEY_STEP_FINE : KEY_STEP;
   const length = block.end - block.start;
 
@@ -57,7 +54,7 @@ export function blockKeyAction(e: KeyLike, block: Block, blocks: readonly Block[
   let toWeekday = block.weekday;
   let toStart = block.start;
   if (e.key === 'ArrowLeft') toStart = Math.max(0, block.start - step);
-  if (e.key === 'ArrowRight') toStart = Math.min(DAY_END - length, block.start + step);
+  if (e.key === 'ArrowRight') toStart = Math.min(DAY_END - SNAP, block.start + step);
   if (e.key === 'ArrowUp') toWeekday = Math.max(1, block.weekday - 1);
   if (e.key === 'ArrowDown') toWeekday = Math.min(7, block.weekday + 1);
   if (toWeekday === block.weekday && toStart === block.start) return NONE;

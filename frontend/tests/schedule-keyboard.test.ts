@@ -1,18 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Block } from '../src/lib/schedule/geometry.ts';
 import { blockKeyAction, deleteKeyAllowed, historyKey, type KeyLike } from '../src/lib/schedule/keyboard.ts';
 
-const block = (weekday: number, start: number, end: number, carry = false): Block => ({
-  weekday,
-  start,
-  end,
-  modeId: 1,
-  modeName: 'Tag',
-  warmth: 0.8,
-  temperatureC: null,
-  carry,
-});
+import { ring } from './schedule-fixture.ts';
+
 const key = (k: string, extra: Partial<KeyLike> = {}): KeyLike => ({
   key: k,
   altKey: false,
@@ -21,90 +12,86 @@ const key = (k: string, extra: Partial<KeyLike> = {}): KeyLike => ({
   metaKey: false,
   ...extra,
 });
-const a = block(2, 420, 540);
+// Di 07:00 „Tag“ (2 h), Di 09:00 „Nacht“ bis zum nächsten Di 07:00.
+const [a, night] = ring([
+  [2, 420, 1],
+  [2, 540, 2],
+]);
+const blocks = [a, night];
 
 test('Enter und Leertaste öffnen den Inspektor', () => {
-  assert.deepEqual(blockKeyAction(key('Enter'), a, [a]), { type: 'open' });
-  assert.deepEqual(blockKeyAction(key(' '), a, [a]), { type: 'open' });
-  assert.deepEqual(blockKeyAction(key('Tab'), a, [a]), { type: 'none' });
+  assert.deepEqual(blockKeyAction(key('Enter'), a, blocks), { type: 'open' });
+  assert.deepEqual(blockKeyAction(key(' '), a, blocks), { type: 'open' });
+  assert.deepEqual(blockKeyAction(key('Tab'), a, blocks), { type: 'none' });
 });
 
 test('Pfeile verschieben um 15 Minuten, mit Umschalt um 5, hoch/runter um einen Tag', () => {
-  const right = blockKeyAction(key('ArrowRight'), a, [a]);
-  assert.deepEqual(right, { type: 'intent', intent: { type: 'move', block: a, toWeekday: 2, toStart: 435 } });
-  const left = blockKeyAction(key('ArrowLeft', { shiftKey: true }), a, [a]);
+  // Nach rechts würde der Block den Beginn seines Nachfolgers überdecken: der Server lehnt das ab.
+  assert.equal(blockKeyAction(key('ArrowRight'), a, blocks).type, 'blocked');
+  const left = blockKeyAction(key('ArrowLeft', { shiftKey: true }), a, blocks);
   assert.deepEqual(left, { type: 'intent', intent: { type: 'move', block: a, toWeekday: 2, toStart: 415 } });
-  const down = blockKeyAction(key('ArrowDown'), a, [a]);
+  const down = blockKeyAction(key('ArrowDown'), a, blocks);
   assert.deepEqual(down, { type: 'intent', intent: { type: 'move', block: a, toWeekday: 3, toStart: 420 } });
-  const up = blockKeyAction(key('ArrowUp'), a, [a]);
+  const up = blockKeyAction(key('ArrowUp'), a, blocks);
   assert.equal((up as { intent: { toWeekday: number } }).intent.toWeekday, 1);
 });
 
 test('Pfeile klemmen an Wochenrand und Mitternacht (kein Umbruch)', () => {
-  assert.deepEqual(blockKeyAction(key('ArrowUp'), block(1, 420, 540), []), { type: 'none' });
-  assert.deepEqual(blockKeyAction(key('ArrowDown'), block(7, 420, 540), []), { type: 'none' });
-  assert.deepEqual(blockKeyAction(key('ArrowLeft'), block(2, 0, 60), []), { type: 'none' });
-  const late = block(2, 1380, 1440);
-  assert.deepEqual(blockKeyAction(key('ArrowRight'), late, [late]), { type: 'none' });
-  const nearEnd = block(2, 1370, 1430);
-  const r = blockKeyAction(key('ArrowRight'), nearEnd, [nearEnd]);
-  assert.equal((r as { intent: { toStart: number } }).intent.toStart, 1380);
-  const early = block(2, 5, 65);
-  const l = blockKeyAction(key('ArrowLeft'), early, [early]);
-  assert.equal((l as { intent: { toStart: number } }).intent.toStart, 0);
+  const [mon] = ring([[1, 420, 1], [3, 0, 2]]);
+  assert.deepEqual(blockKeyAction(key('ArrowUp'), mon, [mon]), { type: 'none' });
+  const sun = ring([[7, 420, 1], [3, 0, 2]]).find((b) => b.modeId === 1)!;
+  assert.deepEqual(blockKeyAction(key('ArrowDown'), sun, [sun]), { type: 'none' });
+  const [first] = ring([[2, 0, 1], [3, 600, 2]]);
+  assert.deepEqual(blockKeyAction(key('ArrowLeft'), first, [first]), { type: 'none' });
+  const [end] = ring([[2, 1435, 1], [4, 0, 2]]);
+  assert.deepEqual(blockKeyAction(key('ArrowRight'), end, [end]), { type: 'none' });
 });
 
 test('Kollision beim Verschieben per Tastatur wird gemeldet statt gesendet', () => {
-  const other = block(3, 400, 600);
-  const r = blockKeyAction(key('ArrowDown'), a, [a, other]);
-  assert.deepEqual(r, { type: 'blocked', reason: 'Hier ist bereits eine Zeit geplant.' });
-  const neighbor = block(2, 540, 600);
-  const touching = blockKeyAction(key('ArrowRight', { shiftKey: true }), a, [a, neighbor]);
+  // Tag (Di 07:00) nach Mittwoch 07:00 verschieben, dort beginnt schon ein anderer Block.
+  const [x, y, z] = ring([[2, 420, 1], [2, 540, 2], [3, 420, 3]]);
+  const r = blockKeyAction(key('ArrowDown'), x, [x, y, z]);
+  assert.deepEqual(r, { type: 'blocked', reason: 'Dort beginnt bereits ein anderer Zeitbereich.' });
+  const touching = blockKeyAction(key('ArrowRight'), x, [x, y, z]); // 07:15-09:15 überdeckt den Beginn von „Nacht“ (09:00)
   assert.equal(touching.type, 'blocked');
+  // Nach links ist es frei (Di 06:45-08:45 enthält keinen fremden Beginn).
+  assert.equal(blockKeyAction(key('ArrowLeft'), x, [x, y, z]).type, 'intent');
 });
 
-test('Alt+Pfeile ändern Größe: links/rechts Ende, hoch/runter Beginn', () => {
-  const end = blockKeyAction(key('ArrowRight', { altKey: true }), a, [a]);
+test('Alt+Pfeile ändern Größe: links/rechts Ende, hoch/runter Beginn; die gemeinsame Kante wandert mit', () => {
+  const end = blockKeyAction(key('ArrowRight', { altKey: true }), a, blocks);
   assert.deepEqual(end, {
     type: 'intent',
-    intent: { type: 'resize', block: a, newStart: 420, newEnd: 555, adjacent: false },
+    intent: { type: 'resize', block: a, newStart: 420, newEnd: 555, adjacent: true },
   });
-  const shrink = blockKeyAction(key('ArrowLeft', { altKey: true }), a, [a]);
+  const shrink = blockKeyAction(key('ArrowLeft', { altKey: true }), a, blocks);
   assert.equal((shrink as { intent: { newEnd: number } }).intent.newEnd, 525);
-  const startUp = blockKeyAction(key('ArrowUp', { altKey: true }), a, [a]);
+  const startUp = blockKeyAction(key('ArrowUp', { altKey: true }), a, blocks);
   assert.equal((startUp as { intent: { newStart: number } }).intent.newStart, 405);
-  const startDown = blockKeyAction(key('ArrowDown', { altKey: true }), a, [a]);
+  const startDown = blockKeyAction(key('ArrowDown', { altKey: true }), a, blocks);
   assert.equal((startDown as { intent: { newStart: number } }).intent.newStart, 435);
 });
 
-test('Alt+Pfeile bleiben im Spielraum; angrenzende Bereiche wandern gemeinsam', () => {
-  const next = { ...block(2, 540, 600), modeId: 2 };
-  const grow = blockKeyAction(key('ArrowRight', { altKey: true }), a, [a, next]);
-  assert.deepEqual((grow as { intent: unknown }).intent, {
-    type: 'resize',
-    block: a,
-    newStart: 420,
-    newEnd: 555,
-    adjacent: true,
-  });
-  const tight = block(2, 420, 425);
-  assert.deepEqual(blockKeyAction(key('ArrowLeft', { altKey: true }), tight, [tight]), { type: 'none' });
-  const late = block(2, 1400, 1440);
-  assert.deepEqual(blockKeyAction(key('ArrowRight', { altKey: true }), late, [late]), { type: 'none' });
-  const wall = block(2, 560, 600);
-  const limited = blockKeyAction(key('ArrowUp', { altKey: true, shiftKey: true }), wall, [wall, { ...a, end: 555 }]);
-  assert.equal((limited as { intent: { newStart: number } }).intent.newStart, 555);
+test('Alt+Pfeile bleiben im Spielraum', () => {
+  const [tight, rest] = ring([[2, 420, 1], [2, 425, 2]]);
+  assert.deepEqual(blockKeyAction(key('ArrowLeft', { altKey: true }), tight, [tight, rest]), { type: 'none' });
+  // Die Startkante kann höchstens bis 5 Minuten hinter den vorigen Beginn zurück.
+  const [first, second] = ring([[2, 420, 1], [2, 427, 2]]);
+  const limited = blockKeyAction(key('ArrowUp', { altKey: true, shiftKey: true }), second, [first, second]);
+  assert.equal((limited as { intent: { newStart: number } }).intent.newStart, 425);
 });
 
-test('Reste vom Vortag lassen sich nicht per Tastatur ändern', () => {
-  const carry = block(2, 0, 360, true);
-  assert.equal(blockKeyAction(key('ArrowRight'), carry, [carry]).type, 'blocked');
-  assert.deepEqual(blockKeyAction(key('Enter'), carry, [carry]), { type: 'open' });
+test('Fortsetzungen über Mitternacht gehören zum Block: Tastenabsicht gilt dem ganzen Block', () => {
+  const [late] = ring([[2, 1380, 1], [3, 360, 2]]);
+  assert.equal(late.end, 1380 + 420);
+  const r = blockKeyAction(key('ArrowDown'), late, [late]);
+  assert.equal(r.type, 'intent');
+  assert.deepEqual(blockKeyAction(key('Enter'), late, [late]), { type: 'open' });
 });
 
 test('Strg/Cmd mit Pfeil ist nicht belegt', () => {
-  assert.deepEqual(blockKeyAction(key('ArrowRight', { ctrlKey: true }), a, [a]), { type: 'none' });
-  assert.deepEqual(blockKeyAction(key('ArrowRight', { metaKey: true }), a, [a]), { type: 'none' });
+  assert.deepEqual(blockKeyAction(key('ArrowRight', { ctrlKey: true }), a, blocks), { type: 'none' });
+  assert.deepEqual(blockKeyAction(key('ArrowRight', { metaKey: true }), a, blocks), { type: 'none' });
 });
 
 const target = (matches: boolean) => ({ closest: () => (matches ? {} : null) });

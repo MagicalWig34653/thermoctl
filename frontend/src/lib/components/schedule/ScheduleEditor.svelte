@@ -27,9 +27,12 @@
   let inspector = $state<{ focus: () => void } | null>(null);
 
   const plan = $derived(editor.plan);
-  const brushModes = $derived(plan ? plan.modes.filter((m) => m.id !== editor.base) : []);
-  const brushMode = $derived(brushModes.find((m) => m.id === brush) ?? brushModes[0] ?? null);
-  const baseMode = $derived(plan?.modes.find((m) => m.id === editor.base) ?? null);
+  // Der Server kennt keinen „Grundmodus“: jeder Modus ist wählbar, vorbelegt ist der wärmste.
+  const brushModes = $derived(plan ? plan.modes : []);
+  const brushMode = $derived(
+    brushModes.find((m) => m.id === brush) ??
+      brushModes.reduce<(typeof brushModes)[number] | null>((best, m) => (!best || m.warmth > best.warmth ? m : best), null),
+  );
   const selected = $derived(editor.selectedBlock);
 
   const act = (intent: Intent) => void editor.submit(intent);
@@ -37,7 +40,6 @@
   function remove() {
     const block = editor.selectedBlock;
     if (!block) return;
-    if (block.carry) return say('Dieser Bereich setzt sich vom Vortag fort. Bearbeite seinen Beginn am Vortag.');
     act({ type: 'delete', block: refOf(block) });
   }
   function history(kind: 'undo' | 'redo') {
@@ -81,7 +83,7 @@
           <p class="m-0 text-sm text-muted-foreground">
             {#if !plan.can_edit}Du kannst diesen Plan ansehen.
             {:else if !plan.full_editor}In dieser Ansicht kannst du Pläne kopieren. Einzelne Zeiten ändert die Verwaltung.
-            {:else}Freie Stelle ziehen, um eine Zeit anzulegen.{/if}
+            {:else}Auf dem Plan ziehen, um eine Zeit anzulegen.{/if}
           </p>
         </div>
         {#if plan.can_edit}
@@ -139,12 +141,7 @@
       />
 
       <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted-foreground">
-        {#if baseMode}
-          <span class="flex items-center gap-2">
-            <span class="size-3 rounded-full" style="background:{modeColor(baseMode.warmth)}" aria-hidden="true"></span>
-            Dazwischen: {baseMode.name}{baseMode.temperature_c ? ` · ${formatCelsius(baseMode.temperature_c)}` : ''}
-          </span>
-        {/if}
+        <span>Der Plan ist ein Ring: Jeder Zeitbereich gilt bis zum nächsten.</span>
         <span role="status" aria-live="polite" data-testid="status">{editor.busy ? 'Wird gespeichert …' : editor.status}</span>
       </div>
       <p class="mt-2 mb-0 text-xs text-muted-foreground" data-testid="tz-hint">
@@ -155,9 +152,9 @@
         <details class="mt-3 text-sm">
           <summary class="cursor-pointer rounded-md py-1">Bedienung</summary>
           <ul class="m-0 mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-            <li>Freie Stelle ziehen legt eine Zeit an; Umschalt + Ziehen übermalt vorhandene Zeiten.</li>
-            <li>Block ziehen verschiebt ihn, mit Option/Alt wird er dupliziert. Esc bricht die Geste ab.</li>
-            <li>Die Ränder links und rechts ändern Beginn und Ende; Zeiten, die aneinandergrenzen, wandern gemeinsam.</li>
+            <li>Ziehen auf einem langen Zeitbereich oder leerem Plan legt eine neue Zeit an und teilt den Bereich; sie darf keinen anderen Beginn überdecken. Umschalt + Ziehen übermalt auch diese.</li>
+            <li>Einen kurzen Zeitbereich ziehen verschiebt ihn, mit Option/Alt wird er dupliziert. Was er verlässt, übernimmt der Modus davor. Esc bricht die Geste ab.</li>
+            <li>Die Ränder links und rechts ändern Beginn und Ende; die gemeinsame Kante zum Nachbarn wandert mit (Alt beim Verkleinern: nicht).</li>
             <li>Mit Tab zu einem Block: Pfeile verschieben, Alt + Pfeile ändern Ende (←/→) und Beginn (↑/↓), Enter öffnet die Details.</li>
             <li>Rücktaste oder Entf löscht den markierten Block, Strg/Cmd + Z nimmt zurück, mit Umschalt wird wiederholt.</li>
           </ul>
@@ -178,7 +175,6 @@
           block={selected}
           blocks={editor.blocks}
           modes={plan.modes}
-          baseId={editor.base}
           editable={editor.fullEditor && !editor.busy}
           onintent={act}
           onmessage={say}

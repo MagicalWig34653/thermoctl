@@ -5,10 +5,19 @@
 // den Serverstand neu (Lesen ist gefahrlos) -- außer beim Versionskonflikt, den die Person
 // bewusst per „Neu laden“ auflöst. Schreibaufrufe laufen einzeln und werden nie wiederholt.
 //
-// Rücknahme geht über die Marke des Servers (nur die jüngste Geste, solange niemand danach etwas
-// ändert); „Wiederholen“ sendet dieselbe Absicht erneut, ebenfalls gegen die aktuelle Version.
+// Rücknahme geht über die Marken-Kette des Servers: jede Schreibanfrage trägt die zuletzt erhaltene
+// Marke als `previous_undo_token`, `undo` liefert die Marke für den nächsten Schritt (oder null).
+// So sind mehrere Schritte zurück möglich, solange niemand sonst etwas ändert. „Wiederholen“ sendet
+// die zurückgenommene Absicht erneut, ebenfalls gegen die aktuelle Version.
 
-import { baseModeId, blockCovering, blocksOf, findBlock, sameRef, type Block, type BlockRef } from './geometry';
+import {
+  blockStartingAt,
+  blocksOf,
+  findBlock,
+  sameRef,
+  type Block,
+  type BlockRef,
+} from './geometry';
 import { scheduleFailure } from './errors';
 import { describeIntent, ghostOf, isNoop, selectionAfter, type Ghost, type Intent } from './intents';
 import type { ScheduleClient } from './client';
@@ -20,10 +29,8 @@ export interface EditorNotice {
   text: string;
 }
 
-interface UndoEntry {
-  intent: Intent;
-  tokens: string[];
-}
+/** So viele Schritte hält der Server in einer Kette (`MAX_UNDO_STEPS`); älteres zeigt die Ansicht nicht mehr an. */
+const CHAIN = 20;
 
 export function createEditor(client: ScheduleClient, zoneId: number) {
   let plan = $state<Plan | null>(null);
@@ -35,27 +42,27 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
   let notice = $state<EditorNotice | null>(null);
   let status = $state('');
   let conflict = $state(false);
-  let undoEntry = $state<UndoEntry | null>(null);
-  let redoIntent = $state<Intent | null>(null);
+  /** Marke für den nächsten Rücknahme-Schritt (null: nichts zurückzunehmen). */
+  let undoToken = $state<string | null>(null);
+  /** Absichten der Kette, die letzte zuletzt -- wird beim Zurücknehmen zur Wiederholen-Liste. */
+  let done = $state<Intent[]>([]);
+  let redoStack = $state<Intent[]>([]);
   let preview = $state<Preview | null>(null);
   let previewError = $state<string | null>(null);
   let generation = 0;
 
-  const base = $derived(plan ? baseModeId(plan.modes) : null);
-  const blocks = $derived<Block[]>(plan ? blocksOf(plan.segments, base) : []);
+  const blocks = $derived<Block[]>(plan ? blocksOf(plan.segments) : []);
   const selectedBlock = $derived(findBlock(blocks, selected));
   const canEdit = $derived(!!plan && plan.can_edit && !conflict);
   const fullEditor = $derived(canEdit && !!plan?.full_editor);
 
   function take(next: Plan, prefer: BlockRef | null = null) {
     plan = next;
-    const nextBlocks = blocksOf(next.segments, baseModeId(next.modes));
-    if (prefer) {
-      const hit = blockCovering(nextBlocks, prefer.weekday, prefer.start, prefer.end);
-      selected = hit ? { weekday: hit.weekday, start: hit.start, end: hit.end } : null;
-    } else if (selected && !findBlock(nextBlocks, selected)) {
-      selected = null;
-    }
+    const nextBlocks = blocksOf(next.segments);
+    // Gesucht wird der Block, der dort beginnt: sein Ende kann der Server anders gesetzt haben.
+    const keep = prefer ?? selected;
+    const hit = prefer ? blockStartingAt(nextBlocks, prefer) : findBlock(nextBlocks, keep);
+    selected = hit ? { weekday: hit.weekday, start: hit.start, end: hit.end } : null;
   }
 
   async function refreshPreview() {
@@ -86,20 +93,25 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
     await refreshPreview();
   }
 
+  function resetHistory() {
+    undoToken = null;
+    done = [];
+    redoStack = [];
+  }
+
   async function reload() {
     notice = null;
-    undoEntry = null;
-    redoIntent = null;
+    resetHistory();
     await load();
   }
 
-  async function submit(intent: Intent): Promise<boolean> {
+  async function submit(intent: Intent, redoing = false): Promise<boolean> {
     if (!plan || busy || conflict || isNoop(intent)) return false;
     busy = true;
     ghost = ghostOf(intent);
     notice = null;
     try {
-      const result = await client.send(zoneId, intent, plan.version);
+      const result = await client.send(zoneId, intent, plan.version, undoToken);
       generation += 1;
       take(result, selectionAfter(intent));
       if (!result.changed) {
@@ -107,20 +119,20 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
         notice = { tone: 'info', text: status };
       } else {
         status = describeIntent(intent);
-        if (result.undo_tokens.length) undoEntry = { intent, tokens: result.undo_tokens };
-        else undoEntry = null;
-        redoIntent = null;
+        undoToken = result.undo_token;
+        done = result.undo_token ? [...done, intent].slice(-CHAIN) : [];
+        if (!redoing) redoStack = [];
       }
       void refreshPreview();
       return true;
     } catch (error) {
       const failure = scheduleFailure(error);
       ghost = null;
+      if (redoing) redoStack = [];
+      notice = { tone: 'error', text: failure.message };
       if (failure.kind === 'conflict') {
         conflict = true;
-        notice = { tone: 'error', text: failure.message };
       } else {
-        notice = { tone: 'error', text: failure.message };
         status = failure.message;
         if (failure.reload) await load({ quiet: true });
       }
@@ -132,22 +144,24 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
   }
 
   async function undo(): Promise<boolean> {
-    const entry = undoEntry;
-    if (!plan || busy || conflict || !entry) return false;
+    const token = undoToken;
+    if (!plan || busy || conflict || !token) return false;
     busy = true;
     notice = null;
     try {
-      let result: Plan | null = null;
-      for (const token of entry.tokens) result = await client.undo(zoneId, token);
-      if (result) take(result);
-      undoEntry = null;
-      redoIntent = entry.intent;
+      const result = await client.undo(zoneId, token);
+      generation += 1;
+      take(result);
+      const undone = done[done.length - 1];
+      done = result.undo_token ? done.slice(0, -1) : [];
+      undoToken = result.undo_token;
+      if (undone) redoStack = [...redoStack, undone];
       status = 'Letzte Änderung zurückgenommen.';
       void refreshPreview();
       return true;
     } catch (error) {
       const failure = scheduleFailure(error);
-      undoEntry = null;
+      resetHistory();
       if (failure.kind === 'conflict') conflict = true;
       notice = { tone: 'error', text: failure.message };
       status = failure.message;
@@ -159,9 +173,10 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
   }
 
   async function redo(): Promise<boolean> {
-    const intent = redoIntent;
+    const intent = redoStack[redoStack.length - 1];
     if (!intent) return false;
-    const ok = await submit(intent);
+    redoStack = redoStack.slice(0, -1);
+    const ok = await submit(intent, true);
     if (ok) status = `Wiederholt: ${describeIntent(intent)}`;
     return ok;
   }
@@ -206,19 +221,16 @@ export function createEditor(client: ScheduleClient, zoneId: number) {
       return conflict;
     },
     get canUndo() {
-      return !!undoEntry && !busy && !conflict;
+      return !!undoToken && !busy && !conflict;
     },
     get canRedo() {
-      return !!redoIntent && !busy && !conflict;
+      return redoStack.length > 0 && !busy && !conflict;
     },
     get preview() {
       return preview;
     },
     get previewError() {
       return previewError;
-    },
-    get base() {
-      return base;
     },
     get blocks() {
       return blocks;

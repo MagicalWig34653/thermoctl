@@ -1,18 +1,17 @@
-// Der gesamte Serververtrag des Wochenplan-Editors an EINER Stelle.
+// Der gesamte Serververtrag des Wochenplan-Editors an EINER Stelle
+// (thermoctl/web/ui_api_schedule.py, geprüft gegen den echten Server).
 //
-// Vorhanden und geprüft (thermoctl/web/ui_api_schedule.py): GET /schedule/{z}, /preview, paint,
-// copy-day, copy-week, undo, /vacation, /absence, /modes.
-//
-// ANGENOMMEN (Branch ui/api-blocks, zur Bauzeit nicht einsehbar): die vier Block-Absichten unten
-// (`BLOCK_ENDPOINTS`) samt Körperform (`blockBody`) und Rücknahme-Marken in der Antwort
-// (`undoTokensOf`). Weicht der Server ab, wird nur diese Datei angepasst.
-//
-//   POST /ui-api/schedule/{z}/block/move       {version, weekday, start_minute, end_minute, to_weekday, to_start_minute}
-//   POST /ui-api/schedule/{z}/block/duplicate  (gleiche Felder, die Quelle bleibt)
-//   POST /ui-api/schedule/{z}/block/resize     {version, weekday, start_minute, end_minute, new_start_minute, new_end_minute, adjacent?}
-//   POST /ui-api/schedule/{z}/block/delete     {version, weekday, start_minute, end_minute}
-//   Antwort: neuer Plan (wie GET) plus `undo_token` (oder `undo_tokens`); Fehler 409 version_conflict /
-//   overlap / undo_stale, 422 mit `field`, 403, 404.
+//   GET  /ui-api/schedule/{z}, /preview
+//   POST /ui-api/schedule/{z}/paint               {version, weekday, start_minute, end_minute, mode_id}
+//   POST /ui-api/schedule/{z}/block/move|duplicate {version, weekday, start_minute, end_minute, to_weekday, to_start_minute}
+//   POST /ui-api/schedule/{z}/block/resize        {..., new_start_minute, new_end_minute, adjacent?}
+//   POST /ui-api/schedule/{z}/block/delete        {version, weekday, start_minute, end_minute}
+//   PUT  /ui-api/schedule/{z}/points/{id}/mode    {version, mode_id}   (Modus eines ganzen Blocks)
+//   POST /ui-api/schedule/{z}/copy-day, copy-week, undo
+//   Jede Schreibanfrage (außer copy-week) nimmt `previous_undo_token`: die zuletzt erhaltene Marke
+//   verlängert die Rücknahme-Kette. Antwort: neuer Plan plus `undo_token` (oder null); `undo` liefert
+//   die Marke für den nächsten Schritt oder null. `end_minute` zählt über 1440 hinaus (bis start + 10080).
+//   Fehler: 409 version_conflict / overlap (Feld time_range) / undo_stale, 404 block_not_found, 422 mit `field`, 403.
 //
 // Schreibende Aufrufe werden nie wiederholt (api.ts).
 
@@ -37,84 +36,89 @@ export const BLOCK_ENDPOINTS = {
 
 const base = (zoneId: number) => `/ui-api/schedule/${zoneId}`;
 
-/** Marke(n) aus einer Antwort: `undo_tokens` (Liste) oder `undo_token` (einzeln). */
-export function undoTokensOf(raw: unknown): string[] {
-  if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as { undo_token?: unknown; undo_tokens?: unknown };
-  if (Array.isArray(r.undo_tokens)) return r.undo_tokens.filter((t): t is string => typeof t === 'string');
-  return typeof r.undo_token === 'string' && r.undo_token ? [r.undo_token] : [];
+/** Rücknahme-Marke einer Antwort (oder null: nichts zurückzunehmen). */
+export function undoTokenOf(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const token = (raw as { undo_token?: unknown }).undo_token;
+  return typeof token === 'string' && token ? token : null;
 }
 
-/** Pfad (unter `/ui-api/schedule/{z}`) und Körper einer Absicht. Rein, damit prüfbar. */
-export function requestOf(intent: Intent, version: string): { path: string; body: object } {
+export interface Request {
+  method: 'POST' | 'PUT';
+  path: string;
+  body: object;
+}
+
+/** Methode, Pfad (unter `/ui-api/schedule/{z}`) und Körper einer Absicht. Rein, damit prüfbar. */
+export function requestOf(intent: Intent, version: string, previousUndoToken: string | null = null): Request {
+  const chain = previousUndoToken ? { previous_undo_token: previousUndoToken } : {};
+  const make = (path: string, body: object, method: Request['method'] = 'POST'): Request => ({
+    method,
+    path,
+    body: { version, ...body, ...chain },
+  });
   switch (intent.type) {
     case 'paint':
-      return {
-        path: 'paint',
-        body: {
-          version,
-          weekday: intent.weekday,
-          start_minute: intent.start,
-          end_minute: intent.end,
-          mode_id: intent.modeId,
-        },
-      };
+      return make('paint', {
+        weekday: intent.weekday,
+        start_minute: intent.start,
+        end_minute: intent.end,
+        mode_id: intent.modeId,
+      });
     case 'move':
     case 'duplicate':
-      return {
-        path: BLOCK_ENDPOINTS[intent.type],
-        body: {
-          version,
-          weekday: intent.block.weekday,
-          start_minute: intent.block.start,
-          end_minute: intent.block.end,
-          to_weekday: intent.toWeekday,
-          to_start_minute: intent.toStart,
-        },
-      };
+      return make(BLOCK_ENDPOINTS[intent.type], {
+        weekday: intent.block.weekday,
+        start_minute: intent.block.start,
+        end_minute: intent.block.end,
+        to_weekday: intent.toWeekday,
+        to_start_minute: intent.toStart,
+      });
     case 'resize':
-      return {
-        path: BLOCK_ENDPOINTS.resize,
-        body: {
-          version,
-          weekday: intent.block.weekday,
-          start_minute: intent.block.start,
-          end_minute: intent.block.end,
-          new_start_minute: intent.newStart,
-          new_end_minute: intent.newEnd,
-          ...(intent.adjacent ? { adjacent: true } : {}),
-        },
-      };
+      return make(BLOCK_ENDPOINTS.resize, {
+        weekday: intent.block.weekday,
+        start_minute: intent.block.start,
+        end_minute: intent.block.end,
+        new_start_minute: intent.newStart,
+        new_end_minute: intent.newEnd,
+        ...(intent.adjacent ? { adjacent: true } : {}),
+      });
     case 'delete':
-      return {
-        path: BLOCK_ENDPOINTS.delete,
-        body: {
-          version,
-          weekday: intent.block.weekday,
-          start_minute: intent.block.start,
-          end_minute: intent.block.end,
-        },
-      };
+      return make(BLOCK_ENDPOINTS.delete, {
+        weekday: intent.block.weekday,
+        start_minute: intent.block.start,
+        end_minute: intent.block.end,
+      });
+    case 'setMode':
+      return make(`points/${intent.pointId}/mode`, { mode_id: intent.modeId }, 'PUT');
     case 'copyDay':
-      return { path: 'copy-day', body: { version, weekday: intent.weekday, scope: intent.scope } };
+      return make('copy-day', { weekday: intent.weekday, scope: intent.scope });
     case 'copyWeek':
-      return { path: 'copy-week', body: { version, targets: intent.targets } };
+      // Ohne Kette: `copy-week` nimmt keine `previous_undo_token` und liefert keine Marke.
+      return { method: 'POST', path: 'copy-week', body: { version, targets: intent.targets } };
   }
 }
 
-function change(raw: PlanChange & { undo_token?: string | null }): PlanChange {
-  return { ...raw, undo_tokens: undoTokensOf(raw) };
+function change(raw: PlanChange): PlanChange {
+  return { ...raw, undo_token: undoTokenOf(raw) };
 }
 
 export function createScheduleClient(api: Api) {
   return {
     plan: (zoneId: number) => api.get<Plan>(base(zoneId)),
     preview: (zoneId: number) => api.get<Preview>(`${base(zoneId)}/preview`),
-    async send(zoneId: number, intent: Intent, version: string): Promise<PlanChange> {
-      const { path, body } = requestOf(intent, version);
-      return change(await api.post(`${base(zoneId)}/${path}`, body));
+    async send(
+      zoneId: number,
+      intent: Intent,
+      version: string,
+      previousUndoToken: string | null = null,
+    ): Promise<PlanChange> {
+      const { method, path, body } = requestOf(intent, version, previousUndoToken);
+      const url = `${base(zoneId)}/${path}`;
+      return change(await (method === 'PUT' ? api.put<PlanChange>(url, body) : api.post<PlanChange>(url, body)));
     },
-    /** Eine Marke zurücknehmen (der Server prüft, dass niemand danach etwas geändert hat). */
+    /** Eine Marke zurücknehmen (der Server prüft, dass niemand danach etwas geändert hat). Die Antwort
+     *  trägt die Marke für den nächsten Schritt zurück (oder null am Ende der Kette). */
     async undo(zoneId: number, token: string): Promise<PlanChange> {
       return change(await api.post(`${base(zoneId)}/undo`, { undo_token: token }));
     },
