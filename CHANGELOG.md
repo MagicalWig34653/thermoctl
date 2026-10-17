@@ -9,6 +9,28 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.19.1 — 2026-10-17
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration**, keine neuen Einstellungen oder Add-on-Optionen.
+- **Neue Begriffe in der Oberfläche:** „Primärrolle“ statt „Führung“ und „Standby“ statt „Reserve“ (für die Rolle einer
+  Instanz im Aktiv-Bereitschafts-Verbund). Die Schnittstelle bleibt unverändert: `cluster_state` (`leading`, `standby`,
+  `determining`) und `cluster_standby` heißen weiter so. Die Einstellungssuche findet die Seite auch unter „Führung“
+  und „Reserve“.
+- **Der Glow ist kräftiger und hat drei Stufen** (Dezent, Kräftig, Intensiv). Wer ihn schon eingeschaltet hat, bekommt die
+  neue Vorgabe „Kräftig“; die Stufe lässt sich im Darstellungsdialog ändern.
+- Praxistest an der echten Anlage steht weiter aus (siehe 0.18.0).
+
+### Geändert
+
+- **Primärrolle statt Führung, Standby statt Reserve** in Oberfläche, Glossar und Dokumentation.
+- **Glow:** Die Schatten hatten einen negativen Streuwert und waren dadurch kaum zu sehen. Jetzt leuchten außerdem
+  Karten, Dialoge und der Seitentitel in der Akzentfarbe; Text und Kontrast bleiben unverändert. Bei reduzierter
+  Transparenz und reduzierter Bewegung bleibt er aus beziehungsweise ohne Übergang.
+
+---
+
 ## 0.19.0 — 2026-10-17
 
 ### Beim Upgrade zu wissen
