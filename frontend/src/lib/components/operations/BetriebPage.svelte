@@ -27,12 +27,12 @@
 <OpsPage title="Betrieb & Freigaben" description="Ob die Regelung schaltet, hängt von mehreren getrennten Zuständen ab. Sie stehen hier nebeneinander und werden nicht zusammengefasst.">
   {#if page && headline}
     {#if resource.failure}<Notice tone="warn">Aktualisierung fehlgeschlagen: {resource.failure.message} Angezeigt wird der letzte bekannte Stand.</Notice>{/if}
-    <section aria-labelledby="state-title" class="space-y-3">
-      <h2 id="state-title" class="mb-0">Zustand</h2>
+    <section aria-labelledby="state-title" >
+      <h2 id="state-title" class="ops-h2-bare">Zustand</h2>
       <StateCards actuation={page.operation.actuation} />
     </section>
     <section aria-labelledby="explain-title" class="max-w-[820px]" data-testid="headline">
-      <h2 id="explain-title" class="mb-2">Was das bedeutet</h2>
+      <h2 id="explain-title" class="ops-h2-bare">Was das bedeutet</h2>
       <Notice tone={headline.tone === 'warn' ? 'warn' : 'info'}>{headline.text}</Notice>
     </section>
     {#if page.operation.may_arm}

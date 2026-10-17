@@ -15,8 +15,8 @@
 </script>
 
 <section aria-labelledby="decisions-title" data-testid="decisions">
-  <h2 id="decisions-title" class="mb-1">Entscheidungen je Raum</h2>
-  <p class="mb-4 text-sm text-muted-foreground">Warum geschaltet wurde oder nicht. {effect.text}</p>
+  <h2 id="decisions-title" class="ops-h2">Entscheidungen je Raum</h2>
+  <p class="ops-lead">Warum geschaltet wurde oder nicht. {effect.text}</p>
   {#if operation.rooms.length === 0}
     <p class="text-muted-foreground">Keine Räume sichtbar.</p>
   {:else}
