@@ -102,4 +102,16 @@ export function resolveRoute(
   return { kind: 'page', areaId, pageId };
 }
 
+/** Schlüssel `<bereich>/<seite>` einer Seitenadresse (`{prefix}/app/geraete/karte`), sonst null. Nur eine
+ *  Zeichenkettenzerlegung: Sie sagt nichts über Sichtbarkeit oder Rechte, dient allein dem frühen Laden
+ *  des Seitencodes in `main.ts`, bevor der Bootstrap beantwortet ist. Unbekannte Bereiche und Seiten
+ *  ergeben null (`PAGE_LOADERS` kennt sie ohnehin nicht). */
+export function pageKeyOf(pathname: string, prefix: string): string | null {
+  const { path } = splitTarget(relativePath(pathname, prefix));
+  const [, areaId, pageId, ...more] = path.split('/');
+  if (!areaId || !pageId || more.length > 0) return null;
+  const area = AREAS.find((a) => a.id === areaId);
+  return area?.pages.some((p) => p.id === pageId) ? `${areaId}/${pageId}` : null;
+}
+
 export { areaPath };

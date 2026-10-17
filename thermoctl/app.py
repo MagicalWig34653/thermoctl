@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.datastructures import MutableHeaders, QueryParams
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import Mount, Route
 from starlette.types import Message, Receive, Scope, Send
 
@@ -1169,6 +1170,17 @@ def _warn_if_reachable_unprotected(settings: Settings) -> None:
 # The one directory served as-is: the built Svelte app, the Swagger UI and the favicon
 # (static/HERKUNFT.md).
 _static_files = StaticFiles(directory=str(STATIC_DIR))
+# Compressed on the way out: the built app is mostly JavaScript and CSS (a 270 kB script is
+# roughly 80 kB gzipped). Only this static mount, not the JSON interfaces -- those carry
+# per-user data and gain little. `GZipMiddleware` skips what is already encoded and anything
+# below the threshold.
+_static_gzip = GZipMiddleware(_static_files, minimum_size=1024, compresslevel=6)
+
+# Vite names every built file after its content (`assets/App-CVd1vxkW.js`) and references the
+# others relative to it, without the `?v=` of the hand-written assets. Such a name can never
+# point at different bytes, so it may be cached for good; the pattern is deliberate (a file in
+# that directory *without* a hash would not qualify).
+_HASHED_APP_ASSET = re.compile(r"^/app/assets/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$")
 
 
 async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
@@ -1207,11 +1219,12 @@ async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
             headers["Cache-Control"] = (
                 "public, max-age=31536000, immutable"
                 if query.get("v") == ASSET_VERSION
+                or _HASHED_APP_ASSET.match(request_scope["path"])
                 else "no-cache"
             )
         await send(message)
 
-    await _static_files(request_scope, receive, send_cached)
+    await _static_gzip(request_scope, receive, send_cached)
 
 
 def create_app() -> FastAPI:
