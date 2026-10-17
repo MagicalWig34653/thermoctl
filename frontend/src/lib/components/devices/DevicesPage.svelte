@@ -27,7 +27,7 @@
   <p class="text-muted-foreground">Welche Geräte es gibt, wie es ihnen geht und zu welchem Raum sie gehören.</p>
 </header>
 
-<div class="mb-4 flex flex-wrap gap-1" role="group" aria-label="Bereich">
+<div class="mb-6 flex flex-wrap gap-2" role="group" aria-label="Bereich">
   <Button variant={tab === 'geraete' ? 'secondary' : 'outline'} aria-pressed={tab === 'geraete'} onclick={() => (tab = 'geraete')}>Geräte</Button>
   <Button variant={tab === 'raeume' ? 'secondary' : 'outline'} aria-pressed={tab === 'raeume'} onclick={() => (tab = 'raeume')}>Zuordnung je Raum</Button>
 </div>
