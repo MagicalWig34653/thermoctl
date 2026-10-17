@@ -8,6 +8,7 @@
 @import './styles/history.css';
 @import './styles/dashboard.css';
 @import './styles/devices.css';
+@import './styles/glow.css';
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant data-horizontal (&[data-orientation="horizontal"]);

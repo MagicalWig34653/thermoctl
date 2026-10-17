@@ -17,16 +17,17 @@ export const ACCENTS: readonly { id: string; label: string; hex: string }[] = [
 
 const THEME_KEY = 'thermoctl-theme';
 const ACCENT_KEY = 'thermoctl-accent';
+export const GLOW_KEY = 'thermoctl-glow';
 export const DEFAULT_ACCENT = ACCENTS[0].hex;
 
-function read(key: string): string | null {
+export function read(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
-function write(key: string, value: string) {
+export function write(key: string, value: string) {
   try {
     window.localStorage.setItem(key, value);
   } catch {
@@ -42,9 +43,22 @@ export function parseAccent(value: string | null): string {
   return value !== null && /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_ACCENT;
 }
 
+// Glow: nur ein Schalter, Vorgabe aus. Das Leuchten selbst ist reines CSS (styles/glow.css),
+// gesteuert über das Datenattribut data-glow am Wurzelelement.
+export function parseGlow(value: string | null): boolean {
+  return value === 'on';
+}
+export function loadGlow(): boolean {
+  return parseGlow(read(GLOW_KEY));
+}
+export function saveGlow(on: boolean) {
+  write(GLOW_KEY, on ? 'on' : 'off');
+}
+
 export function createAppearance() {
   let theme = $state<Theme>(parseTheme(read(THEME_KEY)));
   let accent = $state(parseAccent(read(ACCENT_KEY)));
+  let glow = $state(loadGlow());
   const media = window.matchMedia('(prefers-color-scheme: dark)');
 
   function apply() {
@@ -52,6 +66,8 @@ export function createAppearance() {
     const root = document.documentElement;
     root.classList.toggle('dark', dark);
     root.style.colorScheme = dark ? 'dark' : 'light';
+    if (glow) root.dataset.glow = 'on';
+    else delete root.dataset.glow;
     const tokens = accentTokens(accent, dark);
     if (!tokens) return;
     const vars: Record<string, string> = {
@@ -73,6 +89,14 @@ export function createAppearance() {
     },
     get accent() {
       return accent;
+    },
+    get glow() {
+      return glow;
+    },
+    setGlow(value: boolean) {
+      glow = value;
+      saveGlow(value);
+      apply();
     },
     setTheme(value: Theme) {
       theme = value;
