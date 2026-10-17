@@ -1066,11 +1066,11 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (`shadow_decision.scheduled_setpoint_c`/`solar_setback_k`), then `b7d2e5a40c18`
     # (Recht `control.disarm`), then `b721e49c6a30` (OAuth-Datenmodell), then `c4a9e2f71b35`
     # (Änderungsprotokoll), then `d8e3a51c7f24` (Thermostat-Betriebsart), then `a7c3e91d5b24`
-    # (Dashboard-Layout), then `c5e1a9d3b072` (Anordnung der Gerätekarte), then `d4b8f2a60c19` (Kachelart `control`) -- every time the
+    # (Dashboard-Layout), then `c5e1a9d3b072` (Anordnung der Gerätekarte), then `d4b8f2a60c19` (Kachelart `control`), then `e7a3c15b9d28` (Vorlagen) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["d4b8f2a60c19"]
+    assert scripts.get_heads() == ["e7a3c15b9d28"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

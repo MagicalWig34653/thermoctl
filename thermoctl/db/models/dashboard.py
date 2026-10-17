@@ -131,3 +131,70 @@ class DashboardTile(Base):
     metric: Mapped[str | None] = mapped_column(String(16), nullable=True)
     destination: Mapped[str | None] = mapped_column(String(16), nullable=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class DashboardTemplate(Base):
+    """Eine benannte Vorlage für die Übersicht neuer Benutzer.
+
+    Spiegelt Abschnitte und Kacheln eines persönlichen Layouts (eigene Tabellen statt
+    JSON, Grundsatz 3). Eine Vorlage kopiert beim Anlegen eines Benutzers ihren Inhalt in
+    dessen Layout; danach besteht keine Verbindung mehr. Rechte prüft weiterhin das Lesen
+    des Layouts, nicht die Vorlage.
+    """
+
+    __tablename__ = "dashboard_template"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(MAX_TITLE_LENGTH), nullable=False, unique=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DashboardTemplateSection(Base):
+    __tablename__ = "dashboard_template_section"
+    __table_args__ = (
+        UniqueConstraint("template_id", "position", name="uq_dashboard_template_section_pos"),
+        CheckConstraint("position >= 0", name="position_nichtnegativ"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("dashboard_template.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(MAX_TITLE_LENGTH), nullable=False)
+
+
+class DashboardTemplateTile(Base):
+    __tablename__ = "dashboard_template_tile"
+    __table_args__ = (
+        UniqueConstraint("section_id", "position", name="uq_dashboard_template_tile_pos"),
+        CheckConstraint("position >= 0", name="position_nichtnegativ"),
+        CheckConstraint(_in("kind", TILE_KINDS), name="kind_bekannt"),
+        CheckConstraint(_in("width", WIDTHS), name="width_bekannt"),
+        CheckConstraint(_in("period_days", PERIODS_DAYS), name="period_bekannt"),
+        CheckConstraint(
+            "metric IS NULL OR " + _in("metric", METRICS), name="metric_bekannt"
+        ),
+        CheckConstraint(
+            "destination IS NULL OR " + _in("destination", DESTINATIONS),
+            name="destination_bekannt",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    section_id: Mapped[int] = mapped_column(
+        ForeignKey("dashboard_template_section.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    zone_id: Mapped[int | None] = mapped_column(
+        ForeignKey("zone.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(MAX_TITLE_LENGTH), nullable=False)
+    period_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    metric: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    destination: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    note: Mapped[str] = mapped_column(Text, nullable=False)

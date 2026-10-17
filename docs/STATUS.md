@@ -7,7 +7,7 @@ Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl`; das Altsystem (Host, vier Skripte) bleibt parallel als
   Rückfallebene und ist nicht abgelöst. Repository öffentlich (AGPL-3.0), Betrieb als Docker-Container und als
   Home-Assistant-Add-on (eigenes Repository `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `d4b8f2a60c19`.
+- **Migrationskopf:** `e7a3c15b9d28`.
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
