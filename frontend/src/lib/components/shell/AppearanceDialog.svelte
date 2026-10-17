@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Check, Monitor, Moon, Sun } from '@lucide/svelte';
+  import { Switch } from '$lib/components/ui/switch';
   import * as Dialog from '$lib/components/ui/dialog';
   import { ACCENTS, type Theme } from '$lib/appearance.svelte';
   import { useApp } from '$lib/context';
@@ -66,5 +67,21 @@
       </div>
       {#if !isPreset}<p class="mt-2 text-xs text-muted-foreground">Eigene Farbe aktiv.</p>{/if}
     </fieldset>
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <label for="glow-switch" class="text-sm font-medium">Glow</label>
+        <p id="glow-hint" class="mt-1 text-xs text-muted-foreground">
+          Akzente leuchten leicht in der gewählten Farbe, vor allem im Dunkelmodus. Texte und
+          Kontraste bleiben unverändert.
+        </p>
+      </div>
+      <Switch
+        id="glow-switch"
+        aria-describedby="glow-hint"
+        checked={appearance.glow}
+        onCheckedChange={(v) => appearance.setGlow(v)}
+      />
+    </div>
   </Dialog.Content>
 </Dialog.Root>

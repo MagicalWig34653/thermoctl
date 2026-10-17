@@ -1,0 +1,45 @@
+/* Glow: dezentes Leuchten in der Akzentfarbe, nur mit data-glow='on' am Wurzelelement.
+   Nur box-shadow/filter -- nichts davon verschiebt das Layout, nichts liegt über Text. */
+:root[data-glow='on'] {
+  --glow-soft: color-mix(in srgb, var(--ui-accent, var(--primary)) 14%, transparent);
+  --glow-mid: color-mix(in srgb, var(--ui-accent, var(--primary)) 22%, transparent);
+  --glow-focus: color-mix(in srgb, var(--ui-accent, var(--primary)) 45%, transparent);
+}
+:root.dark[data-glow='on'] {
+  --glow-soft: color-mix(in srgb, var(--ui-accent, var(--primary)) 32%, transparent);
+  --glow-mid: color-mix(in srgb, var(--ui-accent, var(--primary)) 50%, transparent);
+  --glow-focus: color-mix(in srgb, var(--ui-accent, var(--primary)) 75%, transparent);
+}
+
+@media not (prefers-reduced-transparency: reduce) {
+  /* Primärknöpfe */
+  :root[data-glow='on'] [data-slot='button'].bg-primary:not(:focus-visible, :disabled) {
+    box-shadow: 0 0 14px -2px var(--glow-mid);
+  }
+  /* Aktiver Navigationspunkt */
+  :root[data-glow='on'] nav a[aria-current='page'] {
+    box-shadow: 0 0 14px -4px var(--glow-mid);
+  }
+  /* Schalter an, Auswahlfelder an */
+  :root[data-glow='on'] [data-slot='switch'][data-state='checked'],
+  :root[data-glow='on'] [data-slot='checkbox'][data-state='checked'] {
+    box-shadow: 0 0 10px -1px var(--glow-mid);
+  }
+  /* Auswahlmarkierungen (gedrückte Knöpfe, Reiter) */
+  :root[data-glow='on'] button[aria-pressed='true']:not(:focus-visible),
+  :root[data-glow='on'] [role='tab'][aria-selected='true']:not(:focus-visible) {
+    box-shadow: 0 0 12px -3px var(--glow-soft);
+  }
+  /* Fokusring: der Tailwind-Ring bleibt, das Leuchten kommt als Filter dazu */
+  :root[data-glow='on'] :focus-visible {
+    filter: drop-shadow(0 0 5px var(--glow-focus));
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-glow='on'] [data-slot='button'],
+  :root[data-glow='on'] [data-slot='switch'],
+  :root[data-glow='on'] nav a {
+    transition-property: color, background-color, border-color, box-shadow, transform;
+    transition-duration: 0.15s;
+  }
+}
