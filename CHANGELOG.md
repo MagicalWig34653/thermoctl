@@ -13,7 +13,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Beim Upgrade zu wissen
 
-- **Eine Datenbankmigration** (Anordnung der Gerätekarte, Tabellen `device_map_layout*`, Alembic `c5e1a9d3b072`). Sie läuft
+- **Eine Datenbankmigration** (Anordnung der Gerätekarte, Tabellen `map_layout*`, Alembic `c5e1a9d3b072`). Sie läuft
   beim Start von selbst.
 - **Keine neuen Add-on-Optionen**, keine neuen Einstellungen.
 - **Die Anordnung der Gerätekarte liegt jetzt auf dem Server**, je Benutzer. Was bisher nur im Browser (`localStorage`)

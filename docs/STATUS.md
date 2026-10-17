@@ -224,7 +224,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 ### Zuordnungskarte und Ventilbetriebsarten
 
 - **Anordnung der Karte** (Positionen, Ausschnitt, eingeklappte Knoten) liegt je Benutzer auf dem Server (Tabellen
-  `device_map_layout*`, Version gegen Konflikte, nur sichtbare Knoten); ein Administrator mit anlagenweitem `device.manage`
+  `map_layout*`, Version gegen Konflikte, nur sichtbare Knoten); ein Administrator mit anlagenweitem `device.manage`
   kann sie als Vorgabe für alle hinterlegen. Der Schalter „technische Werte“ bleibt im Browser; ohne Netz greift der
   `localStorage` als Rückfall. Reine Darstellung, nichts davon beeinflusst die Regelung.
 - **Betriebsart je Thermostatventil** (`thermostat_mode`: `controlled` / `self_regulating` / `reading_only`,
