@@ -54,3 +54,16 @@ test('Glow: kaputter Wert im Speicher gilt als aus', () => {
   stubStorage({ [GLOW_KEY]: '{"x":' });
   assert.equal(loadGlow(), false);
 });
+
+import { GLOW_LEVELS, parseGlowLevel } from '../src/lib/appearance.svelte.ts';
+
+test('Glow-Stärke: drei Stufen, Vorgabe 2, Unbekanntes fällt auf die Vorgabe', () => {
+  assert.deepEqual(GLOW_LEVELS.map((l) => l.id), [1, 2, 3]);
+  assert.equal(parseGlowLevel(null), 2);
+  assert.equal(parseGlowLevel('1'), 1);
+  assert.equal(parseGlowLevel('2'), 2);
+  assert.equal(parseGlowLevel('3'), 3);
+  assert.equal(parseGlowLevel('7'), 2);
+  assert.equal(parseGlowLevel('stark'), 2);
+  assert.equal(parseGlowLevel(''), 2);
+});

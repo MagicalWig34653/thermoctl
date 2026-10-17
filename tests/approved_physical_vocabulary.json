@@ -179,7 +179,7 @@
       "**Meldungen** schaltet sechs Arten von Störungsmeldungen einzeln ein oder aus",
       "- **Betriebsart** (Anlagenprofil, `zone.manage`): z. B. den Raum ausschalten — er hält dann",
       "- **Heizung & Regelung → Notbetrieb & Sensorfehler** (anlagenweit): Festtakt",
-      "3. **Führungsrolle im Verbund** — teilen mehrere Instanzen einen Bestand, schaltet nur die",
+      "3. **Primärrolle im Verbund** — teilen mehrere Instanzen einen Bestand, schaltet nur die",
       "Betriebsart des Ventils: Schaltbefehle bei einem Schaltaktor, Sollwert und Istwert bei einem",
       "Die **Gerätekarte** stellt Raumfühler links, Räume in der Mitte und Heizkreise rechts dar,",
       "Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum",
@@ -190,7 +190,7 @@
       "abgeglichen“) und Fähigkeiten — Temperaturmessung, Schaltausgang oder Thermostatventil.",
       "der Fortschritt, die Sendefreigabe und je Aktor Takt-Phase und Übergabe. Darunter der",
       "die Anlage einrichtet, eine eigene Instanz aufsetzt oder scharf schaltet, findet das in",
-      "führende; eine Reserve regelt nicht und schaltet nichts.",
+      "primäre; ein Standby regelt nicht und schaltet nichts.",
       "schaltet. Das hängt von **drei getrennten Riegeln** ab, die nebeneinander stehen und nicht",
       "sie braucht mindestens zwei Zeilen und genau einen oberen Punkt, ab dem nicht mehr eingeschaltet",
       "von welchem Gerät kommt und was `thermoctl` an welchen Aktor schreiben würde, je nach"

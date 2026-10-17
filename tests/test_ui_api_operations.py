@@ -830,7 +830,7 @@ def test_cluster_state_is_determining_shortly_after_start_and_standby_later(
         assert body["cluster_state"] == "determining"
         until = datetime.fromisoformat(body["determining_until"])
         assert until.replace(tzinfo=None) == started + timedelta(seconds=timeout)
-    # Knapp innerhalb der Wartezeit: noch Erkennung; knapp darauf: echte Reserve.
+    # Knapp innerhalb der Wartezeit: noch Erkennung; knapp darauf: echter Standby.
     http.app.state.process_started_at = utcnow() - timedelta(seconds=timeout - 5)  # type: ignore[attr-defined]
     assert http.get("/ui-api/operation").json()["actuation"]["cluster_state"] == "determining"
     http.app.state.process_started_at = utcnow() - timedelta(seconds=timeout + 1)  # type: ignore[attr-defined]

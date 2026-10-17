@@ -1,6 +1,6 @@
 // Rolle dieser Instanz im Verbund, als Darstellung der Serverwerte (nichts wird im Browser entschieden).
 // `determining` bedeutet: Die Instanz ist frisch gestartet und wartet, bis der Anspruch einer eventuell
-// abgestürzten Vorgängerin abläuft. Sie schaltet dabei NICHTS, ist aber noch keine nachgewiesene Reserve.
+// abgestürzten Vorgängerin abläuft. Sie schaltet dabei NICHTS, ist aber noch keine nachgewiesener Standby.
 
 export type ClusterRole = 'leading' | 'standby' | 'determining';
 
@@ -27,11 +27,11 @@ export function untilText(iso: string | null | undefined): string | null {
 /** Kurzer Text für Wert und Hinweis. */
 export function roleLabel(a: RoleInfo): { value: string; tone: 'ok' | 'warn' | 'neutral'; short: string } {
   const role = roleOf(a);
-  if (role === 'leading') return { value: 'Führend', tone: 'ok', short: 'Führend' };
+  if (role === 'leading') return { value: 'Primär', tone: 'ok', short: 'Primär' };
   if (role === 'determining') {
     const until = untilText(a.determining_until);
     const value = until ? `Wird ermittelt (bis ca. ${until})` : 'Wird ermittelt';
-    return { value, tone: 'neutral', short: 'Führung wird ermittelt' };
+    return { value, tone: 'neutral', short: 'Primärrolle wird ermittelt' };
   }
-  return { value: 'Reserve – schaltet nicht', tone: 'warn', short: 'Reserve' };
+  return { value: 'Standby – schaltet nicht', tone: 'warn', short: 'Standby' };
 }

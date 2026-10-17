@@ -2,7 +2,7 @@
 
 Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **In Freigabe:** 0.19.0 (Gerätekarte-Anordnung auf dem Server, schnellere Seiten, aufklappbare Navigation, Glow, Führung wird ermittelt): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
+- **In Freigabe:** 0.19.0 (Gerätekarte-Anordnung auf dem Server, schnellere Seiten, aufklappbare Navigation, Glow, Primärrolle wird ermittelt): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
 - **Letzte Freigabe:** 0.18.0 (Svelte-Oberfläche, siehe unten): Tag `v0.18.0`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl`; das Altsystem (Host, vier Skripte) bleibt parallel als
   Rückfallebene und ist nicht abgelöst. Repository öffentlich (AGPL-3.0), Betrieb als Docker-Container und als
@@ -189,7 +189,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   keinem Token-Preset); Rücknahme `control.disarm`.
 - **Riegel 2 -- MQTT-Sendefreigabe:** der MQTT-Client trägt einen beim **Prozessstart** gebauten, unabhängigen Riegel
   (`control_armed_at_startup()`); Scharfschalten wirkt dort erst nach einem Neustart. Gilt auch für Meross.
-- **Riegel 3 -- Führung:** `cluster.is_leader` (Einzelbetrieb ohne Verbund-Datensatz gilt als führend, fail-open
+- **Riegel 3 -- Primärrolle:** `cluster.is_leader` (Einzelbetrieb ohne Verbund-Datensatz gilt als primär, fail-open
   nur dort, weil die Suite ihr Schema nicht über Migrationen baut). Geprüft vor **jedem** Sendevorgang
   (`integrations/actuators.py::switching_allowed`).
 - Sind alle offen, veröffentlicht der Dienst: Sollwerte an selbstregelnde Thermostatventile, Ein/Aus an gewöhnliche
@@ -200,10 +200,10 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 - **Schaltprotokoll** (`device_command`, Recht `audit.read`): drei Ergebnisse `executed`/`suppressed`/`failed`
   (kein „verworfen"); Eintrag überlebt Löschen/Umbenennen von Zone oder Gerät (Namens-Momentaufnahme); keine
   automatische Aufbewahrung (bekannte offene Sicherheitsfrage, s. o.). REST/MCP lesen es noch nicht (bewusst).
-- **Anlaufriegel:** `app.state.sending_allowed` liest nur `control_armed`; die Führung wird weiterhin je Sendevorgang
+- **Anlaufriegel:** `app.state.sending_allowed` liest nur `control_armed`; die Primärrolle wird weiterhin je Sendevorgang
   geprüft.
 
-### Führungsrolle und Aktiv-Bereitschafts-Verbund
+### Primärrolle und Aktiv-Bereitschafts-Verbund
 
 - Zwei Instanzen teilen eine Datenbank und einen Broker; eine regelt, die andere übernimmt nach
   `setting.cluster_takeover_cycles` (Vorgabe 5) Zyklen Ausfall. Anspruch in `cluster_claim` (nur
@@ -212,8 +212,9 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   WAL-Modus.
 - Die Bereitschaft lässt den ganzen Regelzyklus aus (keine Entscheidungen, keine Veröffentlichung), bleibt aber am
   MQTT verbunden und nimmt Messwerte auf; Befehle (z. B. Moduswechsel) werden auf beiden angewandt, nur die
-  Führende bestätigt zurück. Geordnetes Herunterfahren gibt den Anspruch sofort frei. Die Oberfläche zeigt
-  „Bereitschaft".
+  primäre Instanz bestätigt zurück. Geordnetes Herunterfahren gibt den Anspruch sofort frei. Die Oberfläche zeigt
+  „Standby". Direkt nach einem Start steht dort „Primärrolle wird ermittelt", solange der Anspruch einer
+  abgestürzten Vorgängerin noch gültig ist.
 - **Bekannte Grenze:** eine gleichzeitig auf beiden Instanzen eingehende Brücken-/Störungsmeldung kann zwei
   Webhook-Sendungen auslösen (nicht gelöst). MQTT-Client-Kennungen müssen je Instanz verschieden sein
   (`docs/self-hosting.md`, Abschnitt 6d).
@@ -273,7 +274,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 ### MQTT und Home Assistant
 
 - Optionale Integration per MQTT (Discovery, Zustände, Befehle), **keine** Voraussetzung. Zustände werden nur von der
-  führenden Instanz veröffentlicht. Entitäten u. a.: Außentemperatur, `state/window_open_by_temperature`,
+  primären Instanz veröffentlicht. Entitäten u. a.: Außentemperatur, `state/window_open_by_temperature`,
   `state/override_active`, Befehl `command/cancel_override`; Störungen getrennt pro Art (`sensor:`, `fenster:`,
   `notbetrieb:`-Schlüssel). Wer den Webhook stilllegt, verliert den Problemsensor in Home Assistant nicht.
 - Sechs Meldungsarten sind anlagenweit einzeln abschaltbar (Sensorstörung, Brücke/Broker weg, Schaltbefehl

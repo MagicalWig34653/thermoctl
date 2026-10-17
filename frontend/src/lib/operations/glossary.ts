@@ -11,8 +11,8 @@ export const OPS_TERMS: Record<string, Term> = {
     text: 'Ein Riegel, den der Prozess beim Start baut. Er gilt für alle Wege, auf denen Befehle hinausgehen: MQTT und Meross. Eine Freigabe im laufenden Betrieb öffnet ihn nicht; erst ein Neustart liest die gespeicherte Freigabe neu ein.',
   },
   role: {
-    title: 'Führungsrolle im Verbund',
-    text: 'Laufen mehrere Instanzen, führt genau eine. Die übrigen sind Reserve und schalten nicht, auch wenn Freigabe und Sendefreigabe stehen. Direkt nach einem Start heißt es „wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft. Währenddessen schaltet sie nichts.',
+    title: 'Primärrolle im Verbund',
+    text: 'Laufen mehrere Instanzen, ist genau eine primär. Die übrigen sind Standby und schalten nicht, auch wenn Freigabe und Sendefreigabe stehen. Direkt nach einem Start heißt es „wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft. Währenddessen schaltet sie nichts.',
   },
   dry_run: {
     title: 'Trockenlauf',

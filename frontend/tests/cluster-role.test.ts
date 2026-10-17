@@ -21,12 +21,12 @@ test('roleOf nimmt cluster_state, sonst das alte Feld cluster_standby', () => {
   assert.equal(roleOf({ cluster_standby: false }), 'leading');
 });
 
-test('determining heißt „wird ermittelt“ und ist nie Reserve oder Führend', () => {
+test('determining heißt „wird ermittelt“ und ist nie Standby oder Primär', () => {
   const a = { cluster_standby: true, cluster_state: 'determining' as const, determining_until: '2026-10-17T08:05:00' };
   const label = roleLabel(a);
   assert.match(label.value, /^Wird ermittelt \(bis ca\. \d\d:\d\d\)$/);
   assert.equal(label.tone, 'neutral');
-  assert.doesNotMatch(label.value, /Reserve|Führend/);
+  assert.doesNotMatch(label.value, /Standby|Primär/);
 });
 
 test('ohne Zeitangabe bleibt der Text ohne Uhrzeit', () => {
@@ -44,11 +44,11 @@ test('determining schaltet nie und die Meldung nennt den Grund', () => {
   assert.equal(isSwitching(a), false);
   const line = notSwitchingLine(a);
   assert.equal(line?.reason, 'determining');
-  assert.match(line?.text ?? '', /Führung wird ermittelt/);
+  assert.match(line?.text ?? '', /Primärrolle wird ermittelt/);
   assert.match(line?.text ?? '', /schaltet noch nichts/);
 });
 
-test('Reserve und Führend bleiben unverändert', () => {
+test('Standby und Primär bleiben unverändert', () => {
   assert.equal(notSwitchingLine(act({ cluster_standby: true, cluster_state: 'standby' }))?.reason, 'standby');
   assert.equal(notSwitchingLine(act({ cluster_standby: false, cluster_state: 'leading' })), null);
   assert.equal(isSwitching(act({ cluster_standby: false, cluster_state: 'leading' })), true);

@@ -33,7 +33,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   { kind: 'schedule', name: 'Nächste Schaltzeiten', description: 'Die kommenden Wechsel eines Raums in den nächsten 24 Stunden.', category: 'time', needsZone: true, adminOnly: false, keywords: 'wochenplan zeitplan wechsel', defaultWidth: 4 },
   { kind: 'heating', name: 'Heizzeit', description: 'Wie lange ein Raum Wärme angefordert hat.', category: 'time', needsZone: true, adminOnly: false, keywords: 'heizanforderung dauer stunden', defaultWidth: 4 },
   { kind: 'devices', name: 'Gerätestatus', description: 'Zugang zu Sensoren und Aktoren.', category: 'plant', needsZone: false, adminOnly: true, keywords: 'sensor aktor geräte', defaultWidth: 4 },
-  { kind: 'system', name: 'Anlagenstatus', description: 'Freigabe, Versand und Führung als drei getrennte Zustände.', category: 'plant', needsZone: false, adminOnly: true, keywords: 'trockenlauf mqtt freigabe führung betrieb', defaultWidth: 6 },
+  { kind: 'system', name: 'Anlagenstatus', description: 'Freigabe, Versand und Primärrolle als drei getrennte Zustände.', category: 'plant', needsZone: false, adminOnly: true, keywords: 'trockenlauf mqtt freigabe führung betrieb', defaultWidth: 6 },
   { kind: 'note', name: 'Notiz', description: 'Eigener Text auf der Übersicht, nur für dich.', category: 'own', needsZone: false, adminOnly: false, keywords: 'text erinnerung hinweis', defaultWidth: 4 },
   { kind: 'shortcut', name: 'Schnellzugriff', description: 'Eine häufig genutzte Seite direkt öffnen.', category: 'own', needsZone: false, adminOnly: false, keywords: 'link verknüpfung seite', defaultWidth: 4 },
 ];

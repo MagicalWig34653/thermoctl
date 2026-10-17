@@ -91,7 +91,7 @@ Die finale Admin-Demo unter `/docs/ui-redesign/` als Zielbild verwenden. Alle be
 Dashboard ohne Vanity-KPIs. Die drei Betriebsriegel separat darstellen:
 1. `control_armed`
 2. MQTT `sending_allowed`
-3. aktive / Standby-Führungsrolle
+3. aktive / Standby-Rolle (Primär)
 
 MQTT-Neustart-Hinweis erhalten. Zonenkarten zeigen Isttemperatur, aufgelösten Sollwert, Begründung, Sensorzustand, Regel-/Heizzustand, Tagesverlauf, aktuellen Modus, permanenten Setpoint-Stepper und Override. **Thermostat ≠ Override** muss klar bleiben.
 

@@ -60,8 +60,8 @@ export const TERMS: Record<string, Term> = {
     text: 'Ob dieser Dienst beim Start Schaltbefehle senden darf – über MQTT und über Meross, denn der Riegel gilt für alle Wege, auf denen Befehle hinausgehen. Sie wird nur beim Start gesetzt – eine gespeicherte Freigabe wirkt deshalb erst nach einem Neustart.',
   },
   cluster_standby: {
-    title: 'Führung',
-    text: 'Bei mehreren Instanzen schaltet nur die führende. Eine Reserve entscheidet nicht und sendet nichts. Direkt nach einem Start steht dort „Führung wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft; erst danach gilt sie als Reserve. Währenddessen schaltet sie nichts.',
+    title: 'Primärrolle',
+    text: 'Bei mehreren Instanzen schaltet nur die primäre. Ein Standby entscheidet nicht und sendet nichts. Direkt nach einem Start steht dort „Primärrolle wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft; erst danach gilt sie als Standby. Währenddessen schaltet sie nichts.',
   },
   history_band: {
     title: 'Min./Max.',

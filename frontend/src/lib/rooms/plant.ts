@@ -25,21 +25,21 @@ export function restartRequired(a: Actuation): boolean {
 }
 
 /** Einzeilige Meldung, wenn die Anlage NICHT schaltet; sonst null. Die Gründe sind getrennt
- *  benannt (Reserve, Neustart fehlt, Trockenlauf); die Einzelriegel zeigt die Kachel `system`. */
+ *  benannt (Standby, Neustart fehlt, Trockenlauf); die Einzelriegel zeigt die Kachel `system`. */
 export function notSwitchingLine(a: Actuation): { reason: 'standby' | 'determining' | 'restart' | 'dry_run'; text: string } | null {
   if (isSwitching(a)) return null;
   if (effectiveState(a) === 'dry_run') return { reason: 'dry_run', text: 'Trockenlauf: Entscheidungen werden nur protokolliert, es wird nichts geschaltet.' };
   if (restartRequired(a)) return { reason: 'restart', text: 'Freigabe gespeichert, Neustart fehlt: Es wird nichts geschaltet.' };
-  // Übrig bleibt nur: freigegeben und gesendet, aber ohne Führung. Direkt nach einem Start heißt das
-  // „wird ermittelt“, nicht Reserve: ein Anspruch der Vorgängerin muss erst ablaufen.
+  // Übrig bleibt nur: freigegeben und gesendet, aber ohne Primärrolle. Direkt nach einem Start heißt das
+  // „wird ermittelt“, nicht Standby: ein Anspruch der Vorgängerin muss erst ablaufen.
   if (roleOf(a) === 'determining') {
     const until = untilText(a.determining_until);
     return {
       reason: 'determining',
-      text: `Führung wird ermittelt${until ? ` (bis ca. ${until})` : ''}: Diese Instanz schaltet noch nichts.`,
+      text: `Primärrolle wird ermittelt${until ? ` (bis ca. ${until})` : ''}: Diese Instanz schaltet noch nichts.`,
     };
   }
-  return { reason: 'standby', text: 'Reserve: Diese Instanz regelt nicht und schaltet nichts.' };
+  return { reason: 'standby', text: 'Standby: Diese Instanz regelt nicht und schaltet nichts.' };
 }
 
 export interface Chip {

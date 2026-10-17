@@ -43,11 +43,11 @@ test('scharf: Neustart fehlt vs. freigegeben', () => {
   assert.equal(notSwitchingLine(act({ control_armed: true, state: 'live' }))?.reason, 'restart');
 });
 
-test('Reserve (freigegeben, aber nicht führend) schaltet nie', () => {
+test('Standby (freigegeben, aber nicht primär) schaltet nie', () => {
   const standby = act({ control_armed: true, sending_allowed: true, state: 'live', cluster_standby: true });
   assert.equal(isSwitching(standby), false);
   assert.equal(notSwitchingLine(standby)?.reason, 'standby');
-  assert.match(notSwitchingLine(standby)!.text, /Reserve/);
+  assert.match(notSwitchingLine(standby)!.text, /Standby/);
 });
 
 test('Sammelchips: nur was anliegt, Brücke nur bei false (null ist unbekannt)', () => {

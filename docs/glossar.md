@@ -24,11 +24,11 @@ Siehe auch: [Urlaub](#urlaub), [Übersteuerung](#uebersteuerung), [Anlagensicht 
 <a id="aktiv-bereitschafts-verbund"></a>
 ### Aktiv-Bereitschafts-Verbund
 
-*Betrieb* — Mehrere Instanzen teilen sich eine Datenbank; eine ist führend, die anderen stehen bereit.
+*Betrieb* — Mehrere Instanzen teilen sich eine Datenbank; eine ist primär, die anderen stehen im Standby bereit.
 
-Fällt die führende Instanz aus, kann eine Bereitschaftsinstanz übernehmen; die Zahl der abgewarteten Regelzyklen ist einstellbar (ab Werk 5). Was eine Instanz in Bereitschaft tut und was nicht, steht in docs/self-hosting.md im Abschnitt zum Aktiv-Bereitschafts-Verbund.
+Fällt die primäre Instanz aus, kann eine Standby-Instanz übernehmen; die Zahl der abgewarteten Regelzyklen ist einstellbar (ab Werk 5). Was eine Instanz im Standby tut und was nicht, steht in docs/self-hosting.md im Abschnitt zum Aktiv-Bereitschafts-Verbund.
 
-Auch: Verbund, Bereitschaft, Führend
+Auch: Verbund, Standby, Bereitschaft, Primär, Primärrolle, Führend
 
 Siehe auch: [Regelzyklus](#regelzyklus), [Scharfschalten](#scharfschalten)
 

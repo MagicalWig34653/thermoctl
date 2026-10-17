@@ -2,7 +2,7 @@
   import { Check, Monitor, Moon, Sun } from '@lucide/svelte';
   import { Switch } from '$lib/components/ui/switch';
   import * as Dialog from '$lib/components/ui/dialog';
-  import { ACCENTS, type Theme } from '$lib/appearance.svelte';
+  import { ACCENTS, GLOW_LEVELS, type Theme } from '$lib/appearance.svelte';
   import { useApp } from '$lib/context';
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -83,5 +83,20 @@
         onCheckedChange={(v) => appearance.setGlow(v)}
       />
     </div>
+    {#if appearance.glow}
+      <fieldset class="m-0 border-0 p-0" data-testid="glow-level">
+        <legend class="mb-2 text-sm font-medium">Glow-Stärke</legend>
+        <div class="flex gap-2">
+          {#each GLOW_LEVELS as l (l.id)}
+            <button
+              type="button"
+              aria-pressed={appearance.glowLevel === l.id}
+              class="h-10 flex-1 rounded-lg border text-sm {appearance.glowLevel === l.id ? 'border-primary bg-accent' : 'bg-background'}"
+              onclick={() => appearance.setGlowLevel(l.id)}
+            >{l.label}</button>
+          {/each}
+        </div>
+      </fieldset>
+    {/if}
   </Dialog.Content>
 </Dialog.Root>

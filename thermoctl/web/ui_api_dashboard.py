@@ -187,7 +187,7 @@ def _default_layout(access: _Access) -> list[SectionModel]:
         TileModel(kind="metric", metric=metric, width=3)
         for metric in ("rooms", "heating", "issues", "outdoor")
     ]
-    # Die Kachel „Anlagenstatus“ (Freigabe, Versand, Führung) gehört zum Standard: wer sie
+    # Die Kachel „Anlagenstatus“ (Freigabe, Versand, Primärrolle) gehört zum Standard: wer sie
     # nicht darf, bekommt sie durch `_filtered` nicht; die festen Anlagenhinweise oben in der
     # Übersicht hängen nicht von ihr ab.
     summary.append(TileModel(kind="system", width=6))

@@ -225,7 +225,7 @@ test('Die Zustände sind vier getrennte Karten, keine folgt aus einer anderen', 
   assert.equal(byId.sending.value, 'Gesperrt');
   assert.equal(byId.sending.tone, 'warn');
   assert.match(byId.sending.detail, /Neustart/);
-  assert.equal(byId.role.value, 'Führend');
+  assert.equal(byId.role.value, 'Primär');
   assert.equal(byId.dry_run.value, 'Ja');
 });
 
@@ -235,7 +235,7 @@ test('Alle acht Kombinationen: jede Karte zeigt nur ihre eigene Tatsache', () =>
     const c = Object.fromEntries(stateCards(a).map((x) => [x.id, x.value]));
     assert.equal(c.armed, armed ? 'Freigegeben' : 'Nicht freigegeben');
     assert.equal(c.sending, sending ? 'Offen' : 'Gesperrt');
-    assert.equal(c.role, standby ? 'Reserve' : 'Führend');
+    assert.equal(c.role, standby ? 'Standby' : 'Primär');
     assert.equal(c.dry_run, a.dry_run ? 'Ja' : 'Nein');
   }
 });
@@ -254,7 +254,7 @@ test('Entscheidungen werden nur ausgeführt, wenn live und führend', () => {
   assert.equal(decisionEffect(LIVE).executes, true);
   assert.equal(decisionEffect(actuation()).executes, false);
   assert.equal(decisionEffect({ ...LIVE, cluster_standby: true }).executes, false);
-  assert.match(operationHeadline({ ...LIVE, cluster_standby: true }).text, /Reserve/);
+  assert.match(operationHeadline({ ...LIVE, cluster_standby: true }).text, /Standby/);
   assert.equal(operationHeadline(actuation()).tone, 'neutral');
 });
 
@@ -267,9 +267,9 @@ test('Freigabe-Ergebnis kommt aus der Serverantwort: restart_required', () => {
   assert.doesNotMatch(o.text, /schaltet jetzt|werden ausgeführt/);
 });
 
-test('Freigabe-Ergebnis: live, Reserve, keine Änderung, Widerspruch zur Anfrage', () => {
+test('Freigabe-Ergebnis: live, Standby, keine Änderung, Widerspruch zur Anfrage', () => {
   assert.equal(armOutcome(true, { changed: true, actuation: LIVE }).tone, 'success');
-  assert.match(armOutcome(true, { changed: true, actuation: { ...LIVE, cluster_standby: true } }).text, /Reserve/);
+  assert.match(armOutcome(true, { changed: true, actuation: { ...LIVE, cluster_standby: true } }).text, /Standby/);
   assert.match(armOutcome(true, { changed: false, actuation: LIVE }).text, /Keine Änderung/);
   // Server meldet trotz Anfrage „nicht freigegeben“: nie als Erfolg zeigen.
   assert.equal(armOutcome(true, { changed: false, actuation: actuation() }).tone, 'warn');

@@ -203,7 +203,7 @@ export const AREAS: readonly NavArea[] = [
         label: 'Verbund',
         paths: [],
         alsoWith: ['/control'],
-        keywords: 'Führung Reserve Instanz Übernahme Aktiv Bereitschaft',
+        keywords: 'Primärrolle Primär Standby Führung Reserve Instanz Übernahme Aktiv Bereitschaft',
       },
       {
         id: 'verbindungen',

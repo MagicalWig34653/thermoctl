@@ -132,7 +132,7 @@ Bereitschaft antwortet dort ebenso mit `{"status": "ok", …}` wie die aktive In
 Das ist richtig so: `livenessProbe` und `readinessProbe` gegen `/healthz` sind deshalb
 für beide Nachbildungen unverändert die richtige Prüfung — ein Orchestrierer, der die
 Bereitschaft dafür für krank hielte und neu starten würde, machte den Verbund kaputt,
-und genau das vermeidet diese Prüfung, weil sie nichts über die Führungsrolle aussagt.
+und genau das vermeidet diese Prüfung, weil sie nichts über die Primärrolle aussagt.
 `k8s/thermoctl-statefulset.beispiel.yaml` setzt beide Sonden auf denselben Pfad.
 
 Eine eigene Sonde, die nur die aktive Instanz als „bereit" meldet, wäre möglich (der

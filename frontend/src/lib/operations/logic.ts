@@ -415,7 +415,7 @@ export interface StateCard {
   help: string;
 }
 
-/** Gespeicherte Freigabe, Sendefreigabe, Führungsrolle und Trockenlauf: vier getrennte
+/** Gespeicherte Freigabe, Sendefreigabe, Primärrolle und Trockenlauf: vier getrennte
  *  Tatsachen aus der Serverantwort. Keine wird aus einer anderen abgeleitet oder zu einem
  *  gemeinsamen „scharf“ zusammengezogen. */
 export function stateCards(a: OperationActuation): StateCard[] {
@@ -444,14 +444,14 @@ export function stateCards(a: OperationActuation): StateCard[] {
     },
     {
       id: 'role',
-      title: 'Führungsrolle im Verbund',
-      value: roleOf(a) === 'determining' ? roleLabel(a).value : a.cluster_standby ? 'Reserve' : 'Führend',
+      title: 'Primärrolle im Verbund',
+      value: roleOf(a) === 'determining' ? roleLabel(a).value : a.cluster_standby ? 'Standby' : 'Primär',
       detail:
         roleOf(a) === 'determining'
           ? 'Die Instanz ist gerade gestartet und wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft. Sie schaltet währenddessen nichts.'
           : a.cluster_standby
-            ? 'Diese Instanz wartet. Eine Reserve schaltet nicht.'
-            : 'Diese Instanz führt und darf schalten, sofern Freigabe und Sendefreigabe stehen.',
+            ? 'Diese Instanz wartet. Ein Standby schaltet nicht.'
+            : 'Diese Instanz ist primär und darf schalten, sofern Freigabe und Sendefreigabe stehen.',
       tone: roleLabel(a).tone,
       help: 'role',
     },
@@ -481,8 +481,8 @@ export function operationHeadline(a: OperationActuation): { text: string; tone: 
       ? {
           text:
             roleOf(a) === 'determining'
-              ? 'Freigabe und Sendefreigabe stehen, aber die Führung wird noch ermittelt: Diese Instanz schaltet noch nichts.'
-              : 'Freigabe und Sendefreigabe stehen, aber diese Instanz ist Reserve und schaltet nicht.',
+              ? 'Freigabe und Sendefreigabe stehen, aber die Primärrolle wird noch ermittelt: Diese Instanz schaltet noch nichts.'
+              : 'Freigabe und Sendefreigabe stehen, aber diese Instanz ist Standby und schaltet nicht.',
           tone: 'warn',
         }
       : { text: 'Freigabe und Sendefreigabe stehen: Entscheidungen werden an Aktoren gesendet.', tone: 'ok' };
@@ -491,14 +491,14 @@ export function operationHeadline(a: OperationActuation): { text: string; tone: 
 }
 
 /** Wird eine Entscheidung gerade ausgeführt? Nur wenn der Server `live` meldet und diese
- *  Instanz führt. Bei ausstehendem Neustart oder Reserve nie. */
+ *  Instanz primär ist. Bei ausstehendem Neustart oder Standby nie. */
 export function decisionEffect(a: OperationActuation): { executes: boolean; text: string } {
   if (a.restart_required) return { executes: false, text: 'Wird nicht ausgeführt: Der Sende-Riegel (MQTT und Meross) öffnet erst beim Neustart.' };
   if (a.dry_run) return { executes: false, text: 'Wird nicht ausgeführt: Trockenlauf.' };
   if (a.cluster_standby) {
     return {
       executes: false,
-      text: roleOf(a) === 'determining' ? 'Wird nicht ausgeführt: Die Führung wird noch ermittelt.' : 'Wird nicht ausgeführt: Diese Instanz ist Reserve.',
+      text: roleOf(a) === 'determining' ? 'Wird nicht ausgeführt: Die Primärrolle wird noch ermittelt.' : 'Wird nicht ausgeführt: Diese Instanz ist Standby.',
     };
   }
   return { executes: true, text: 'Wird an die Aktoren gesendet.' };
@@ -527,7 +527,7 @@ export function armOutcome(requested: boolean, result: ArmedResult): ArmOutcome 
     if (a.cluster_standby) {
       return {
         tone: 'info',
-        text: `${lead} ${roleOf(a) === 'determining' ? 'Die Führung wird noch ermittelt, bis dahin schaltet diese Instanz nichts.' : 'Diese Instanz ist Reserve und schaltet nicht.'}`,
+        text: `${lead} ${roleOf(a) === 'determining' ? 'Die Primärrolle wird noch ermittelt, bis dahin schaltet diese Instanz nichts.' : 'Diese Instanz ist Standby und schaltet nicht.'}`,
       };
     }
     return a.live

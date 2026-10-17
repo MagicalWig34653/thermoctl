@@ -18,6 +18,7 @@ export const ACCENTS: readonly { id: string; label: string; hex: string }[] = [
 const THEME_KEY = 'thermoctl-theme';
 const ACCENT_KEY = 'thermoctl-accent';
 export const GLOW_KEY = 'thermoctl-glow';
+export const GLOW_LEVEL_KEY = 'thermoctl-glow-level';
 export const DEFAULT_ACCENT = ACCENTS[0].hex;
 
 export function read(key: string): string | null {
@@ -55,10 +56,22 @@ export function saveGlow(on: boolean) {
   write(GLOW_KEY, on ? 'on' : 'off');
 }
 
+// Stärke des Leuchtens in drei Stufen; Vorgabe 2 („Kräftig“). Unbekannte Werte fallen auf die Vorgabe.
+export type GlowLevel = 1 | 2 | 3;
+export const GLOW_LEVELS: { id: GlowLevel; label: string }[] = [
+  { id: 1, label: 'Dezent' },
+  { id: 2, label: 'Kräftig' },
+  { id: 3, label: 'Intensiv' },
+];
+export function parseGlowLevel(value: string | null): GlowLevel {
+  return value === '1' ? 1 : value === '3' ? 3 : 2;
+}
+
 export function createAppearance() {
   let theme = $state<Theme>(parseTheme(read(THEME_KEY)));
   let accent = $state(parseAccent(read(ACCENT_KEY)));
   let glow = $state(loadGlow());
+  let glowLevel = $state<GlowLevel>(parseGlowLevel(read(GLOW_LEVEL_KEY)));
   const media = window.matchMedia('(prefers-color-scheme: dark)');
 
   function apply() {
@@ -66,8 +79,13 @@ export function createAppearance() {
     const root = document.documentElement;
     root.classList.toggle('dark', dark);
     root.style.colorScheme = dark ? 'dark' : 'light';
-    if (glow) root.dataset.glow = 'on';
-    else delete root.dataset.glow;
+    if (glow) {
+      root.dataset.glow = 'on';
+      root.dataset.glowLevel = String(glowLevel);
+    } else {
+      delete root.dataset.glow;
+      delete root.dataset.glowLevel;
+    }
     const tokens = accentTokens(accent, dark);
     if (!tokens) return;
     const vars: Record<string, string> = {
@@ -92,6 +110,14 @@ export function createAppearance() {
     },
     get glow() {
       return glow;
+    },
+    get glowLevel() {
+      return glowLevel;
+    },
+    setGlowLevel(value: GlowLevel) {
+      glowLevel = value;
+      write(GLOW_LEVEL_KEY, String(value));
+      apply();
     },
     setGlow(value: boolean) {
       glow = value;

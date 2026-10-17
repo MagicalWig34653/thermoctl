@@ -270,8 +270,8 @@ zusammengefasst werden:
 2. **Sendefreigabe (MQTT und Meross)** — wird beim Start des Dienstes gebildet und gilt für
    alle Wege, auf denen Befehle hinausgehen. Eine Änderung der gespeicherten Freigabe
    wirkt hier erst nach einem Neustart.
-3. **Führungsrolle im Verbund** — teilen mehrere Instanzen einen Bestand, schaltet nur die
-   führende; eine Reserve regelt nicht und schaltet nichts.
+3. **Primärrolle im Verbund** — teilen mehrere Instanzen einen Bestand, schaltet nur die
+   primäre; ein Standby regelt nicht und schaltet nichts.
 
 Dazu zeigt die Seite **Trockenlauf**: Im Trockenlauf — der Vorgabe nach jeder
 Einrichtung — protokolliert die Regelung nur, was sie täte; es geht nichts an ein Gerät
@@ -295,7 +295,7 @@ Grundlage für die Kalibrierung, kein Wert, der sich von selbst übernimmt.
 
 ### Verbund, Verbindungen und Meldungen
 
-**Verbund** zeigt die Führungsrolle dieser Instanz, **Verbindungen** die Schnittstellen
+**Verbund** zeigt die Primärrolle dieser Instanz, **Verbindungen** die Schnittstellen
 (MQTT, Zigbee2MQTT, Meross, Home Assistant, Homebridge, MCP, Webhook).
 
 **Meldungen** schaltet sechs Arten von Störungsmeldungen einzeln ein oder aus

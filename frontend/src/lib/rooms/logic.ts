@@ -160,7 +160,7 @@ export interface ActuationRow {
   help: string;
 }
 
-/** Gespeicherte Freigabe, Sendefreigabe und Führungsrolle sind getrennte Tatsachen;
+/** Gespeicherte Freigabe, Sendefreigabe und Primärrolle sind getrennte Tatsachen;
  *  keine davon folgt aus einer anderen. */
 export function actuationRows(actuation: Actuation): ActuationRow[] {
   return [
@@ -180,7 +180,7 @@ export function actuationRows(actuation: Actuation): ActuationRow[] {
     },
     {
       id: 'role',
-      title: 'Führung',
+      title: 'Primärrolle',
       value: roleLabel(actuation).value,
       tone: roleLabel(actuation).tone,
       help: 'cluster_standby',
