@@ -65,7 +65,7 @@ router = APIRouter(
 )
 
 #: Kachelarten, die eine Zone zeigen und ohne sie sinnlos sind.
-ZONE_KINDS = frozenset({"room", "chart", "schedule", "heating"})
+ZONE_KINDS = frozenset({"room", "chart", "schedule", "heating", "control"})
 #: Kachelarten und Ziele, die nur zur Anlagensicht gehören (wie die Seiten, auf die sie
 #: zeigen): ein Mieterprofil bekommt sie auch bei vorhandenem Recht nicht.
 ADMIN_KINDS = frozenset({"devices", "system"})

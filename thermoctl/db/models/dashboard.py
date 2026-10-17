@@ -44,6 +44,7 @@ TileKind = Literal[
     "system",
     "note",
     "shortcut",
+    "control",
 ]
 Metric = Literal["rooms", "heating", "issues", "outdoor"]
 Destination = Literal[
