@@ -13,6 +13,20 @@ export const ACCENTS: readonly { id: string; label: string; hex: string }[] = [
   { id: 'orange', label: 'Orange', hex: '#ea580c' },
   { id: 'rot', label: 'Rot', hex: '#dc2626' },
   { id: 'gruen', label: 'Grün', hex: '#15803d' },
+  { id: 'gelb', label: 'Gelb', hex: '#eab308' },
+  { id: 'bernstein', label: 'Bernstein', hex: '#f59e0b' },
+  { id: 'limette', label: 'Limette', hex: '#84cc16' },
+  { id: 'smaragd', label: 'Smaragd', hex: '#10b981' },
+  { id: 'cyan', label: 'Cyan', hex: '#06b6d4' },
+  { id: 'himmelblau', label: 'Himmelblau', hex: '#0ea5e9' },
+  { id: 'indigo', label: 'Indigo', hex: '#4f46e5' },
+  { id: 'purpur', label: 'Purpur', hex: '#a855f7' },
+  { id: 'magenta', label: 'Magenta', hex: '#d946ef' },
+  { id: 'pink', label: 'Pink', hex: '#ec4899' },
+  { id: 'rose', label: 'Rose', hex: '#f43f5e' },
+  { id: 'koralle', label: 'Koralle', hex: '#f97316' },
+  { id: 'braun', label: 'Braun', hex: '#92400e' },
+  { id: 'schiefer', label: 'Schiefer', hex: '#475569' },
 ];
 
 const THEME_KEY = 'thermoctl-theme';

@@ -18,6 +18,7 @@ from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
 
 from thermoctl.web.assets import STATIC_DIR
 
@@ -38,7 +39,52 @@ def render_shell(html: str, prefix: str) -> str:
     safe = escape(prefix, quote=True)
     html = html.replace('"./assets/', f'"{safe}/static/app/assets/')
     meta = f'<meta name="thermoctl-prefix" content="{safe}">'
-    return html.replace("</head>", f"    {meta}\n  </head>", 1)
+    # Symbole und Manifest: iOS nimmt für „Zum Home-Bildschirm“ nur ein PNG (`apple-touch-icon`),
+    # kein SVG; ohne das Manifest startet die Web-App nicht als eigenständiges Fenster.
+    head = "\n".join(
+        (
+            f"    {meta}",
+            f'    <link rel="icon" href="{safe}/static/favicon.svg" type="image/svg+xml">',
+            f'    <link rel="apple-touch-icon" href="{safe}/static/apple-touch-icon.png">',
+            f'    <link rel="manifest" href="{safe}/app/manifest.webmanifest">',
+            '    <meta name="theme-color" content="#212529">',
+            '    <meta name="mobile-web-app-capable" content="yes">',
+            '    <meta name="apple-mobile-web-app-capable" content="yes">',
+            '    <meta name="apple-mobile-web-app-title" content="thermoctl">',
+            '    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+        )
+    )
+    return html.replace("</head>", f"{head}\n  </head>", 1)
+
+
+@router.get("/app/manifest.webmanifest")
+async def web_manifest(request: Request) -> JSONResponse:
+    """Manifest für die Installation als Web-App; Pfade tragen den Laufzeitpräfix."""
+    prefix = str(request.scope.get("root_path", ""))
+    icons = f"{prefix}/static"
+    return JSONResponse(
+        {
+            "name": "thermoctl",
+            "short_name": "thermoctl",
+            "lang": "de",
+            "start_url": f"{prefix}/app/",
+            "scope": f"{prefix}/app/",
+            "display": "standalone",
+            "background_color": "#212529",
+            "theme_color": "#212529",
+            "icons": [
+                {"src": f"{icons}/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": f"{icons}/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                {
+                    "src": f"{icons}/icon-maskable-512.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "maskable",
+                },
+            ],
+        },
+        media_type="application/manifest+json",
+    )
 
 
 @router.get("/app")
