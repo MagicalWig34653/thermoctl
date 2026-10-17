@@ -4,14 +4,22 @@
 import type { Api } from '../api';
 import { buildQuery } from '../history/reports';
 import type {
-  CheckVerdict, CommandLog, ConnectResult, Controllers, DeviceMap, FlowZone, Plant, Survey, ZoneDevices,
+  CheckVerdict, CommandLog, ConnectResult, Controllers, DeviceMap, FlowZone, LayoutBody, Plant, ServerLayout, Survey,
+  ZoneDevices,
 } from './types';
+
+const LAYOUT = '/ui-api/devices/map/layout';
 
 export function createDevicesClient(api: Api) {
   const zone = (id: number) => `/ui-api/zones/${id}/devices`;
   return {
     survey: () => api.get<Survey>('/ui-api/devices'),
     map: () => api.get<DeviceMap>('/ui-api/devices/map'),
+    layout: () => api.get<ServerLayout>(LAYOUT),
+    saveLayout: (body: LayoutBody) => api.put<ServerLayout>(LAYOUT, body),
+    resetLayout: () => api.delete<ServerLayout>(LAYOUT),
+    saveDefaultLayout: (body: LayoutBody) => api.put<ServerLayout>(`${LAYOUT}/default`, body),
+    removeDefaultLayout: () => api.delete<ServerLayout>(`${LAYOUT}/default`),
     check: (from: string, to: string) =>
       api.get<CheckVerdict>(`/ui-api/devices/map/check${buildQuery({ from_id: from, to_id: to })}`),
     connect: (from: string, to: string) =>

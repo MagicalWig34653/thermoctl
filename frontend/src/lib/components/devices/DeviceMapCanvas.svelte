@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { ChevronDown, ChevronRight, Maximize, Minus, Plus, RotateCcw, X } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/rooms/Notice.svelte';
@@ -10,10 +10,12 @@
     type Placement, type Point, type View,
   } from '$lib/devices/geometry';
   import { drawnLines, nodeDeviceId, portIndex, rejectionReason, valvesOfDevice, zoneName } from '$lib/devices/map-logic';
-  import { EMPTY_PREFS, loadPrefs, savePrefs } from '$lib/devices/storage';
+  import type { DevicesClient } from '$lib/devices/client';
+  import { LayoutSync, type SyncState } from '$lib/devices/layout';
+  import { loadPrefs, savePrefs, type MapPrefs } from '$lib/devices/storage';
   import type { DeviceMap, MapPort } from '$lib/devices/types';
 
-  let { map, actions }: { map: DeviceMap; actions: MapActions } = $props();
+  let { map, actions, client }: { map: DeviceMap; actions: MapActions; client: DevicesClient } = $props();
 
   // -- Darstellung (pro Browser) -----------------------------------------------------------
   let pos = $state<Placement>({});
@@ -26,6 +28,22 @@
   let ready = $state(false);
   let surface: HTMLDivElement | undefined = $state();
   let prefsLoaded = false;
+  let touched = false; // vor der Antwort des Servers schon etwas geändert: dann gilt die eigene Änderung
+  let unsent = false; // lokale Änderungen, die der Server noch nicht bestätigt hat
+  let syncState = $state<SyncState>({ status: 'idle', source: null, hasDefault: false, mayDefault: false, message: null });
+  let confirm = $state<'default' | 'remove' | null>(null);
+  const sync = new LayoutSync({
+    get client() {
+      return client;
+    },
+    ids: () => map.nodes.map((n) => n.id),
+    onState: (s) => (syncState = s),
+    onClean: () => {
+      unsent = false;
+      savePrefs(snapshot());
+    },
+  });
+  onDestroy(() => sync.dispose());
 
   const collapsed = $derived(new Set(collapsedIds));
   const ports = $derived(portIndex(map));
@@ -36,9 +54,57 @@
   const box = $derived(bounds(nodeRects(shown, placement, collapsed, technical)));
   const editable = $derived(map.may_edit);
 
+  function snapshot(): MapPrefs {
+    return { pos, view: userView ? view : null, collapsed: collapsedIds, technical, dirty: unsent };
+  }
+
+  /** Lokal sofort, zum Server entprellt. */
   function persist() {
     if (!prefsLoaded) return;
-    savePrefs({ pos, view: userView ? view : null, collapsed: collapsedIds, technical });
+    touched = true;
+    unsent = true;
+    const prefs = snapshot();
+    savePrefs(prefs);
+    sync.changed(prefs);
+  }
+
+  /** Vom Server (oder aus dem Zurücksetzen) übernommener Stand ersetzt die Anzeige. */
+  function apply(prefs: MapPrefs) {
+    pos = prefs.pos;
+    collapsedIds = prefs.collapsed;
+    fitAll = false;
+    if (prefs.view) {
+      view = prefs.view;
+      userView = true;
+    } else {
+      userView = false;
+      if (ready) refit();
+    }
+  }
+
+  async function resetLayout() {
+    confirm = null;
+    const next = await sync.reset(technical);
+    if (next) {
+      apply(next);
+      savePrefs(snapshot());
+    }
+  }
+  async function adoptServer() {
+    const next = await sync.adoptServer(technical);
+    if (next) {
+      apply(next);
+      savePrefs(snapshot());
+    }
+  }
+  async function saveAsDefault() {
+    confirm = null;
+    await sync.flush();
+    await sync.saveDefault(snapshot());
+  }
+  async function removeDefault() {
+    confirm = null;
+    await sync.removeDefault();
   }
 
   let fitAll = false; // „Einpassen“ zeigt alles, auch wenn es klein wird; die Startansicht bleibt lesbar
@@ -52,11 +118,19 @@
     pos = saved.pos;
     collapsedIds = saved.collapsed;
     technical = saved.technical;
+    unsent = saved.dirty;
     if (saved.view) {
       view = saved.view;
       userView = true;
     }
     prefsLoaded = true;
+    // Der Server hat das letzte Wort, sobald er antwortet; ohne Netz bleibt der lokale Stand.
+    void sync.load(saved).then((next) => {
+      if (!next) return;
+      if (touched) return; // die eigene, jüngere Änderung ist schon unterwegs
+      apply(next);
+      savePrefs(snapshot());
+    });
     const el = surface!;
     const measure = () => {
       size = { w: el.clientWidth, h: el.clientHeight };
@@ -323,8 +397,8 @@
     persist();
   }
   function setTechnical(v: boolean) {
-    technical = v;
-    persist();
+    technical = v; // bleibt in diesem Browser, geht nie zum Server
+    savePrefs(snapshot());
   }
 
   // -- Anzeige -----------------------------------------------------------------------------
@@ -391,7 +465,7 @@
     <input
       id="dm-search"
       type="search"
-      class="h-10 min-w-0 flex-1 rounded-lg border bg-background px-3 sm:max-w-xs"
+      class="h-10 min-w-48 flex-1 rounded-lg border bg-background px-3 sm:max-w-xs"
       placeholder="Gerät oder Raum suchen …"
       bind:value={query}
     />
@@ -400,17 +474,51 @@
       <span class="w-12 text-center text-sm tabular-nums" aria-live="polite" data-testid="zoom-label">{Math.round(view.k * 100)} %</span>
       <Button variant="outline" size="icon" aria-label="Karte vergrößern" disabled={view.k >= MAX_ZOOM} onclick={() => zoomBy(1.25)}><Plus size={16} aria-hidden="true" /></Button>
       <Button variant="outline" class="max-sm:size-10 max-sm:px-0" aria-label="Einpassen" title="Alles einpassen" onclick={fitNow}><Maximize size={16} aria-hidden="true" /><span class="max-sm:sr-only">Einpassen</span></Button>
-      <Button variant="outline" class="max-sm:size-10 max-sm:px-0" aria-label="Automatisch anordnen" title="Ordnet die Karten neu an. Das betrifft nur die Darstellung in diesem Browser." onclick={arrange}><RotateCcw size={16} aria-hidden="true" /><span class="max-sm:sr-only">Automatisch anordnen</span></Button>
+      <Button variant="outline" class="max-sm:size-10 max-sm:px-0" aria-label="Automatisch anordnen" title="Ordnet die Karten neu an und merkt sich das als Ihre Anordnung." onclick={arrange}><RotateCcw size={16} aria-hidden="true" /><span class="max-sm:sr-only">Automatisch anordnen</span></Button>
     </div>
     <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Karten ein- und ausklappen">
       <Button variant="outline" class="min-h-10" data-testid="fold-collapse" onclick={() => foldEverything(true)}>Alle einklappen</Button>
       <Button variant="outline" class="min-h-10" data-testid="fold-expand" onclick={() => foldEverything(false)}>Alle ausklappen</Button>
+    </div>
+    <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Gespeicherte Anordnung">
+      <Button variant="outline" class="min-h-10" data-testid="layout-reset" title="Löscht Ihre gespeicherte Anordnung. Es gilt wieder die Vorgabe oder die automatische Anordnung." onclick={resetLayout}>Anordnung zurücksetzen</Button>
+      {#if syncState.mayDefault}
+        {#if confirm === 'default'}
+          <Button class="min-h-10" data-testid="layout-default-confirm" onclick={saveAsDefault}>Wirklich für alle speichern</Button>
+          <Button variant="ghost" class="min-h-10" onclick={() => (confirm = null)}>Abbrechen</Button>
+        {:else if confirm === 'remove'}
+          <Button variant="destructive" class="min-h-10" data-testid="layout-remove-confirm" onclick={removeDefault}>Vorgabe wirklich entfernen</Button>
+          <Button variant="ghost" class="min-h-10" onclick={() => (confirm = null)}>Abbrechen</Button>
+        {:else}
+          <Button variant="outline" class="min-h-10" data-testid="layout-default" title="Ihre jetzige Anordnung wird zur Vorgabe für alle, die keine eigene gespeichert haben." onclick={() => (confirm = 'default')}>Als Vorgabe für alle speichern</Button>
+          {#if syncState.hasDefault}
+            <Button variant="outline" class="min-h-10" data-testid="layout-remove" onclick={() => (confirm = 'remove')}>Vorgabe entfernen</Button>
+          {/if}
+        {/if}
+      {/if}
     </div>
     <label class="flex min-h-10 items-center gap-2 text-sm">
       <input type="checkbox" class="size-4" checked={technical} onchange={(e) => setTechnical(e.currentTarget.checked)} />
       technische Werte zeigen
     </label>
   </div>
+
+  <p class="m-0 text-sm text-muted-foreground" role="status" data-testid="layout-status" data-state={syncState.status} data-source={syncState.source ?? ''}>
+    {#if syncState.status === 'saving' || syncState.status === 'pending'}Anordnung wird gespeichert …
+    {:else if syncState.status === 'saved'}Anordnung gespeichert.
+    {:else if syncState.status === 'offline' || syncState.status === 'error'}{syncState.message}
+    {:else if syncState.source === 'default'}Es gilt die Vorgabe für alle. Wenn Sie etwas verschieben, wird daraus Ihre eigene Anordnung.
+    {/if}
+  </p>
+  {#if syncState.status === 'conflict'}
+    <Notice tone="warn">
+      <span>{syncState.message}</span>
+      <span class="ml-2 inline-flex flex-wrap gap-1">
+        <Button variant="outline" data-testid="layout-adopt" onclick={adoptServer}>Neu laden</Button>
+        <Button variant="outline" data-testid="layout-keep" onclick={() => sync.keepMine()}>Meine Anordnung behalten</Button>
+      </span>
+    </Notice>
+  {/if}
 
   <div class="dm-legend max-sm:text-xs" aria-label="Legende">
     {#each kindLegend as [code, label] (code)}

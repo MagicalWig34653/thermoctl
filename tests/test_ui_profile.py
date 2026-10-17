@@ -274,6 +274,16 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/ui-api/modes"): "Profilprüfung im Endpunkt (Anlagensicht)",
     ("PUT", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
     ("DELETE", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
+    ("GET", "/ui-api/devices/map/layout"):
+        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
+    ("PUT", "/ui-api/devices/map/layout"):
+        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
+    ("DELETE", "/ui-api/devices/map/layout"):
+        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
+    ("PUT", "/ui-api/devices/map/layout/default"):
+        "Profilprüfung im Endpunkt (Anlagensicht), device.manage anlagenweit",
+    ("DELETE", "/ui-api/devices/map/layout/default"):
+        "Profilprüfung im Endpunkt (Anlagensicht), device.manage anlagenweit",
     ("GET", "/ui-api/dashboard"): "eigenes Layout; Kacheln werden je Abruf gegen Rechte gefiltert",
     ("PUT", "/ui-api/dashboard"): "eigenes Layout; Rechte- und Profilprüfung je Kachel im Endpunkt",
     ("DELETE", "/ui-api/dashboard"): "eigenes Layout",

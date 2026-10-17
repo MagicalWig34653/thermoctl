@@ -301,3 +301,29 @@ export interface CommandLog {
   outcome_labels: Record<string, string>;
   source_labels: Record<string, string>;
 }
+
+// -- Anordnung der Karte (Server) -------------------------------------------------------------
+
+export interface LayoutNode {
+  key: string;
+  x: number | null;
+  y: number | null;
+  collapsed: boolean;
+}
+
+/** Antwort von `/ui-api/devices/map/layout`: persönlich, sonst Vorgabe, sonst leer. */
+export interface ServerLayout {
+  source: 'personal' | 'default' | 'none';
+  version: number;
+  default_version: number;
+  has_default: boolean;
+  may_set_default: boolean;
+  nodes: LayoutNode[];
+  view: { x: number; y: number; k: number } | null;
+}
+
+export interface LayoutBody {
+  version: number;
+  nodes: LayoutNode[];
+  view: { x: number; y: number; k: number } | null;
+}

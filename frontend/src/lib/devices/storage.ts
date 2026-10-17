@@ -1,6 +1,8 @@
 // Darstellung pro Browser merken (Positionen, Ansicht, eingeklappte Knoten, technische Werte).
-// Nur Darstellung: Nichts davon geht an den Server. Jeder Zugriff ist abgesichert; ohne
-// Speicher (privates Fenster, gesperrt, kaputt) startet die Karte mit der automatischen Anordnung.
+// Der Server führt die Anordnung (`layout.ts`); dies hier ist der Rückfall ohne Netz und der
+// Zwischenspeicher für Änderungen, die noch nicht angekommen sind (`dirty`). „Technische Werte“
+// bleibt ausschließlich hier. Jeder Zugriff ist abgesichert; ohne Speicher (privates Fenster,
+// gesperrt, kaputt) startet die Karte mit der Anordnung vom Server oder der automatischen.
 
 import type { Placement, View } from './geometry';
 
@@ -11,9 +13,11 @@ export interface MapPrefs {
   view: View | null;
   collapsed: string[];
   technical: boolean;
+  /** Es gibt Änderungen, die der Server noch nicht bestätigt hat; sie haben dann Vorrang. */
+  dirty: boolean;
 }
 
-export const EMPTY_PREFS: MapPrefs = { pos: {}, view: null, collapsed: [], technical: false };
+export const EMPTY_PREFS: MapPrefs = { pos: {}, view: null, collapsed: [], technical: false, dirty: false };
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -35,7 +39,11 @@ export function parsePrefs(raw: string | null): MapPrefs {
     const v = data.view as Partial<View> | null | undefined;
     const view = v && finite(v.x) && finite(v.y) && finite(v.k) && v.k > 0 ? { x: v.x, y: v.y, k: v.k } : null;
     const collapsed = Array.isArray(data.collapsed) ? data.collapsed.filter((c): c is string => typeof c === 'string') : [];
-    return { pos, view, collapsed, technical: data.technical === true };
+    // Ältere Stände (vor der Serveranordnung) kennen das Merkmal nicht: Mit Inhalt gelten sie
+    // als nicht gesendet und wandern beim ersten Öffnen zum Server.
+    const content = Object.keys(pos).length > 0 || collapsed.length > 0 || view !== null;
+    const dirty = typeof data.dirty === 'boolean' ? data.dirty : content;
+    return { pos, view, collapsed, technical: data.technical === true, dirty };
   } catch {
     return { ...EMPTY_PREFS, pos: {}, collapsed: [] };
   }
