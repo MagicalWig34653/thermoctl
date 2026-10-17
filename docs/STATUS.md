@@ -2,8 +2,8 @@
 
 Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **In Freigabe:** 0.20.0 (Kachel „Raum bedienen“, Übersichtsvorlagen, Übersicht beliebiger Personen bearbeiten, 20 Akzentfarben, sichtbarerer Glow, iOS-Web-App-Symbol, einheitliche Abstände): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
-- **Letzte Freigabe:** 0.19.1 (Begriffe Primärrolle/Standby, kräftigerer Glow in drei Stufen): Tag `v0.19.1`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
+- **In Freigabe:** 0.20.1 (Glow in sechs Stufen und feiner, einheitliches Zifferblatt-Symbol, Raum bedienen auf schmalen Kacheln): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
+- **Letzte Freigabe:** 0.20.0 (Kachel „Raum bedienen“, Übersichtsvorlagen, Übersicht beliebiger Personen bearbeiten, 20 Akzentfarben, iOS-Web-App-Symbol, einheitliche Abstände): Tag `v0.20.0`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl`; das Altsystem (Host, vier Skripte) bleibt parallel als
   Rückfallebene und ist nicht abgelöst. Repository öffentlich (AGPL-3.0), Betrieb als Docker-Container und als
   Home-Assistant-Add-on (eigenes Repository `MagicalWig34653/thermoctl-addon`).

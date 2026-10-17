@@ -32,7 +32,7 @@
 {:else if tile.kind === 'chart'}
   {#if tile.zone_id !== null && zones.some((z) => z.id === tile.zone_id)}
     {#key `${tile.zone_id}|${chartPeriod}`}
-      <HistoryChart {zones} zoneId={tile.zone_id} period={chartPeriod} filters={false} compact lazy heading="h3" title={tile.title.trim() || 'Temperaturverlauf'} />
+      <HistoryChart {zones} zoneId={tile.zone_id} period={chartPeriod} filters={false} compact lazy heading="h3" title={tile.title.trim()} />
     {/key}
   {/if}
 {:else if tile.kind === 'metric'}

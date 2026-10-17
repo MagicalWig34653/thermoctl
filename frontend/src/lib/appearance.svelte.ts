@@ -31,8 +31,8 @@ export const ACCENTS: readonly { id: string; label: string; hex: string }[] = [
 
 const THEME_KEY = 'thermoctl-theme';
 const ACCENT_KEY = 'thermoctl-accent';
-export const GLOW_KEY = 'thermoctl-glow';
-export const GLOW_LEVEL_KEY = 'thermoctl-glow-level';
+export const GLOW_KEY = 'thermoctl-glow'; // alt (ein/aus), nur noch zum Übernehmen gelesen
+export const GLOW_STEP_KEY = 'thermoctl-glow-step';
 export const DEFAULT_ACCENT = ACCENTS[0].hex;
 
 export function read(key: string): string | null {
@@ -58,34 +58,34 @@ export function parseAccent(value: string | null): string {
   return value !== null && /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_ACCENT;
 }
 
-// Glow: nur ein Schalter, Vorgabe aus. Das Leuchten selbst ist reines CSS (styles/glow.css),
-// gesteuert über das Datenattribut data-glow am Wurzelelement.
-export function parseGlow(value: string | null): boolean {
-  return value === 'on';
-}
-export function loadGlow(): boolean {
-  return parseGlow(read(GLOW_KEY));
-}
-export function saveGlow(on: boolean) {
-  write(GLOW_KEY, on ? 'on' : 'off');
-}
-
-// Stärke des Leuchtens in drei Stufen; Vorgabe 2 („Kräftig“). Unbekannte Werte fallen auf die Vorgabe.
-export type GlowLevel = 1 | 2 | 3;
-export const GLOW_LEVELS: { id: GlowLevel; label: string }[] = [
-  { id: 1, label: 'Dezent' },
-  { id: 2, label: 'Kräftig' },
-  { id: 3, label: 'Intensiv' },
+// Glow: sechs Stufen, 0 ist aus (Vorgabe). Das Leuchten selbst ist reines CSS (styles/glow.css),
+// gesteuert über data-glow und data-glow-step am Wurzelelement; jede Stufe leuchtet stärker und
+// an mehr Stellen.
+export type GlowStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export const GLOW_STEPS: { id: GlowStep; label: string }[] = [
+  { id: 0, label: 'Aus' },
+  { id: 1, label: 'Zart' },
+  { id: 2, label: 'Fein' },
+  { id: 3, label: 'Mittel' },
+  { id: 4, label: 'Deutlich' },
+  { id: 5, label: 'Kräftig' },
+  { id: 6, label: 'Intensiv' },
 ];
-export function parseGlowLevel(value: string | null): GlowLevel {
-  return value === '1' ? 1 : value === '3' ? 3 : 2;
+export function parseGlowStep(value: string | null): GlowStep | null {
+  return value !== null && /^[0-6]$/.test(value) ? (Number(value) as GlowStep) : null;
+}
+/** Gespeicherte Stufe; wer früher „Glow an“ gewählt hat, bekommt „Mittel“, sonst gilt aus. */
+export function loadGlowStep(): GlowStep {
+  return parseGlowStep(read(GLOW_STEP_KEY)) ?? (read(GLOW_KEY) === 'on' ? 3 : 0);
+}
+export function saveGlowStep(step: GlowStep) {
+  write(GLOW_STEP_KEY, String(step));
 }
 
 export function createAppearance() {
   let theme = $state<Theme>(parseTheme(read(THEME_KEY)));
   let accent = $state(parseAccent(read(ACCENT_KEY)));
-  let glow = $state(loadGlow());
-  let glowLevel = $state<GlowLevel>(parseGlowLevel(read(GLOW_LEVEL_KEY)));
+  let glowStep = $state<GlowStep>(loadGlowStep());
   const media = window.matchMedia('(prefers-color-scheme: dark)');
 
   function apply() {
@@ -93,12 +93,12 @@ export function createAppearance() {
     const root = document.documentElement;
     root.classList.toggle('dark', dark);
     root.style.colorScheme = dark ? 'dark' : 'light';
-    if (glow) {
+    if (glowStep > 0) {
       root.dataset.glow = 'on';
-      root.dataset.glowLevel = String(glowLevel);
+      root.dataset.glowStep = String(glowStep);
     } else {
       delete root.dataset.glow;
-      delete root.dataset.glowLevel;
+      delete root.dataset.glowStep;
     }
     const tokens = accentTokens(accent, dark);
     if (!tokens) return;
@@ -122,20 +122,12 @@ export function createAppearance() {
     get accent() {
       return accent;
     },
-    get glow() {
-      return glow;
+    get glowStep() {
+      return glowStep;
     },
-    get glowLevel() {
-      return glowLevel;
-    },
-    setGlowLevel(value: GlowLevel) {
-      glowLevel = value;
-      write(GLOW_LEVEL_KEY, String(value));
-      apply();
-    },
-    setGlow(value: boolean) {
-      glow = value;
-      saveGlow(value);
+    setGlowStep(value: GlowStep) {
+      glowStep = value;
+      saveGlowStep(value);
       apply();
     },
     setTheme(value: Theme) {

@@ -78,7 +78,7 @@
     compact = false,
     lazy = false,
     heading = 'h2',
-    title = 'Temperaturverlauf',
+    title = '',
     onLoaded,
   }: {
     zones: { id: number; name: string }[];
@@ -453,7 +453,7 @@
         <ChartNoAxesCombined size={18} aria-hidden="true" />
       </span>
       <div class="min-w-0">
-        <svelte:element this={heading} id="{uid}-title" class="m-0 text-lg">{title}: {zoneName}</svelte:element>
+        <svelte:element this={heading} id="{uid}-title" class="m-0 text-lg">{title ? `${title}: ${zoneName}` : zoneName}</svelte:element>
         <p class="m-0 text-sm text-muted-foreground">
           {zoomed ? 'Eigener Ausschnitt' : periodLabel(period)}{history ? ` · ${rangeText}` : ''}
         </p>

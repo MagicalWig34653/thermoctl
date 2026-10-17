@@ -73,3 +73,14 @@ def test_control_tile_changes_the_setpoint(admin_page: Page, live_server: LiveSe
         "button", name="Sollwert in Kachelraum um ein halbes Grad erhöhen"
     )
     expect(raise_button).to_be_visible()
+
+
+def test_glow_slider_sets_the_step_and_zero_switches_it_off(admin_page: Page) -> None:
+    admin_page.get_by_label("Darstellung ändern").click()
+    slider = admin_page.get_by_test_id("glow-slider")
+    expect(admin_page.get_by_test_id("glow-label")).to_have_text("Aus")
+    slider.fill("4")
+    expect(admin_page.get_by_test_id("glow-label")).to_have_text("Deutlich")
+    expect(admin_page.locator("html")).to_have_attribute("data-glow-step", "4")
+    slider.fill("0")
+    expect(admin_page.locator("html")).not_to_have_attribute("data-glow", "on")

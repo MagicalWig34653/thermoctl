@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
-  import { BookOpen, ChevronDown, ChevronRight, LogOut, Palette, PanelLeft, Thermometer, UserRound } from '@lucide/svelte';
+  import { BookOpen, ChevronDown, ChevronRight, LogOut, Palette, PanelLeft, UserRound } from '@lucide/svelte';
   import { AREA_ICONS } from '$lib/icons';
   import type { VisibleArea } from '$lib/navigation';
   import {
@@ -148,9 +148,7 @@
     class="mb-3 flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 hover:border-border hover:bg-muted"
     href={appHref(prefix, '/')}
   >
-    <span class="grid size-9 place-items-center rounded-lg border bg-background">
-      <Thermometer size={20} aria-hidden="true" />
-    </span>
+    <img class="size-9" src={`${prefix}/static/favicon.svg`} alt="" width="36" height="36" />
     <strong class="text-[15px] tracking-tight">thermoctl</strong>
   </a>
 

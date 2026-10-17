@@ -416,7 +416,7 @@
             {/each}
           </div>
         </div>
-        <HistoryChart zones={[{ id: room.id, name: room.name }]} zoneId={room.id} period={historyPeriod} filters={false} compact lazy heading="h3" title="Temperaturverlauf" />
+        <HistoryChart zones={[{ id: room.id, name: room.name }]} zoneId={room.id} period={historyPeriod} filters={false} compact lazy heading="h3" />
       </section>
 
       <ReportCard zoneId={room.id} hideWhenEmpty />

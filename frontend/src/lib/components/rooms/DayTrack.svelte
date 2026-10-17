@@ -12,8 +12,16 @@
 </script>
 
 {#if segments.length}
+  <div class="relative w-full {compact ? 'h-2' : 'h-4'}">
+  <!-- Leuchten: unscharfe Kopie der Abschnitte hinter dem Balken (nur mit Glow sichtbar). -->
+  <div class="day-glow pointer-events-none absolute inset-0" aria-hidden="true">
+    {#each segments as segment, i (i)}
+      {@const box = segmentBox(segment)}
+      <span class="absolute inset-y-0" style="left:{box.left}%;width:{box.width}%;background:color-mix(in oklch, var(--chart-2) {Math.round(segment.warmth * 100)}%, var(--chart-1))"></span>
+    {/each}
+  </div>
   <div
-    class="relative w-full overflow-hidden rounded-md bg-muted {compact ? 'h-2' : 'h-4'}"
+    class="relative h-full w-full overflow-hidden rounded-md bg-muted"
     role="img"
     aria-label={`Tagesverlauf: ${segments
       .map((s) => `${formatMinute(s.start_minute)} bis ${formatMinute(s.end_minute)} ${s.mode_name}${s.temperature_c ? ' ' + formatCelsius(s.temperature_c) : ''}`)
@@ -30,6 +38,7 @@
       ></span>
     {/each}
     <span class="absolute inset-y-0 w-0.5 bg-foreground" style="left:calc({now}% - 1px)" aria-hidden="true"></span>
+  </div>
   </div>
 {:else}
   <p class="m-0 text-xs text-muted-foreground">Kein Plan für heute.</p>

@@ -1,134 +1,141 @@
-/* Glow: Leuchten in der Akzentfarbe, nur mit data-glow='on' am Wurzelelement, Stärke 1 bis 3 über
-   data-glow-level (Vorgabe 2). Nur box-shadow, filter und text-shadow: nichts verschiebt das Layout,
-   Text bleibt deckend und gut lesbar (der Text-Glow ist ein weicher Hof, kein Ersatz für Kontrast). */
+/* Glow: Leuchten in der Akzentfarbe, nur mit data-glow='on' am Wurzelelement. Sechs Stufen
+   (data-glow-step 1 bis 6); jede Stufe leuchtet stärker UND an mehr Stellen:
+
+     1  Primärknöpfe, Schalter, farbige Balken (Tagesverlauf)
+     2  + aktiver Menüpunkt (nur Symbol und Schrift), Statuspunkte
+     3  + Seitentitel, Akzenttexte, Linien in Diagrammen, Statustexte
+     4  + zarter Hof um Karten
+     5  + Farbschein im Hintergrund, Akzentrand an Karten
+     6  + durchscheinende Flächen mit Weichzeichner
+
+   Nur box-shadow, filter, text-shadow und Hintergründe: nichts verschiebt das Layout, Text bleibt
+   deckend und gut lesbar. Flächige Kästen leuchten nie von selbst (Hinweise, Menüzeile). */
+
 :root[data-glow='on'] {
   --glow-a: var(--ui-accent, var(--primary));
-  /* Hell: deutlich schwächer, ein Leuchten auf hellem Grund wirkt schnell schmutzig. */
-  --glow-soft: color-mix(in srgb, var(--glow-a) 22%, transparent);
-  --glow-mid: color-mix(in srgb, var(--glow-a) 38%, transparent);
-  --glow-strong: color-mix(in srgb, var(--glow-a) 55%, transparent);
-  --glow-focus: color-mix(in srgb, var(--glow-a) 70%, transparent);
-  --glow-r: 18px;
-  --glow-spread: 1px;
-  --glow-text: 0 0 0 transparent;
+  --g-boost: 1;
+  /* je Stufe überschrieben; Zahlen sind Prozent der Akzentfarbe beziehungsweise Pixel */
+  --g-btn: 24;
+  --g-r: 8;
+  --g-nav: 0;
+  --g-text: 0;
+  --g-status: 0;
+  --g-bar: 30;
+  --g-card: 0;
+  --g-aura: 0;
 }
 :root.dark[data-glow='on'] {
-  --glow-soft: color-mix(in srgb, var(--glow-a) 45%, transparent);
-  --glow-mid: color-mix(in srgb, var(--glow-a) 70%, transparent);
-  --glow-strong: color-mix(in srgb, var(--glow-a) 90%, transparent);
-  --glow-focus: color-mix(in srgb, var(--glow-a) 95%, transparent);
-  --glow-r: 22px;
-  --glow-spread: 2px;
-  --glow-text: 0 0 12px color-mix(in srgb, var(--glow-a) 55%, transparent);
-}
-/* Stufen: Radius und Streuung wachsen, das Leuchten bleibt in derselben Farbe. */
-:root[data-glow='on'][data-glow-level='1'] { --glow-r: 12px; --glow-spread: 0px; }
-:root.dark[data-glow='on'][data-glow-level='1'] { --glow-r: 14px; --glow-spread: 1px; }
-:root[data-glow='on'][data-glow-level='3'] { --glow-r: 28px; --glow-spread: 3px; }
-:root.dark[data-glow='on'][data-glow-level='3'] { --glow-r: 38px; --glow-spread: 5px; --glow-text: 0 0 18px color-mix(in srgb, var(--glow-a) 75%, transparent); }
-
-@media all {
-  /* Primärknöpfe */
-  :root[data-glow='on'] [data-slot='button'].bg-primary:not(:focus-visible, :disabled) {
-    box-shadow: 0 0 var(--glow-r) var(--glow-spread) var(--glow-mid);
-  }
-  /* Aktiver Navigationspunkt und Markenzeichen */
-  :root[data-glow='on'] nav a[aria-current='page'] {
-    box-shadow: 0 0 var(--glow-r) var(--glow-spread) var(--glow-mid), inset 0 0 12px -4px var(--glow-soft);
-  }
-  /* Schalter an, Auswahlfelder an */
-  :root[data-glow='on'] [data-slot='switch'][data-state='checked'],
-  :root[data-glow='on'] [data-slot='checkbox'][data-state='checked'] {
-    box-shadow: 0 0 var(--glow-r) var(--glow-spread) var(--glow-strong);
-  }
-  /* Auswahlmarkierungen (gedrückte Knöpfe, Reiter, Akzent-Chips) */
-  :root[data-glow='on'] button[aria-pressed='true']:not(:focus-visible),
-  :root[data-glow='on'] [role='tab'][aria-selected='true']:not(:focus-visible),
-  :root[data-glow='on'] [data-slot='badge'].bg-primary {
-    box-shadow: 0 0 var(--glow-r) var(--glow-spread) var(--glow-soft);
-  }
-  /* Karten und Dialoge: feiner Akzentrand mit Hof */
-  :root[data-glow='on'] [data-slot='card'],
-  :root[data-glow='on'] .rounded-xl.border.bg-card,
-  :root[data-glow='on'] [data-slot='dialog-content'] {
-    border-color: color-mix(in srgb, var(--glow-a) 35%, var(--border, transparent));
-    box-shadow: 0 0 calc(var(--glow-r) * 1.2) calc(var(--glow-spread) - 1px) var(--glow-soft);
-  }
-  /* Akzentfarbene Texte, Überschriften der Seite und Kennzahlen: weicher Hof */
-  :root[data-glow='on'] .text-primary,
-  :root[data-glow='on'] h1 {
-    text-shadow: var(--glow-text);
-  }
-  /* Akzentfarbene Linien und Flächen in Diagrammen und Karten */
-  :root[data-glow='on'] svg [stroke='var(--primary)'],
-  :root[data-glow='on'] svg .accent-line {
-    filter: drop-shadow(0 0 6px var(--glow-mid));
-  }
-  /* Eingabefelder im Fokus und Fokusring: der Tailwind-Ring bleibt, das Leuchten kommt dazu */
-  :root[data-glow='on'] :focus-visible {
-    filter: drop-shadow(0 0 calc(var(--glow-r) / 3) var(--glow-focus));
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  :root[data-glow='on'] [data-slot='button'],
-  :root[data-glow='on'] [data-slot='switch'],
-  :root[data-glow='on'] [data-slot='card'],
-  :root[data-glow='on'] nav a {
-    transition-property: color, background-color, border-color, box-shadow, transform;
-    transition-duration: 0.15s;
-  }
-}
-
-/* Heller leuchten: im Dunkelmodus ist die Akzentfarbe oft zu dunkel, um auf dem Hintergrund
-   zu strahlen; der Hof nimmt deshalb eine aufgehellte Fassung. */
-:root.dark[data-glow='on'] {
+  /* Im Dunkelmodus ist die Akzentfarbe oft zu dunkel, um auf dem Hintergrund zu strahlen. */
   --glow-a: color-mix(in srgb, var(--ui-accent, var(--primary)) 68%, white);
+  --g-boost: 1.3;
 }
+
+:root[data-glow='on'][data-glow-step='1'] { --g-btn: 24; --g-r: 8;  --g-nav: 0;  --g-text: 0;  --g-status: 0;  --g-bar: 30; --g-card: 0;  --g-aura: 0; }
+:root[data-glow='on'][data-glow-step='2'] { --g-btn: 32; --g-r: 10; --g-nav: 40; --g-text: 0;  --g-status: 28; --g-bar: 40; --g-card: 0;  --g-aura: 0; }
+:root[data-glow='on'][data-glow-step='3'] { --g-btn: 40; --g-r: 12; --g-nav: 50; --g-text: 30; --g-status: 38; --g-bar: 50; --g-card: 0;  --g-aura: 0; }
+:root[data-glow='on'][data-glow-step='4'] { --g-btn: 48; --g-r: 14; --g-nav: 60; --g-text: 38; --g-status: 48; --g-bar: 60; --g-card: 16; --g-aura: 0; }
+:root[data-glow='on'][data-glow-step='5'] { --g-btn: 56; --g-r: 16; --g-nav: 70; --g-text: 46; --g-status: 58; --g-bar: 70; --g-card: 24; --g-aura: 16; }
+:root[data-glow='on'][data-glow-step='6'] { --g-btn: 64; --g-r: 18; --g-nav: 80; --g-text: 55; --g-status: 68; --g-bar: 80; --g-card: 32; --g-aura: 26; }
+
 :root[data-glow='on'] {
-  --glow-ok: color-mix(in srgb, #10b981 60%, transparent);
-  --glow-warn: color-mix(in srgb, #f59e0b 60%, transparent);
-  --glow-bad: color-mix(in srgb, var(--destructive, #ef4444) 65%, transparent);
-  --glow-info: color-mix(in srgb, #60a5fa 60%, transparent);
-  --aura: 0%;
+  --glow-btn: color-mix(in srgb, var(--glow-a) calc(var(--g-btn) * var(--g-boost) * 1%), transparent);
+  --glow-btn-soft: color-mix(in srgb, var(--glow-a) calc(var(--g-btn) * var(--g-boost) * 0.55%), transparent);
+  --glow-nav: color-mix(in srgb, var(--glow-a) calc(var(--g-nav) * var(--g-boost) * 1%), transparent);
+  --glow-title: color-mix(in srgb, var(--glow-a) calc(var(--g-text) * var(--g-boost) * 1%), transparent);
+  --glow-card: color-mix(in srgb, var(--glow-a) calc(var(--g-card) * var(--g-boost) * 1%), transparent);
+  --glow-line: color-mix(in srgb, var(--glow-a) calc(var(--g-bar) * var(--g-boost) * 1%), transparent);
+  --glow-radius: calc(var(--g-r) * 1px);
+  --glow-ok: color-mix(in srgb, #10b981 calc(var(--g-status) * var(--g-boost) * 1%), transparent);
+  --glow-warn: color-mix(in srgb, #f59e0b calc(var(--g-status) * var(--g-boost) * 1%), transparent);
+  --glow-bad: color-mix(in srgb, var(--destructive, #ef4444) calc(var(--g-status) * var(--g-boost) * 1%), transparent);
+  --glow-info: color-mix(in srgb, #60a5fa calc(var(--g-status) * var(--g-boost) * 1%), transparent);
 }
-:root[data-glow='on'][data-glow-level='2'] { --aura: 16%; }
-:root[data-glow='on'][data-glow-level='3'] { --aura: 30%; }
-:root.dark[data-glow='on'][data-glow-level='2'] { --aura: 34%; }
-:root.dark[data-glow='on'][data-glow-level='3'] { --aura: 55%; }
 
-/* Alles Farbige leuchtet in seiner eigenen Farbe: Statusflächen, Punkte, Hinweise, Texte. */
-:root[data-glow='on'] [class^='bg-emerald-'], :root[data-glow='on'] [class*=' bg-emerald-'],
-:root[data-glow='on'] [class^='border-emerald-'], :root[data-glow='on'] [class*=' border-emerald-'] { box-shadow: 0 0 calc(var(--glow-r) * 0.6) var(--glow-ok); }
-:root[data-glow='on'] [class^='bg-amber-'], :root[data-glow='on'] [class*=' bg-amber-'],
-:root[data-glow='on'] [class^='border-amber-'], :root[data-glow='on'] [class*=' border-amber-'],
-:root[data-glow='on'] [class^='bg-orange-'], :root[data-glow='on'] [class*=' bg-orange-'] { box-shadow: 0 0 calc(var(--glow-r) * 0.6) var(--glow-warn); }
-:root[data-glow='on'] [class^='bg-destructive'], :root[data-glow='on'] [class*=' bg-destructive'],
-:root[data-glow='on'] [class^='border-destructive'], :root[data-glow='on'] [class*=' border-destructive'] { box-shadow: 0 0 calc(var(--glow-r) * 0.6) var(--glow-bad); }
-:root[data-glow='on'] [class^='bg-blue-'], :root[data-glow='on'] [class*=' bg-blue-'] { box-shadow: 0 0 calc(var(--glow-r) * 0.6) var(--glow-info); }
-:root[data-glow='on'] .text-destructive { text-shadow: 0 0 calc(var(--glow-r) * 0.5) var(--glow-bad); }
-:root[data-glow='on'] [class^='text-emerald-'], :root[data-glow='on'] [class*=' text-emerald-'] { text-shadow: 0 0 calc(var(--glow-r) * 0.5) var(--glow-ok); }
-:root[data-glow='on'] [class^='text-amber-'], :root[data-glow='on'] [class*=' text-amber-'] { text-shadow: 0 0 calc(var(--glow-r) * 0.5) var(--glow-warn); }
-:root[data-glow='on'] svg.text-primary,
-:root[data-glow='on'] [data-slot='button'] svg { filter: drop-shadow(0 0 5px var(--glow-mid)); }
+/* Das Leuchten hinter dem Tagesbalken ist eine unscharfe Kopie (DayTrack); ohne Glow bleibt sie aus. */
+.day-glow { display: none; }
+:root[data-glow='on'] .day-glow {
+  display: block;
+  filter: blur(calc(var(--g-r) * 0.55px));
+  opacity: calc(var(--g-bar) * 1%);
+}
 
-/* Stufe 2 und 3: Farbschein hinter der Oberfläche, damit sich der Hintergrund abhebt. */
-:root:is([data-glow-level='2'], [data-glow-level='3'])[data-glow='on'] body::before {
+/* 1: Primärknöpfe, Schalter, gedrückte Umschalter */
+:root[data-glow='on'] [data-slot='button'].bg-primary:not(:focus-visible, :disabled),
+:root[data-glow='on'] [data-slot='switch'][data-state='checked'],
+:root[data-glow='on'] [data-slot='checkbox'][data-state='checked'] {
+  box-shadow: 0 0 var(--glow-radius) var(--glow-btn);
+}
+:root[data-glow='on'] button[aria-pressed='true']:not(:focus-visible),
+:root[data-glow='on'] [role='tab'][aria-selected='true']:not(:focus-visible),
+:root[data-glow='on'] [data-slot='badge'].bg-primary {
+  box-shadow: 0 0 var(--glow-radius) var(--glow-btn-soft);
+}
+
+/* 2: Menü – nur Symbol und Schrift des aktiven Punkts, kein Kasten */
+:root[data-glow='on'] nav a[aria-current='page'] { text-shadow: 0 0 calc(var(--glow-radius) * 0.9) var(--glow-nav); }
+:root[data-glow='on'] nav a[aria-current='page'] svg { filter: drop-shadow(0 0 calc(var(--glow-radius) * 0.5) var(--glow-nav)); }
+
+/* 2: Statuspunkte (nur volle Farbflächen, nicht die getönten Hinweiskästen) */
+:root[data-glow='on'] [class~='bg-emerald-600'],
+:root[data-glow='on'] [class~='bg-emerald-500'] { box-shadow: 0 0 calc(var(--glow-radius) * 0.6) var(--glow-ok); }
+:root[data-glow='on'] [class~='bg-amber-500'] { box-shadow: 0 0 calc(var(--glow-radius) * 0.6) var(--glow-warn); }
+:root[data-glow='on'] [class~='bg-destructive'] { box-shadow: 0 0 calc(var(--glow-radius) * 0.6) var(--glow-bad); }
+:root[data-glow='on'] [class~='bg-blue-400'] { box-shadow: 0 0 calc(var(--glow-radius) * 0.6) var(--glow-info); }
+
+/* 3: Texte und Diagramme */
+:root[data-glow='on'] h1,
+:root[data-glow='on'] .text-primary { text-shadow: 0 0 calc(var(--glow-radius) * 1.1) var(--glow-title); }
+:root[data-glow='on'] .text-destructive { text-shadow: 0 0 calc(var(--glow-radius) * 0.7) var(--glow-bad); }
+:root[data-glow='on'] [class~='text-emerald-400'],
+:root[data-glow='on'] [class~='text-emerald-700'] { text-shadow: 0 0 calc(var(--glow-radius) * 0.7) var(--glow-ok); }
+:root[data-glow='on'] [class~='text-amber-400'],
+:root[data-glow='on'] [class~='text-amber-700'] { text-shadow: 0 0 calc(var(--glow-radius) * 0.7) var(--glow-warn); }
+:root[data-glow='on'] svg [stroke='var(--primary)'],
+:root[data-glow='on'] svg .accent-line { filter: drop-shadow(0 0 calc(var(--glow-radius) * 0.5) var(--glow-line)); }
+
+/* 4 und 5: Karten – ein zarter Hof, erst später ein Akzentrand */
+:root[data-glow='on'] [data-slot='card'],
+:root[data-glow='on'] .rounded-xl.border.bg-card,
+:root[data-glow='on'] [data-slot='dialog-content'] {
+  box-shadow: 0 0 calc(var(--glow-radius) * 1.6) var(--glow-card);
+}
+:root[data-glow='on']:is([data-glow-step='5'], [data-glow-step='6']) [data-slot='card'],
+:root[data-glow='on']:is([data-glow-step='5'], [data-glow-step='6']) .rounded-xl.border.bg-card,
+:root[data-glow='on']:is([data-glow-step='5'], [data-glow-step='6']) [data-slot='dialog-content'] {
+  border-color: color-mix(in srgb, var(--glow-a) 28%, var(--border, transparent));
+}
+
+/* Fokus: der Tailwind-Ring bleibt, das Leuchten kommt dazu */
+:root[data-glow='on'] :focus-visible { filter: drop-shadow(0 0 calc(var(--glow-radius) * 0.4) var(--glow-btn)); }
+
+/* 5 und 6: Farbschein hinter der Oberfläche */
+:root[data-glow='on']:is([data-glow-step='5'], [data-glow-step='6']) body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 8% -5%, color-mix(in srgb, var(--glow-a) var(--aura), transparent), transparent 70%),
-    radial-gradient(50rem 36rem at 100% 105%, color-mix(in srgb, var(--glow-a) var(--aura), transparent), transparent 70%);
+    radial-gradient(60rem 40rem at 8% -5%, color-mix(in srgb, var(--glow-a) calc(var(--g-aura) * var(--g-boost) * 1%), transparent), transparent 70%),
+    radial-gradient(50rem 36rem at 100% 105%, color-mix(in srgb, var(--glow-a) calc(var(--g-aura) * var(--g-boost) * 1%), transparent), transparent 70%);
 }
-/* Stufe 3: Flächen werden durchscheinend und weichzeichnend, der Schein dahinter wird sichtbar. */
-:root[data-glow='on'][data-glow-level='3'] [data-slot='card'],
-:root[data-glow='on'][data-glow-level='3'] .rounded-xl.border.bg-card,
-:root[data-glow='on'][data-glow-level='3'] [data-slot='dialog-content'],
-:root[data-glow='on'][data-glow-level='3'] header,
-:root[data-glow='on'][data-glow-level='3'] #app-sidebar {
-  background-color: color-mix(in srgb, var(--card, var(--background)) 62%, transparent);
+/* 6: Flächen werden durchscheinend und weichzeichnend, der Schein dahinter wird sichtbar. */
+:root[data-glow='on'][data-glow-step='6'] [data-slot='card'],
+:root[data-glow='on'][data-glow-step='6'] .rounded-xl.border.bg-card,
+:root[data-glow='on'][data-glow-step='6'] [data-slot='dialog-content'],
+:root[data-glow='on'][data-glow-step='6'] header,
+:root[data-glow='on'][data-glow-step='6'] #app-sidebar {
+  background-color: color-mix(in srgb, var(--card, var(--background)) 66%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   backdrop-filter: blur(16px) saturate(1.3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-glow='on'] [data-slot='button'],
+  :root[data-glow='on'] [data-slot='switch'],
+  :root[data-glow='on'] [data-slot='card'],
+  :root[data-glow='on'] nav a {
+    transition-property: color, background-color, border-color, box-shadow, text-shadow, transform;
+    transition-duration: 0.15s;
+  }
 }

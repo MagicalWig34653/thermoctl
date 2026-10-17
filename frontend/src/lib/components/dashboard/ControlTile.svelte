@@ -43,7 +43,7 @@
   const cancelOverride = () => call(() => api.post(`${base}/override/cancel`, {}));
 </script>
 
-<section class="flex h-full min-w-0 flex-col gap-3 rounded-xl border bg-card p-4" data-testid="tile-control" aria-label={`${heading ?? room.name} bedienen`}>
+<section class="@container flex h-full min-w-0 flex-col gap-3 rounded-xl border bg-card p-4" data-testid="tile-control" aria-label={`${heading ?? room.name} bedienen`}>
   <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
     <h3 class="max-w-full min-w-0 text-base leading-snug [overflow-wrap:anywhere]">{heading ?? room.name}</h3>
     <a class="text-xs text-muted-foreground underline-offset-2 hover:underline" href={appHref(prefix, `/raeume/${room.id}`)}>Details</a>
@@ -57,10 +57,10 @@
   {#if ui.step.show}
     <div>
       <div class="mb-1 text-xs text-muted-foreground">Soll</div>
-      <div class="flex items-center gap-3">
-        <Button variant="outline" size="icon" class="size-11" aria-label={`Sollwert in ${room.name} um ein halbes Grad senken`} disabled={ui.step.disabled || busy} onclick={() => step('down')}><Minus aria-hidden="true" /></Button>
-        <output class="min-w-16 text-center text-2xl font-semibold tabular-nums" aria-live="polite">{formatTemperature(room.setpoint.temperature_c)}°</output>
-        <Button variant="outline" size="icon" class="size-11" aria-label={`Sollwert in ${room.name} um ein halbes Grad erhöhen`} disabled={ui.step.disabled || busy} onclick={() => step('up')}><Plus aria-hidden="true" /></Button>
+      <div class="flex flex-wrap items-center justify-center gap-2 @[13rem]:flex-nowrap @[13rem]:gap-3">
+        <Button variant="outline" size="icon" class="size-11 @max-[13rem]:order-2" aria-label={`Sollwert in ${room.name} um ein halbes Grad senken`} disabled={ui.step.disabled || busy} onclick={() => step('down')}><Minus aria-hidden="true" /></Button>
+        <output class="w-full text-center text-2xl font-semibold tabular-nums @max-[13rem]:order-1 @[13rem]:w-auto @[13rem]:min-w-16" aria-live="polite">{formatTemperature(room.setpoint.temperature_c)}°</output>
+        <Button variant="outline" size="icon" class="size-11 @max-[13rem]:order-3" aria-label={`Sollwert in ${room.name} um ein halbes Grad erhöhen`} disabled={ui.step.disabled || busy} onclick={() => step('up')}><Plus aria-hidden="true" /></Button>
       </div>
       {#if ui.step.reason}<p class="mt-2 mb-0 text-xs text-muted-foreground">{ui.step.reason}</p>{/if}
     </div>

@@ -5,7 +5,7 @@
   import { fetchPasskeysOffered, passkeyLogin, passkeyLoginMessage } from '$lib/auth/login';
   import { requestedReturnTo, targetHref } from '$lib/auth/target';
   import { loadSetupStatus } from '$lib/setup/client';
-  import { KeyRound, Thermometer } from '@lucide/svelte';
+  import { KeyRound } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Label } from '$lib/components/ui/label';
@@ -89,9 +89,7 @@
 <main class="grid min-h-screen place-items-center px-4 py-10">
   <div class="w-full max-w-sm">
     <div class="mb-6 flex items-center gap-3">
-      <div class="grid size-10 place-items-center rounded-lg border bg-background">
-        <Thermometer size={22} aria-hidden="true" />
-      </div>
+      <img class="size-10" src={`${prefix}/static/favicon.svg`} alt="" width="40" height="40" />
       <div>
         <h1 class="m-0 text-2xl">thermoctl</h1>
         <p class="m-0 text-sm text-muted-foreground">Heizungssteuerung</p>

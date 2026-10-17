@@ -1,8 +1,7 @@
 <script lang="ts">
   import { Check, Monitor, Moon, Sun } from '@lucide/svelte';
-  import { Switch } from '$lib/components/ui/switch';
   import * as Dialog from '$lib/components/ui/dialog';
-  import { ACCENTS, GLOW_LEVELS, type Theme } from '$lib/appearance.svelte';
+  import { ACCENTS, GLOW_STEPS, type GlowStep, type Theme } from '$lib/appearance.svelte';
   import { useApp } from '$lib/context';
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -68,35 +67,28 @@
       {#if !isPreset}<p class="mt-2 text-xs text-muted-foreground">Eigene Farbe aktiv.</p>{/if}
     </fieldset>
 
-    <div class="flex items-start justify-between gap-4">
-      <div>
-        <label for="glow-switch" class="text-sm font-medium">Glow</label>
-        <p id="glow-hint" class="mt-1 text-xs text-muted-foreground">
-          Akzente leuchten leicht in der gewählten Farbe, vor allem im Dunkelmodus. Texte und
-          Kontraste bleiben unverändert.
-        </p>
+    <div>
+      <div class="flex items-baseline justify-between gap-4">
+        <label for="glow-slider" class="text-sm font-medium">Glow</label>
+        <output for="glow-slider" class="text-sm text-muted-foreground" data-testid="glow-label">{GLOW_STEPS[appearance.glowStep].label}</output>
       </div>
-      <Switch
-        id="glow-switch"
+      <input
+        id="glow-slider"
+        type="range"
+        min="0"
+        max="6"
+        step="1"
+        class="mt-2 h-11 w-full cursor-pointer accent-[var(--ui-accent,var(--primary))]"
+        value={appearance.glowStep}
         aria-describedby="glow-hint"
-        checked={appearance.glow}
-        onCheckedChange={(v) => appearance.setGlow(v)}
+        aria-valuetext={GLOW_STEPS[appearance.glowStep].label}
+        oninput={(e) => appearance.setGlowStep(Number(e.currentTarget.value) as GlowStep)}
+        data-testid="glow-slider"
       />
+      <p id="glow-hint" class="mt-1 text-xs text-muted-foreground">
+        Akzente leuchten in der gewählten Farbe, vor allem im Dunkelmodus. Je höher die Stufe, desto
+        stärker und an desto mehr Stellen. Texte und Kontraste bleiben unverändert.
+      </p>
     </div>
-    {#if appearance.glow}
-      <fieldset class="m-0 border-0 p-0" data-testid="glow-level">
-        <legend class="mb-2 text-sm font-medium">Glow-Stärke</legend>
-        <div class="flex gap-2">
-          {#each GLOW_LEVELS as l (l.id)}
-            <button
-              type="button"
-              aria-pressed={appearance.glowLevel === l.id}
-              class="h-10 flex-1 rounded-lg border text-sm {appearance.glowLevel === l.id ? 'border-primary bg-accent' : 'bg-background'}"
-              onclick={() => appearance.setGlowLevel(l.id)}
-            >{l.label}</button>
-          {/each}
-        </div>
-      </fieldset>
-    {/if}
   </Dialog.Content>
 </Dialog.Root>

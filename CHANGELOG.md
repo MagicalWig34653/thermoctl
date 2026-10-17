@@ -9,6 +9,34 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.20.1 — 2026-10-17
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration**, keine neuen Einstellungen oder Add-on-Optionen.
+- **Glow hat jetzt sechs Stufen statt Schalter plus drei Stärken** (Schieberegler im Darstellungsdialog, 0 ist aus).
+  Wer ihn vorher gewählt hatte, bekommt „Mittel“; die alte Stärke wird nicht übernommen.
+- **Neues Symbol auf iOS:** Das Web-App-Symbol ist jetzt das Zifferblatt, das auch das Add-on benutzt. Wer die Web-App
+  schon mit dem alten Symbol angelegt hat, entfernt sie einmal und fügt sie neu hinzu.
+
+### Geändert
+
+- **Glow feiner:** Jede Stufe leuchtet stärker und an mehr Stellen. Stufe 1: Primärknöpfe, Schalter und der farbige
+  Tagesbalken der Raumkarten (er leuchtet in seiner eigenen Farbe). Stufe 2: aktiver Menüpunkt (nur Symbol und Schrift,
+  kein Kasten) und Statuspunkte. Stufe 3: Seitentitel, Akzenttexte, Diagrammlinien. Stufe 4: zarter Hof um Karten.
+  Stufe 5: Farbschein im Hintergrund. Stufe 6: durchscheinende Flächen mit Weichzeichner. Hinweiskästen und die
+  Menüzeile leuchten nie als Fläche.
+- **App-Symbol einheitlich:** Anmeldung, Einrichtung, Seitenleiste, Browser-Tab und iOS-Symbol zeigen dasselbe
+  Zifferblatt wie das Add-on (vorher ein Thermometer).
+- **Verlaufskurven:** Die Überschrift trägt nur noch den Raumnamen; „Temperaturverlauf:“ davor entfällt.
+
+### Behoben
+
+- **Raum bedienen auf dem Handy:** Der Plus-Knopf stand über, wenn die Kachel schmal war. Bei schmalen Kacheln steht der
+  Sollwert jetzt über den beiden Knöpfen.
+
+---
+
 ## 0.20.0 — 2026-10-17
 
 ### Beim Upgrade zu wissen
