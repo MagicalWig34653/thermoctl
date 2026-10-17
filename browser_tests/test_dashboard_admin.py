@@ -41,7 +41,9 @@ def test_template_can_be_created_used_for_a_new_user_and_deleted(
     expect(admin_page.get_by_test_id("no-templates")).to_be_visible()
 
 
-def test_admin_edits_the_overview_of_another_user(admin_page: Page, live_server: LiveServer) -> None:
+def test_admin_edits_the_overview_of_another_user(
+    admin_page: Page, live_server: LiveServer
+) -> None:
     with live_server.session() as session:
         create_login_user(session, "ziel-person", "Ziel-Kennwort-123", [("zone.read", None)])
         session.commit()
@@ -67,4 +69,7 @@ def test_control_tile_changes_the_setpoint(admin_page: Page, live_server: LiveSe
     admin_page.get_by_test_id("save").click()
     tile = admin_page.get_by_test_id("tile-control").first
     expect(tile).to_be_visible()
-    expect(tile.get_by_role("button", name="Sollwert in Kachelraum um ein halbes Grad erhöhen")).to_be_visible()
+    raise_button = tile.get_by_role(
+        "button", name="Sollwert in Kachelraum um ein halbes Grad erhöhen"
+    )
+    expect(raise_button).to_be_visible()
