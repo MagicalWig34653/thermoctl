@@ -358,6 +358,12 @@ def save_dashboard(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> LayoutOut:
+    return save_layout(session, principal, body)
+
+
+def save_layout(session: Session, principal: Principal, body: LayoutIn) -> LayoutOut:
+    """Speichert das Layout des Principals (auch für die Pflege durch Administratoren: dann
+    ist `principal` der bearbeitete Benutzer, und seine Rechte begrenzen die Kacheln)."""
     access = _access(session, principal)
     sections = [
         SectionModel(
@@ -396,6 +402,10 @@ def reset_dashboard(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> LayoutOut:
+    return reset_layout(session, principal)
+
+
+def reset_layout(session: Session, principal: Principal) -> LayoutOut:
     """Standard wiederherstellen: gespeicherte Anordnung weg, Version zählt weiter."""
     _clear_sections(session, principal.user_id)
     row = session.get(DashboardLayout, principal.user_id)

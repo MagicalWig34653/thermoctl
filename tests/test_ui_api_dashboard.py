@@ -459,7 +459,7 @@ def test_negative_or_missing_version_is_refused(client: TestClient, session: Ses
 
 
 def test_the_enumerations_cover_what_the_schema_allows() -> None:
-    assert len(TILE_KINDS) == 10
+    assert len(TILE_KINDS) == 11
     assert set(METRICS) == {"rooms", "heating", "issues", "outdoor"}
     assert set(DESTINATIONS) == {
         "schedule", "absence", "history", "devices", "mapping", "solar", "operation", "account",

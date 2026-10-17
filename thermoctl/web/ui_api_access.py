@@ -40,6 +40,7 @@ from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission, Session_
+from thermoctl.db.models.dashboard import DashboardTemplate
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.oauth import OAuthClient
@@ -59,6 +60,7 @@ from thermoctl.domain.administration import (
     set_user_group,
 )
 from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, has_permission, principal_for_token
+from thermoctl.domain.dashboard_templates import apply_template
 from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.oauth import revoke_access_token as revoke_oauth_access_token
 from thermoctl.domain.passkey import PasskeyError, remove_passkey
@@ -285,6 +287,8 @@ class UserCreateIn(BaseModel):
     display_name: str = Field(max_length=128)
     password: str = Field(max_length=_MAX_PASSWORD)
     group_id: int | None = None
+    # Vorlage für die Übersicht des neuen Benutzers (`ui_api_dashboard_admin`); leer: Standard.
+    template_id: int | None = None
 
 
 class ActiveIn(BaseModel):
@@ -406,6 +410,8 @@ def create_account(
     if not body.username.strip():
         raise _validation("username", "Der Benutzername darf nicht leer sein.", "invalid_username")
     _known_group(session, body.group_id)
+    if body.template_id is not None and session.get(DashboardTemplate, body.template_id) is None:
+        raise _validation("template_id", "Diese Vorlage gibt es nicht.", "unknown_template")
     try:
         user = create_user(
             session, username=body.username, display_name=body.display_name,
@@ -417,6 +423,13 @@ def create_account(
         raise _validation("password", str(exc), "password_too_short") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "username_taken", field="username") from None
+    if body.template_id is not None:
+        apply_template(session, user.id, body.template_id)
+        audit.record(
+            session, source="web", action="dashboard.template_applied", object_type="user",
+            object_id=str(user.id), summary="Übersichtsvorlage auf neuen Benutzer angewendet",
+            user_id=principal.user_id,
+        )
     return _one_user(session, principal, user)
 
 
