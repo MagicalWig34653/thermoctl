@@ -68,9 +68,9 @@
         {@const d = drafts[mode.id]}
         <li class="grid gap-2 rounded-lg border p-3">
           <div class="grid gap-2 sm:grid-cols-[1fr_1fr_6rem]">
-            <label class="grid gap-1 text-sm"><span>Name</span><input class="h-11 rounded-lg border bg-background px-3" bind:value={d.name} /></label>
-            <label class="grid gap-1 text-sm"><span>Kürzel</span><input class="h-11 rounded-lg border bg-background px-3" bind:value={d.code} /></label>
-            <label class="grid gap-1 text-sm"><span>Reihenfolge</span><input inputmode="numeric" class="h-11 rounded-lg border bg-background px-3" bind:value={d.sort_order} /></label>
+            <label class="grid min-w-0 gap-1 text-sm"><span>Name</span><input class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={d.name} /></label>
+            <label class="grid min-w-0 gap-1 text-sm"><span>Kürzel</span><input class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={d.code} /></label>
+            <label class="grid min-w-0 gap-1 text-sm"><span>Reihenfolge</span><input inputmode="numeric" class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={d.sort_order} /></label>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <Button variant="outline" disabled={busy} onclick={() => run(() => client.renameMode(mode.id, { code: d.code, name: d.name, sort_order: sortOf(d.sort_order) }), `„${d.name}“ gespeichert.`)}>Speichern</Button>
@@ -98,9 +98,9 @@
     >
       <h3 class="m-0 text-base">Neuer Modus</h3>
       <div class="grid gap-2 sm:grid-cols-[1fr_1fr_6rem]">
-        <label class="grid gap-1 text-sm"><span>Name</span><input required class="h-11 rounded-lg border bg-background px-3" bind:value={fresh.name} /></label>
-        <label class="grid gap-1 text-sm"><span>Kürzel</span><input required class="h-11 rounded-lg border bg-background px-3" bind:value={fresh.code} /></label>
-        <label class="grid gap-1 text-sm"><span>Reihenfolge</span><input inputmode="numeric" class="h-11 rounded-lg border bg-background px-3" bind:value={fresh.sort_order} /></label>
+        <label class="grid min-w-0 gap-1 text-sm"><span>Name</span><input required class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={fresh.name} /></label>
+        <label class="grid min-w-0 gap-1 text-sm"><span>Kürzel</span><input required class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={fresh.code} /></label>
+        <label class="grid min-w-0 gap-1 text-sm"><span>Reihenfolge</span><input inputmode="numeric" class="h-11 w-full min-w-0 rounded-lg border bg-background px-3" bind:value={fresh.sort_order} /></label>
       </div>
       <div><Button type="submit" disabled={busy}>Modus anlegen</Button></div>
     </form>
