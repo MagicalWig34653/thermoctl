@@ -9,6 +9,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.18.1 — 2026-10-17
+
+### Behoben
+- **Die Aussagen zu 0.18.0 waren in zwei Punkten falsch.** Das Formular für neue Schaltpunkte und Zeiträume im Wochenplan
+  und die Anzeige von Takt-Phase, Taktquelle, Frist und Sensor-Timeout in der Notbetrieb-Aktortabelle waren schon in
+  0.18.0 enthalten, nicht offen. Berichtigt in diesem Changelog, in `docs/STATUS.md` und in den Unterlagen unter
+  `docs/ui-migration/`.
+- **`docs/wohnung.md` beschrieb noch die alte Oberfläche** (fünf Reiter, Zeiträume 3 Tage). Sie ist für die neue
+  Oberfläche neu geschrieben.
+- **Das Glossar sprach noch von zwei Oberflächen.** Es gibt eine; das Profil der Gruppe trennt die Verwaltungsbereiche
+  vom Wohnbereich, der Wochenplan hängt allein am Recht `schedule.manage`. Quelle und erzeugte Dateien
+  (`docs/glossar.md`, `site/glossar.html`) sind angepasst.
+
+---
+
 ## 0.18.0 — 2026-10-17
 
 ### Beim Upgrade zu wissen
@@ -21,9 +36,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Home-Assistant-Ingress bleibt nutzbar** (Asset-Pfade relativ, der Präfix wird zur Laufzeit eingesetzt).
 - **Noch nicht an der echten Anlage erprobt:** Passkey-Anmeldung mit echtem Authenticator, Touchgeräte und der Betrieb
   unter Home-Assistant-Ingress. Die Tests decken das nicht ab; bitte einmal von Hand durchgehen.
-- **Teilweise noch offen:** einen Schaltpunkt ohne Zeiger oder Touch neu anlegen (per Tastatur nur verschieben und
-  kürzen) sowie drei Anzeigefelder der Notbetrieb-Aktortabelle (`phase_deadline_at`, `cycle_source`,
-  `sensor_timeout_seconds`).
+- **Zwei Funktionen, die bei der Freigabe als offen galten, sind enthalten:** Das Formular „Neue Zeit anlegen“ im
+  Wochenplan legt einen Schaltpunkt (Tag, Uhrzeit, Modus) oder einen Zeitraum (Tag, Von, Bis, Modus) ohne Zeiger oder
+  Touch an. Die Aktortabelle im Notbetrieb zeigt Takt-Phase, Taktquelle und Frist, der Sensor-Timeout steht je Raum
+  darüber.
 - **Offene Entscheidungen des Projektinhabers** bleiben unverändert (Impressum der öffentlichen Seite, Abschluss von
   Phase 2, Ablösung des Altsystems, Übernahme der MQTT-Zugangsdaten im Add-on, Rest des Sicherheitsstands); siehe
   [docs/STATUS.md](docs/STATUS.md). Ob die neue Oberfläche am Sicherheitsstand von 2026-09-04 etwas ändert, ist nicht

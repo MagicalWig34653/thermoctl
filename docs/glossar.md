@@ -46,9 +46,9 @@ Siehe auch: [Selbstregelndes Thermostatventil](#selbstregelndes-thermostatventil
 <a id="oberflaechen"></a>
 ### Anlagensicht und Wohnungssicht
 
-*Oberfläche* — Zwei Oberflächen: eine für Verwaltung und Technik, eine für Bewohner.
+*Oberfläche* — Eine Oberfläche; das Profil der Gruppe trennt die Verwaltungsbereiche vom Wohnbereich.
 
-Die Gruppe eines Benutzers legt fest, welche Oberfläche er sieht. Die Anlagensicht zeigt die ganze Anlage mit Geräten, Regelparametern und Protokollen. Die Wohnungssicht ist für Bewohner gedacht und zeigt die eigenen Räume mit Temperatur, Wochenplan, Heizzeit und Abwesenheit, möglichst ohne Fachbegriffe.
+Es gibt nur eine Oberfläche. Das Profil der Gruppe (Anlage oder Wohnung) ist keine Berechtigung, sondern trennt die Verwaltungsbereiche – Geräte, Betrieb und Einstellungen, Personen und Gruppen, Berichte, Urlaub und die Modi – vom Wohnbereich: Ein Wohnungsprofil sieht Übersicht, Wochenpläne, Temperatur und Heizzeit und das eigene Konto; die Abwesenheit gehört nur zu ihm. Was jemand tatsächlich darf, entscheiden allein die Rechte; der Wochenplan eines Raums hängt zum Beispiel nur am Recht schedule.manage.
 
 Auch: Anlagensicht, Wohnungssicht, Mietersicht, Profil
 
@@ -221,7 +221,7 @@ Siehe auch: [Sollwert](#sollwert), [Betriebsart](#betriebsart), [Sonnenabsenkung
 
 *Oberfläche* — Rechte hängen an Gruppen, nicht an Personen; die Gruppe legt auch das Oberflächen-Profil fest.
 
-Das Oberflächen-Profil einer Gruppe (Anlage oder Wohnung) bestimmt, welche Oberfläche sie sieht; die Rechte regeln, was jemand darf. Beides wird bei den Gruppen eingestellt. Zonenbezogene Rechte lassen sich auf einzelne Zonen beschränken. Wie sich die Rechte mehrerer Gruppen verhalten, steht in docs/bedienung.md.
+Das Oberflächen-Profil einer Gruppe (Anlage oder Wohnung) trennt die Verwaltungsbereiche vom Wohnbereich; die Rechte regeln, was jemand darf. Beides wird bei den Gruppen eingestellt. Zonenbezogene Rechte lassen sich auf einzelne Zonen beschränken. Wie sich die Rechte mehrerer Gruppen verhalten, steht in docs/bedienung.md.
 
 Auch: Gruppe, Rechte, Berechtigung, Oberflächen-Profil
 

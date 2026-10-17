@@ -430,21 +430,14 @@
       "öffentlich geschaltet wird — sie listet, was dem heute entgegensteht, damit der"
     ],
     "docs/wohnung.md": [
-      "## Heizzeit: wie viel geheizt wurde",
-      "## Zeitplan: wann es warm sein soll",
-      "- **Hilfe** — eine kurze Erklärung, was die Anzeigen bedeuten (Sollwert, „Heizt\"/„Wartet\",",
-      "- **„Für eine Weile wärmer\"** stellt eine Temperatur nur bis zu einem von Ihnen",
+      "Die Seite **Wochenpläne** zeigt je Raum, wann es wie warm sein soll. Wählen Sie oben den Raum.",
       "Diese Anleitung erklärt, wie Sie Ihre Heizung über den Webbrowser sehen und bedienen —",
-      "Eine kurzzeitige Änderung über „Für eine Weile wärmer\" verändert diesen Wochenplan",
-      "Im Reiter **Zeitplan** legen Sie je Raum fest, ab wann es tagsüber wärmer und ab wann es",
-      "Kostenmesser. Wie warm ein Raum dabei tatsächlich wurde, hängt auch vom Wetter, vom",
-      "Tagen geheizt wurde. Das ist eine grobe Orientierung — **kein** Energie- oder",
+      "Im Trockenlauf zeigen die Balken, wann geheizt worden *wäre*.",
+      "Kostenmesser: Wie warm ein Raum wurde, hängt auch vom Wetter, vom Gebäude und vom Lüften ab.",
+      "Zahl Ihrer Räume und der Räume, die gerade Wärme anfordern, und für jeden Raum eine Karte",
       "aus, bis wieder eine Messung da ist, und Heizkörper-Thermostate bekommen einmal einen festen",
-      "aus, worum es geht (Raum wird nicht warm, Temperatur wirkt falsch, Raum zu warm,",
-      "gerade dieser Wert gilt. Darunter ein Balken, der zeigt, wie warm es heute laufen soll —",
-      "gerade keinen Wert. Die Anlage schaltet die Fußbodenheizung dann nach festen Zeiten ein und",
-      "je dunkler, desto wärmer.",
-      "schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von"
+      "aus, worum es geht (z. B. Raum wird nicht warm, Temperatur wirkt falsch, Raum zu warm), und",
+      "gerade keinen Wert. Die Anlage schaltet die Fußbodenheizung dann nach festen Zeiten ein und"
     ],
     "thermoctl/api/routes.py": [
       "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor."

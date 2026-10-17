@@ -1,140 +1,120 @@
 # Ihre Wohnung online steuern
 
 Diese Anleitung erklärt, wie Sie Ihre Heizung über den Webbrowser sehen und bedienen —
-vom Handy, Tablet oder Computer aus. Sie brauchen dafür nichts zu installieren und
-nichts einzurichten: Die Zugangsdaten (Adresse, Benutzername, Passwort) haben Sie von
-der Verwaltung Ihrer Anlage erhalten.
+vom Handy, Tablet oder Computer aus. Sie brauchen dafür nichts zu installieren: Die
+Zugangsdaten (Adresse, Benutzername, Passwort) haben Sie von der Verwaltung Ihrer Anlage
+erhalten. Die Verwaltung bedient dieselbe Anwendung; was Ihnen angezeigt wird, hängt von
+Ihrer Gruppe ab. Die Technik der Anlage (Geräte, Betrieb, Einstellungen, Benutzer,
+Berichte, Urlaub) gehört zur Verwaltung und erscheint bei einem Wohnungskonto nicht.
 
-## Anmelden
+## Anmelden und Aufbau
 
-Rufen Sie die Ihnen genannte Adresse im Browser auf. Es erscheint eine Anmeldeseite mit
-Benutzername und Passwort.
+Rufen Sie die Ihnen genannte Adresse im Browser auf und melden Sie sich mit Benutzername und
+Passwort an.
 
 ![Anmeldeseite von thermoctl mit den Feldern Benutzername und Passwort](bilder/oeffentlich-anmeldung.png)
 
-Nach der Anmeldung sehen Sie oben fünf Reiter: **Zuhause**, **Zeitplan**, **Heizzeit**,
-**Verlauf** und **Mehr**. Sie sehen darin ausschließlich die Räume, für die Sie freigeschaltet
-wurden — nie andere Wohnungen oder Technik der Anlage.
+Am Telefon blenden Sie die Seitenleiste über die Schaltfläche oben links ein. Sie führt zu
+**Übersicht**, **Zeit & Abwesenheit** (die Wochenpläne) und **Auswertung** (Temperatur &
+Heizzeit) sowie ganz unten zu **Konto & Sicherheit**, **Glossar & Hilfe** und **Abmelden**.
+Das Farbsymbol oben rechts wechselt zwischen hellem und dunklem Aussehen. Sie sehen
+ausschließlich die Räume, für die Sie freigeschaltet wurden.
 
-## Zuhause: Ihre Räume auf einen Blick
+## Übersicht: Ihre Räume auf einen Blick
 
-Auf der Startseite steht für jeden Ihrer Räume eine eigene Karte: die gemessene
-Temperatur, seit wann sie gilt, der aktuelle Sollwert und eine kurze Erklärung, warum
-gerade dieser Wert gilt. Darunter ein Balken, der zeigt, wie warm es heute laufen soll —
-je dunkler, desto wärmer.
+Die Übersicht ist Ihr persönliches Dashboard aus Kacheln. Sie zeigt Kennzahlen wie die
+Zahl Ihrer Räume und der Räume, die gerade Wärme anfordern, und für jeden Raum eine Karte
+mit gemessener Temperatur, Sollwert und einer kurzen Begründung, warum gerade dieser Wert
+gilt. Mit **Anpassen** stellen Sie die Kacheln nach Ihren Wünschen zusammen.
 
-![Übersicht der Wohnungssicht am Telefon: Notbetriebs-Hinweis und Kennzahlen](bilder/wohnung-startseite-mobil.png)
+![Übersicht am Telefon: Notbetriebs-Hinweis und Kennzahlen](bilder/wohnung-startseite-mobil.png)
 
-Weiter unten stehen die Raumkarten mit ihren Bedienknöpfen:
+Weiter unten steht zum Beispiel der Temperaturverlauf eines Raums:
 
-![Übersicht der Wohnungssicht weiter unten: Temperaturverlauf eines Raums](bilder/wohnung-startseite-mobil-2.png)
+![Übersicht am Telefon weiter unten: Temperaturverlauf eines Raums](bilder/wohnung-startseite-mobil-2.png)
 
-Für jeden Raum gibt es mehrere Möglichkeiten, die Temperatur zu ändern:
+Ein Tipp auf eine Raumkarte öffnet den Raum. Je nach Ihren Rechten ändern Sie dort die
+Temperatur:
 
-- **Die Knöpfe „−" und „+"** ändern die normale Temperatur des gerade laufenden
-  Zeitabschnitts **dauerhaft** — nicht nur für heute. Stellen Sie abends auf 21,5 °C,
-  gilt das ab sofort jeden Abend, bis Sie es wieder ändern. Diese Knöpfe erscheinen nur,
-  wenn gerade keine der folgenden, vorübergehenden Änderungen läuft.
-- **„Für eine Weile wärmer"** stellt eine Temperatur nur bis zu einem von Ihnen
-  gewählten Zeitpunkt ein. Danach gilt automatisch wieder der gewohnte Wochenplan —
-  Sie müssen nichts zurückstellen.
-- **„Zur nächsten Schaltzeit springen"** nimmt vorweg, was der Wochenplan sowieso als
-  Nächstes vorsieht — praktisch, wenn Sie z. B. früher als sonst aufstehen.
-- **„Laufende Änderung ersetzen"** erscheint nur, wenn gerade etwas läuft, und ersetzt
-  diese laufende Änderung durch eine neue, statt dass Sie sie erst beenden müssten.
-
-Läuft gerade eine solche Änderung, sehen Sie das an einem hervorgehobenen Kasten mit
-Enddatum und einem „Beenden"-Knopf.
+- **Sollwert − / +** ändert die normale Temperatur des gerade laufenden Zeitabschnitts
+  **dauerhaft**, nicht nur für heute. Läuft gerade eine Übersteuerung, ist der Knopf
+  gesperrt: erst beenden, dann den Sollwert ändern.
+- **Befristete Übersteuerung** stellt eine feste Temperatur bis zu einem gewählten Zeitpunkt
+  ein. Danach gilt wieder der Wochenplan; Sie können sie auch vorzeitig beenden.
+- **Nächste Phase** zeigt, was der Wochenplan als Nächstes vorsieht. **Jetzt vorziehen**
+  nimmt es vorweg. Läuft schon eine Übersteuerung, steht dort **Übersteuerung ersetzen**.
 
 **Wenn ein Raum einen Hinweis zum Notbetrieb zeigt:** Der Temperaturfühler des Raums meldet
 gerade keinen Wert. Die Anlage schaltet die Fußbodenheizung dann nach festen Zeiten ein und
 aus, bis wieder eine Messung da ist, und Heizkörper-Thermostate bekommen einmal einen festen
 Sollwert. Die Temperatur, die Sie einstellen, kann in dieser Zeit nicht genau eingehalten
 werden. Sie müssen nichts tun. Bleibt der Hinweis lange stehen, melden Sie das unter
-„Problem melden".
+**Problem melden** (siehe unten).
 
-## Zeitplan: wann es warm sein soll
+## Zeit & Abwesenheit: Wochenplan und Verreisen
 
-Im Reiter **Zeitplan** legen Sie je Raum fest, ab wann es tagsüber wärmer und ab wann es
-abends kühler sein soll — für jeden Wochentag einzeln, oder auf einmal für die ganze
-Woche bzw. für Montag bis Freitag übertragen. Eine Vorschau zeigt, wie die Temperatur
-dadurch in den nächsten 24 Stunden tatsächlich verläuft.
+Die Seite **Wochenpläne** zeigt je Raum, wann es wie warm sein soll. Wählen Sie oben den Raum.
+Im Wochenraster ziehen Sie mit dem Finger oder der Maus eine neue Zeit auf; vorher wählen Sie
+unter „Neue Zeit mit“ den Modus (Komfort, Tag, Nacht, Frostschutz). Vorhandene Blöcke
+verschieben oder kürzen Sie, ein Antippen öffnet die genauen Zeiten und die Temperatur.
+Änderungen lassen sich mit **Rückgängig** zurücknehmen.
 
 ![Wochenplan des Wohnzimmers am Telefon mit Raumauswahl und Wochenraster](bilder/wohnung-wohnzimmer-wochenplan-mobil.png)
 
-Weiter unten lassen sich die Uhrzeiten bearbeiten:
+Weiter unten stehen die Vorschau der nächsten 24 Stunden und das Formular **Neue Zeit
+anlegen**. Damit tragen Sie einen Schaltpunkt (Tag, Uhrzeit, Modus) oder einen Zeitraum
+innerhalb eines Tages (Tag, Von, Bis, Modus) auch ohne Ziehen ein:
 
 ![Wochenplan am Telefon weiter unten: Vorschau der nächsten 24 Stunden und „Neue Zeit anlegen“](bilder/wohnung-wohnzimmer-wochenplan-mobil-2.png)
 
-Eine kurzzeitige Änderung über „Für eine Weile wärmer" verändert diesen Wochenplan
-**nicht** — sobald sie endet, gilt der Plan unverändert weiter.
+Den Wochenplan sehen und ändern Sie nur, wenn Ihre Gruppe das Recht dazu hat. Eine
+befristete Übersteuerung verändert den Plan **nicht**; sobald sie endet, gilt er unverändert
+weiter.
 
-## Heizzeit: wie viel geheizt wurde
+**Abwesenheit:** Auf derselben Seite tragen Sie ein, bis wann Sie zurück sind und auf welche
+Temperatur **alle Ihre Räume** währenddessen gehalten werden sollen. Der Wochenplan bleibt
+gespeichert und gilt danach von selbst wieder. Eine laufende Abwesenheit lässt sich jederzeit
+vorzeitig beenden. Der Urlaub für die ganze Anlage ist Sache der Verwaltung.
 
-Der Reiter **Heizzeit** zeigt je Raum, wie viele Stunden in den letzten 7, 30 oder 90
-Tagen geheizt wurde. Das ist eine grobe Orientierung — **kein** Energie- oder
-Kostenmesser. Wie warm ein Raum dabei tatsächlich wurde, hängt auch vom Wetter, vom
-Gebäude und vom Lüften ab. Steht oben ein gelber Hinweis, dass die Anlage derzeit nicht
-schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von
-dem abweichen, was Sie im Raum tatsächlich gespürt haben.
+## Auswertung: Temperatur & Heizzeit
+
+**Temperatur & Heizzeit** zeigt je Raum oder für alle Räume ein Diagramm über 24 Stunden,
+7 oder 30 Tage; der gewählte Zeitraum gilt für alle Räume. Steuert die Anlage noch nichts,
+steht oben der Hinweis „Die Anlage steuert derzeit nichts“: Dann zeigt der Verlauf, was die
+Regelung entschieden hätte. Zielwert und Heizanforderung sind Entscheidungen, keine
+Aufzeichnung dessen, was in den Räumen geschah.
 
 ![Seite „Temperatur & Heizzeit“ am Telefon mit Hinweis zum Trockenlauf und Erläuterung des Diagramms](bilder/wohnung-verlauf-mobil.png)
 
-## Verlauf: wie die Temperatur war
+- Die **Linie** ist die gemessene Temperatur. Bei langen Zeiträumen steht jeder Punkt für
+  einen kurzen Abschnitt; der helle Bereich zeigt niedrigsten bis höchsten Messwert darin.
+- Die **Stufenlinien** zeigen den Zielwert ohne Sonnenabsenkung (so, wie ihn Zeitplan,
+  Abwesenheit, Urlaub, Betriebsart Aus oder eine Änderung von Hand vorgeben) und den
+  **tatsächlichen Zielwert**, nach dem die Regelung gearbeitet hat.
+- Das **Band der Sonnenabsenkung** zeigt, wann die Regelung den Zielwert wegen erwarteter
+  Sonne abgesenkt hat; der Frostschutz soll dabei nicht unterschritten werden.
+- Die **schmale Spur** zeigt den Anteil der Zeit mit **Heizanforderung**. Sie sagt nichts
+  darüber, wie es im Raum war.
+- Mit der **Maus** (am Telefon: antippen) lesen Sie die Werte an einer Stelle ab. Wo
+  „keine Daten“ steht, gibt es keine Aufzeichnung; nichts wird dazugerechnet. **Vollbild**
+  vergrößert nur dieses Diagramm, die **Datentabelle** ist die Textfassung.
 
-Der Reiter **Verlauf** zeigt für jeden Ihrer Räume ein Diagramm der letzten 24 Stunden, 3 oder
-7 Tage; der gewählte Zeitraum oben gilt für alle Räume. Die Kacheln laden nacheinander nach,
-sobald sie ins Bild kommen („Verlauf wird geladen …"). Steuert die Anlage noch nichts, steht
-oben der Hinweis „Die Anlage steuert derzeit nichts": Dann zeigt der Verlauf, was die Regelung
-entschieden hätte – der tatsächliche Zielwert und die Heizanforderung sind Entscheidungen, keine
-Aufzeichnung dessen, was in den Räumen geschah.
+Darunter zeigt **Heizzeit** je Raum, wie viele Stunden im gewählten Zeitraum eine
+Heizanforderung bestand. Das ist eine grobe Orientierung, **kein** Energie- oder
+Kostenmesser: Wie warm ein Raum wurde, hängt auch vom Wetter, vom Gebäude und vom Lüften ab.
+Im Trockenlauf zeigen die Balken, wann geheizt worden *wäre*.
 
-- Die **Linie** ist die gemessene Temperatur („Gemessen"). Bei längeren Zeiträumen steht jeder
-  Punkt für den Durchschnitt eines kurzen Abschnitts; der helle Bereich dahinter zeigt den
-  niedrigsten bis höchsten Messwert darin.
-- Zwei **Stufenlinien** zeigen den Zielwert: den **Zielwert ohne Sonnenabsenkung** (so, wie ihn
-  Zeitplan, Abwesenheit, Urlaub, die Betriebsart Aus oder eine Änderung von Hand vorgeben) und den **tatsächlichen
-  Zielwert**, nach dem die Regelung gearbeitet hat.
-- Das **grüne Band** markiert die **Sonnenabsenkung**: Wenn Sonne erwartet wird, kann die
-  Regelung den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden. Das
-  kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die Temperatur
-  unter dem Zielwert ohne Sonnenabsenkung lag. Ein schraffiertes Stück heißt „keine Angabe": Für diese
-  Zeit wurde die Sonnenabsenkung nicht aufgezeichnet.
-- Die **schmale Spur unter dem Diagramm** zeigt den Anteil der Zeit mit **Heizanforderung**
-  (blasser = kleinerer Anteil). Eine Anforderung sagt nichts darüber, wie es im Raum war.
-- **Mit der Maus über das Diagramm fahren** (auf dem Telefon: antippen) zeigt die Werte an dieser
-  Stelle. Wo „keine Daten" steht, gibt es für diese Zeit keine Aufzeichnung; zwischen zwei
-  Einträgen wird nichts dazugerechnet. **Vollbild** vergrößert nur dieses eine Diagramm.
+## Konto & Sicherheit
 
-Sie sehen hier ausschließlich die Räume, für die Sie freigeschaltet wurden. Die Fachbegriffe
-verweisen mit einem kleinen Fragezeichen ins Glossar.
+Unter **Konto & Sicherheit** finden Sie Ihr Profil (Name, Benutzername, letzte Anmeldung) und:
 
-## Abwesenheit: wenn Sie verreisen
-
-Fahren Sie für ein paar Tage weg, müssen Sie nicht jeden Raum einzeln umstellen: Auf der
-Seite **Zuhause**, oberhalb Ihrer Räume, tragen Sie ein, bis wann Sie zurück sind und auf
-welche Temperatur währenddessen **alle** Ihre Räume gemeinsam abgesenkt werden sollen.
-Ihr gewohnter Wochenplan bleibt dabei gespeichert und gilt automatisch wieder, sobald die
-Abwesenheit endet — von selbst, ohne dass Sie danach etwas zurückstellen müssten. Eine
-laufende Abwesenheit lässt sich jederzeit vorzeitig beenden.
-
-## Mehr: Ihr Konto
-
-Unter **Mehr** finden Sie Ihren persönlichen Bereich:
-
-- **Passwort ändern** — danach bleibt nur das gerade genutzte Gerät angemeldet, alle
-  anderen brauchen eine neue Anmeldung.
-- **Andere Sitzungen beenden** — meldet Ihr Konto auf allen anderen Geräten ab, falls
-  z. B. ein Handy verloren gegangen ist. Das gerade genutzte Gerät bleibt angemeldet.
-- **Hilfe** — eine kurze Erklärung, was die Anzeigen bedeuten (Sollwert, „Heizt"/„Wartet",
-  Zeitplan und Hinweise wie „Messwert möglicherweise nicht aktuell").
+- **Passwort ändern** — dafür brauchen Sie das bisherige Passwort. Danach bleibt nur das
+  gerade genutzte Gerät angemeldet, alle anderen brauchen eine neue Anmeldung.
+- **Angemeldete Geräte** und **Andere Sitzungen beenden** — meldet Ihr Konto auf allen anderen
+  Geräten ab, falls z. B. ein Handy verloren ging.
+- **Passkeys**, wenn die Anlage sie eingerichtet hat: Ihr Gerät (Fingerabdruck,
+  Gesichtserkennung oder Sicherheitsschlüssel) als bequemerer Anmeldeweg.
 - **Abmelden.**
-
-Ist für Ihre Anlage die Anmeldung per Passkey eingerichtet, finden Sie hier zusätzlich
-einen Verweis auf die Passkey-Verwaltung — dort lässt sich Ihr Gerät (Fingerabdruck,
-Gesichtserkennung oder Sicherheitsschlüssel) als Anmeldeweg hinterlegen, als bequemere
-und sicherere Alternative zum Passwort. Ist diese Möglichkeit bei Ihrer Anlage nicht
-eingerichtet, erscheint dieser Bereich schlicht nicht.
 
 ![Konto & Sicherheit am Telefon: Profil und Passwort ändern](bilder/wohnung-konto-mobil.png)
 
@@ -142,24 +122,26 @@ Hilfe und Abmelden stehen weiter unten:
 
 ![Konto & Sicherheit weiter unten: angemeldete Geräte und „Problem melden“](bilder/wohnung-konto-mobil-2.png)
 
+Unter **Glossar & Hilfe** erklärt die Oberfläche die Fachbegriffe in einfachen Worten; an
+vielen Stellen führt ein kleines Fragezeichen direkt zum passenden Eintrag.
+
 ## Wenn etwas nicht stimmt
 
-Bei jedem Raum finden Sie unter **„Problem melden"** ein kurzes Formular: Sie wählen
-aus, worum es geht (Raum wird nicht warm, Temperatur wirkt falsch, Raum zu warm,
-anderes Problem) und können einen Hinweis dazuschreiben. Raum, letzter Messwert und
-aktueller Sollwert werden automatisch mitgeschickt — Sie müssen nichts Technisches
-angeben. Diese Meldung geht direkt an die Verwaltung Ihrer Anlage.
+Haben Sie das Recht dazu, finden Sie unter **Problem melden** ein kurzes Formular: Sie wählen
+aus, worum es geht (z. B. Raum wird nicht warm, Temperatur wirkt falsch, Raum zu warm), und
+können einen Hinweis dazuschreiben. Raum, letzter Messwert und aktueller Sollwert werden
+automatisch mitgeschickt. Die Meldung geht an die Verwaltung Ihrer Anlage.
 
 Wenden Sie sich außerdem direkt an die Verwaltung, wenn:
 
 - ein Raum fehlt, der eigentlich zu Ihrer Wohnung gehört,
-- Sie ein neues Passwort brauchen, weil Sie Ihres vergessen haben (das können Sie
-  selbst nur ändern, wenn Sie noch angemeldet sind),
-- oder Sie grundsätzliche Änderungen möchten, etwa an den Uhrzeiten, die nicht über den
-  Zeitplan hinausgehen, oder an der Absenktemperatur bei Abwesenheit.
+- Sie ein neues Passwort brauchen, weil Sie Ihres vergessen haben (selbst ändern können Sie es
+  nur, solange Sie angemeldet sind),
+- oder Sie etwas ändern möchten, wozu Ihr Konto keine Rechte hat, etwa Temperaturen je Modus
+  oder die Betriebsart eines Raums.
 
-**Was Sie hier nicht sehen und nicht ändern können — das ist Absicht, keine
-Einschränkung, die Sie stört:** Räume anderer Wohnungen, die Technik der Heizungsanlage
-(Geräte, Sensoren, Kabel, Funk), wer sonst noch Zugriff hat, und ob die Anlage insgesamt
-gerade wartungsbedingt eingeschränkt ist. Für all das ist ausschließlich die Verwaltung
-zuständig — sprechen Sie sie direkt an, wenn etwas davon betrifft, was Sie hier lesen.
+**Was Sie hier nicht sehen und nicht ändern können, ist Absicht:** Räume anderer Wohnungen,
+die Technik der Heizungsanlage (Geräte, Sensoren, Funk), Benutzer und Gruppen sowie der
+Betriebszustand der Anlage insgesamt. Dafür ist die Verwaltung zuständig. Welche Seiten ein
+Konto sieht, trennt das Profil der Gruppe; was es tatsächlich darf, entscheiden allein die
+Rechte. Das beschreibt [die Bedienungsanleitung der Verwaltung](bedienung.md).
