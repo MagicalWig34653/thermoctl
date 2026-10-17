@@ -4,13 +4,28 @@
   // gibt es einen Hinweis mit „Neu laden“ statt einer weißen Seite.
   import type { PageModule } from '$lib/views/pages';
   import { Button } from '$lib/components/ui/button';
+  import { reloadOnce } from '$lib/reload';
 
   let { load, props = {} }: { load: () => Promise<PageModule>; props?: Record<string, unknown> } =
     $props();
   let attempt = $state(0);
+  // Ein gescheiterter Abruf (kurzer Netzausfall) wird einmal von selbst wiederholt. Scheitert auch das
+  // (meist: die Anwendung wurde aktualisiert, der Dateiname der Seite existiert nicht mehr), lädt die
+  // Seite einmal neu und holt damit die aktuelle Hülle; erst danach kommt die Meldung.
   const promise = $derived.by(() => {
     attempt;
-    return load();
+    return load().catch(
+      () =>
+        new Promise<PageModule>((resolve, reject) =>
+          setTimeout(
+            () =>
+              load().then(resolve, (error) => {
+                if (!reloadOnce()) reject(error);
+              }),
+            700,
+          ),
+        ),
+    );
   });
 </script>
 

@@ -9,7 +9,7 @@ import { areaPath, type VisibleArea, type VisiblePage } from './navigation';
 
 export type NavEntry =
   | { kind: 'link'; area: VisibleArea; to: string; label: string }
-  | { kind: 'group'; area: VisibleArea; pages: { page: VisiblePage; to: string }[] };
+  | { kind: 'group'; area: VisibleArea; pages: { page: Pick<VisiblePage, 'id' | 'label'>; to: string; home?: boolean }[] };
 
 export function pageTo(areaId: string, pageId: string): string {
   return `/${areaId}/${pageId}`;
@@ -17,7 +17,7 @@ export function pageTo(areaId: string, pageId: string): string {
 
 /**
  * Bereiche mit höchstens einer sichtbaren Seite werden zum einfachen Link (auf die Seite selbst,
- * ohne Zwischenstation); „Übersicht“ führt immer auf die Startseite. Bereiche mit mehreren
+ * ohne Zwischenstation); „Übersicht“ führt auf die Startseite und wird erst zur Gruppe, wenn es Seiten dazu gibt (Räume). Bereiche mit mehreren
  * sichtbaren Seiten werden zur aufklappbaren Gruppe. Bereiche ohne Seite (außer Übersicht)
  * erscheinen nicht -- `buildVisibleAreas` liefert sie ohnehin nicht, hier zur Sicherheit doppelt.
  */
@@ -25,7 +25,20 @@ export function buildNavEntries(areas: readonly VisibleArea[]): NavEntry[] {
   const out: NavEntry[] = [];
   for (const area of areas) {
     if (area.id === 'uebersicht') {
-      out.push({ kind: 'link', area, to: areaPath(area.id), label: area.label });
+      if (area.pages.length === 0) {
+        out.push({ kind: 'link', area, to: areaPath(area.id), label: area.label });
+      } else {
+        // Wer Räume verwalten darf, bekommt neben der Startseite die Seite „Räume“; ohne Gruppe wäre sie
+        // nach dem ersten Raum nirgends mehr verlinkt.
+        out.push({
+          kind: 'group',
+          area,
+          pages: [
+            { page: { id: 'start', label: area.label }, to: areaPath(area.id), home: true },
+            ...area.pages.map((page) => ({ page, to: pageTo(area.id, page.id) })),
+          ],
+        });
+      }
     } else if (area.pages.length === 1) {
       out.push({ kind: 'link', area, to: pageTo(area.id, area.pages[0].id), label: area.label });
     } else if (area.pages.length > 1) {

@@ -17,15 +17,25 @@ const item = (path: string): ServerNavItem => ({ path, label: path, section: 'ma
 const admin = ['/zones', '/schedule', '/vacation', '/statistics', '/audit', '/relay-wear', '/devices', '/controllers',
   '/settings', '/modes', '/control', '/interfaces', '/users', '/tokens', '/kiosk-tokens'].map(item);
 
-test('Bereiche mit mehreren Seiten werden Gruppen, Übersicht bleibt Link auf die Startseite', () => {
+test('Bereiche mit mehreren Seiten werden Gruppen, Übersicht mit Räumen auch (Startseite zuerst)', () => {
   const entries = buildNavEntries(buildVisibleAreas(admin));
   const uebersicht = entries[0];
-  assert.equal(uebersicht.kind, 'link');
-  assert.equal(uebersicht.kind === 'link' && uebersicht.to, '/');
-  assert.deepEqual(groupIds(entries), ['zeit', 'auswertung', 'geraete', 'heizung', 'system', 'personen']);
+  assert.ok(uebersicht.kind === 'group');
+  assert.deepEqual(uebersicht.pages.map((p) => [p.page.id, p.to, p.home === true]), [
+    ['start', '/', true],
+    ['raeume', '/uebersicht/raeume', false],
+  ]);
+  assert.deepEqual(groupIds(entries), ['uebersicht', 'zeit', 'auswertung', 'geraete', 'heizung', 'system', 'personen']);
   const geraete = entries.find((e) => e.area.id === 'geraete')!;
   assert.ok(geraete.kind === 'group');
   assert.equal(geraete.pages[0].to, '/geraete/liste');
+});
+
+test('Ohne Recht für die Räume-Seite bleibt Übersicht ein einfacher Link auf die Startseite', () => {
+  const entries = buildNavEntries(buildVisibleAreas([item('/audit')]));
+  const uebersicht = entries[0];
+  assert.equal(uebersicht.kind, 'link');
+  assert.equal(uebersicht.kind === 'link' && uebersicht.to, '/');
 });
 
 test('Ein Bereich mit nur einer sichtbaren Seite wird ein einfacher Link auf diese Seite', () => {

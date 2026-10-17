@@ -203,9 +203,10 @@
                 />
               </button>
               <ul id="nav-sub-{area.id}" class="ml-[22px] border-l pl-2" hidden={!open}>
-                {#each entry.pages as { page, to } (page.id)}
-                  {@const here =
-                    route.kind === 'page' && route.areaId === area.id && route.pageId === page.id}
+                {#each entry.pages as { page, to, home } (page.id)}
+                  {@const here = home
+                    ? route.kind === 'home' || route.kind === 'room'
+                    : route.kind === 'page' && route.areaId === area.id && route.pageId === page.id}
                   <li>
                     <a
                       data-nav-item={open ? '' : undefined}

@@ -9,6 +9,24 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.20.2 — 2026-10-18
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration**, keine neuen Einstellungen oder Add-on-Optionen.
+
+### Behoben
+
+- **Räume ließen sich nicht mehr anlegen.** Seit der aufklappbaren Navigation (0.19.0) war die Seite „Räume“ nur noch
+  über den Link „Erste Zone anlegen“ erreichbar, und der erscheint nur, solange es keinen Raum gibt. „Übersicht“ ist jetzt
+  eine Gruppe mit den Punkten „Übersicht“ und „Räume“, sobald man Räume verwalten darf.
+- **Seiten luden manchmal erst beim zweiten Mal.** Scheiterte das Nachladen des Seitencodes (kurzer Netzausfall, oder die
+  Anwendung wurde gerade aktualisiert), blieb die Seite leer oder zeigte nur eine Fehlermeldung. Jetzt wird der Abruf einmal
+  von selbst wiederholt und danach die Seite einmal neu geladen, erst dann erscheint die Meldung. Lokal ließ sich der
+  Fehler nicht nachstellen, die Ursache ist daher eine Annahme (siehe `docs/STATUS.md`).
+
+---
+
 ## 0.20.1 — 2026-10-17
 
 ### Beim Upgrade zu wissen
