@@ -86,9 +86,9 @@ Stand Worktree `ui/delete-legacy`, **nicht gemergt, nicht released, Version unve
 - **Abweichungen gegenüber der Alt-Oberfläche** (Matrix, Zeilen „bewusst anders"): Sollwert −/+ nur im Raumdetail;
   Messquelle in der Zuordnung statt im Raumformular; Zeiträume 24 Std./7/30 Tage statt 24 h/3/7 Tage; Wochenplan per
   Pinsel und Inspektor statt Formular; Löschen mit „Rückgängig" statt Bestätigungsseite; Auswahlfelder statt Ziehen bei der
-  Zuordnung; kein Autofill-Login; kein globaler Ladebalken; Sitzungsablauf führt zur Anmeldung. Noch teilweise: Schaltpunkt
-  ohne Zeiger/Touch neu anlegen (nur Verschieben/Kürzen per Tastatur) und drei Anzeigefelder der Notbetrieb-Aktortabelle
-  (`phase_deadline_at`, `cycle_source`, `sensor_timeout_seconds`).
+  Zuordnung; kein Autofill-Login; kein globaler Ladebalken; Sitzungsablauf führt zur Anmeldung. Schaltpunkte und Zeiträume ohne
+  Zeiger legt das Formular „Neue Zeit anlegen“ an (`NewTimePanel.svelte`); die Notbetrieb-Aktortabelle zeigt Takt-Phase,
+  Taktquelle und Frist, der Sensor-Timeout steht je Raum darüber (`RoomDecisions.svelte`).
 - **Entfallen mit der Alt-Oberfläche:** die HTML-Passwortänderung ohne bisheriges Passwort (`/users/{id}/password`);
   eigenes Passwort ändert nur noch `PUT /ui-api/account/password` mit bisherigem Passwort.
 - **Tests:** 328 übersprungene Alt-Tests (`legacy-ui`) und weitere reine Alt-Seiten-/Formulartests gelöscht; Wächter
