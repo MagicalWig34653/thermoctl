@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { effectiveState, emergencyRooms, emptyState, homeLine, isSwitching, latches, plantChips, restartRequired } from '../src/lib/rooms/plant.ts';
+import { effectiveState, emergencyRooms, emptyState, homeLine, isSwitching, notSwitchingLine, plantChips, restartRequired } from '../src/lib/rooms/plant.ts';
 import type { Actuation, Plant, Room } from '../src/lib/rooms/types.ts';
 
 const act = (over: Partial<Actuation> = {}): Actuation => ({ control_armed: false, sending_allowed: false, cluster_standby: false, state: 'dry_run', ...over });
@@ -20,37 +20,34 @@ test('Trockenlauf wird nie als schaltend dargestellt', () => {
   const dry = act();
   assert.equal(effectiveState(dry), 'dry_run');
   assert.equal(isSwitching(dry), false);
-  assert.equal(latches(dry)[0].value, 'Trockenlauf');
+  assert.equal(notSwitchingLine(dry)?.reason, 'dry_run');
   // Auch bei widersprüchlichen Angaben („live“, aber nicht freigegeben, oder MQTT frei im Trockenlauf).
   assert.equal(isSwitching(act({ state: 'live', sending_allowed: true })), false);
-  assert.equal(isSwitching(act({ sending_allowed: true })), false);
-  assert.equal(latches(act({ sending_allowed: true }))[0].tone, 'neutral');
+  assert.equal(notSwitchingLine(act({ state: 'live', sending_allowed: true }))?.reason, 'dry_run');
+  assert.equal(notSwitchingLine(act({ sending_allowed: true }))?.reason, 'dry_run');
 });
 
 test('scharf: Neustart fehlt vs. freigegeben', () => {
   const pending = act({ control_armed: true, state: 'armed_restart_missing' });
   assert.equal(restartRequired(pending), true);
   assert.equal(isSwitching(pending), false);
-  assert.equal(latches(pending)[0].value, 'Scharf, Neustart fehlt');
-  assert.equal(latches(pending)[1].value, 'gesperrt');
-  assert.equal(latches(pending)[1].tone, 'warn');
+  assert.equal(notSwitchingLine(pending)?.reason, 'restart');
+  assert.match(notSwitchingLine(pending)!.text, /Neustart fehlt/);
   const live = act({ control_armed: true, sending_allowed: true, state: 'live' });
   assert.equal(restartRequired(live), false);
   assert.equal(isSwitching(live), true);
-  assert.equal(latches(live)[0].value, 'Scharf und neu gestartet');
-  assert.equal(latches(live)[1].value, 'frei');
+  // Schaltet die Anlage, gibt es keine Meldung.
+  assert.equal(notSwitchingLine(live), null);
   // „live“ nach Server, aber Riegel zu: vorsichtiger Wert, nicht „schaltet“.
   assert.equal(effectiveState(act({ control_armed: true, state: 'live' })), 'armed_restart_missing');
+  assert.equal(notSwitchingLine(act({ control_armed: true, state: 'live' }))?.reason, 'restart');
 });
 
-test('die drei Zustände bleiben getrennte, einzeln beschriftete Aussagen', () => {
-  const rows = latches(act({ control_armed: true, sending_allowed: true, state: 'live', cluster_standby: true }));
-  assert.deepEqual(rows.map((r) => r.title), ['Aktorfreigabe', 'MQTT-Ausgabe', 'Rolle im Verbund']);
-  assert.equal(rows[2].value, 'Bereitschaft');
-  assert.equal(rows[2].tone, 'warn');
-  // Bereitschaft: Freigabe sieht scharf aus, geschaltet wird trotzdem nicht.
-  assert.equal(isSwitching(act({ control_armed: true, sending_allowed: true, state: 'live', cluster_standby: true })), false);
-  assert.equal(latches(act())[2].value, 'Führend oder Alleinbetrieb');
+test('Reserve (freigegeben, aber nicht führend) schaltet nie', () => {
+  const standby = act({ control_armed: true, sending_allowed: true, state: 'live', cluster_standby: true });
+  assert.equal(isSwitching(standby), false);
+  assert.equal(notSwitchingLine(standby)?.reason, 'standby');
+  assert.match(notSwitchingLine(standby)!.text, /Reserve/);
 });
 
 test('Sammelchips: nur was anliegt, Brücke nur bei false (null ist unbekannt)', () => {
