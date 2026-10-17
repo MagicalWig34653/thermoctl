@@ -222,6 +222,8 @@ class ActuationOut(BaseModel):
     control_armed: bool
     sending_allowed: bool
     cluster_standby: bool
+    cluster_state: Literal["leading", "standby", "determining"] = "leading"
+    determining_until: str | None = None
     state: Literal["dry_run", "armed_restart_missing", "live"]
 
 
@@ -523,10 +525,23 @@ def _actuation(request: Request, session: Session, settings: Setting) -> Actuati
         state = "armed_restart_missing"
     else:
         state = "dry_run"
+    leading = cluster.is_leader(session, holder=cluster.instance_id())
+    cluster_state: Literal["leading", "standby", "determining"] = "leading"
+    determining_until: datetime | None = None
+    if not leading:
+        cluster_state = "standby"
+        started = getattr(request.app.state, "process_started_at", None)
+        if started is not None:
+            until = started + timedelta(seconds=cluster.takeover_timeout_seconds(settings))
+            if utcnow() < until:
+                cluster_state = "determining"
+                determining_until = until
     return ActuationOut(
         control_armed=armed,
         sending_allowed=sending,
-        cluster_standby=not cluster.is_leader(session, holder=cluster.instance_id()),
+        cluster_standby=not leading,
+        cluster_state=cluster_state,
+        determining_until=_iso(determining_until),
         state=state,
     )
 

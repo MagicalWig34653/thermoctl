@@ -1264,6 +1264,9 @@ def create_app() -> FastAPI:
     # until the process ends, in tests again on every setup.
     app.state.engine = create_engine_from_settings(settings)
     app.state.session_factory = session_factory(app.state.engine)
+    # Process start (naive UTC, like every database timestamp); read-only, only used to
+    # tell "still determining the role" from a real standby in the UI.
+    app.state.process_started_at = utcnow()
     app.state.mcp_http_app = None
     if settings.mcp_mode == "path":
         try:

@@ -635,6 +635,8 @@ class OperationActuationOut(BaseModel):
     armed: bool
     sending_allowed: bool
     cluster_standby: bool
+    cluster_state: Literal["leading", "standby", "determining"]
+    determining_until: str | None
     live: bool
     dry_run: bool
     restart_required: bool
@@ -733,6 +735,8 @@ def _operation_actuation(request: Request, session: Session, row: Any) -> Operat
         armed=base.control_armed,
         sending_allowed=base.sending_allowed,
         cluster_standby=base.cluster_standby,
+        cluster_state=base.cluster_state,
+        determining_until=base.determining_until,
         live=live,
         dry_run=not live,
         restart_required=base.state == "armed_restart_missing",

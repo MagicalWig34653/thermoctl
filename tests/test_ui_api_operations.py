@@ -795,6 +795,71 @@ def test_the_cluster_role_is_a_third_separate_latch(client_als: Als, session: Se
     assert body["actuation"]["armed"] is True
 
 
+def _foreign_claim(session: Session) -> None:
+    session.add(
+        ClusterClaim(id=1, holder_id="andere-instanz", expires_at=utcnow() + timedelta(days=1))
+    )
+    session.flush()
+
+
+def test_cluster_state_is_leading_when_this_instance_holds_the_claim(
+    client_als: Als, session: Session
+) -> None:
+    _anlage(session)
+    http = client_als(LESEN)
+    http.app.state.process_started_at = utcnow()  # type: ignore[attr-defined]
+    for url in ("/ui-api/operation", "/ui-api/rooms"):
+        body = http.get(url).json()["actuation"]
+        assert body["cluster_standby"] is False
+        assert body["cluster_state"] == "leading"
+        assert body["determining_until"] is None
+
+
+def test_cluster_state_is_determining_shortly_after_start_and_standby_later(
+    client_als: Als, session: Session
+) -> None:
+    row, _ = _anlage(session)
+    _foreign_claim(session)
+    timeout = cluster.takeover_timeout_seconds(row)
+    http = client_als(LESEN)
+    started = utcnow()
+    http.app.state.process_started_at = started  # type: ignore[attr-defined]
+    for url in ("/ui-api/operation", "/ui-api/rooms"):
+        body = http.get(url).json()["actuation"]
+        assert body["cluster_standby"] is True
+        assert body["cluster_state"] == "determining"
+        until = datetime.fromisoformat(body["determining_until"])
+        assert until.replace(tzinfo=None) == started + timedelta(seconds=timeout)
+    # Knapp innerhalb der Wartezeit: noch Erkennung; knapp darauf: echte Reserve.
+    http.app.state.process_started_at = utcnow() - timedelta(seconds=timeout - 5)  # type: ignore[attr-defined]
+    assert http.get("/ui-api/operation").json()["actuation"]["cluster_state"] == "determining"
+    http.app.state.process_started_at = utcnow() - timedelta(seconds=timeout + 1)  # type: ignore[attr-defined]
+    for url in ("/ui-api/operation", "/ui-api/rooms"):
+        body = http.get(url).json()["actuation"]
+        assert body["cluster_standby"] is True
+        assert body["cluster_state"] == "standby"
+        assert body["determining_until"] is None
+
+
+def test_without_a_process_start_value_a_non_leader_is_plain_standby(
+    client_als: Als, session: Session
+) -> None:
+    _anlage(session)
+    _foreign_claim(session)
+    http = client_als(LESEN)
+    if hasattr(http.app.state, "process_started_at"):
+        del http.app.state.process_started_at
+    body = http.get("/ui-api/operation").json()["actuation"]
+    assert (body["cluster_standby"], body["cluster_state"]) == (True, "standby")
+    assert body["determining_until"] is None
+
+
+def test_create_app_records_the_process_start_in_utc(client: TestClient) -> None:
+    started = client.app.state.process_started_at  # type: ignore[attr-defined]
+    assert started.tzinfo is None  # naive UTC, like every database timestamp
+    assert timedelta(0) <= utcnow() - started < timedelta(minutes=5)
+
+
 # -- Freigabe -----------------------------------------------------------------------------
 
 

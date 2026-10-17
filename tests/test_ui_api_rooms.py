@@ -113,6 +113,8 @@ def test_list_shows_state_setpoint_and_actions(client_als: Als, session: Session
         "control_armed": False,
         "sending_allowed": False,
         "cluster_standby": False,
+        "cluster_state": "leading",
+        "determining_until": None,
         "state": "dry_run",
     }
     assert body["timezone"] == "Europe/Berlin"
