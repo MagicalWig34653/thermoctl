@@ -1,8 +1,17 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import { BookOpen, ChevronRight, LogOut, Palette, PanelLeft, Thermometer, UserRound } from '@lucide/svelte';
+  import { untrack, type Snippet } from 'svelte';
+  import { BookOpen, ChevronDown, ChevronRight, LogOut, Palette, PanelLeft, Thermometer, UserRound } from '@lucide/svelte';
   import { AREA_ICONS } from '$lib/icons';
-  import { areaPath, type VisibleArea } from '$lib/navigation';
+  import type { VisibleArea } from '$lib/navigation';
+  import {
+    buildNavEntries,
+    groupIds,
+    loadOpen,
+    nextFocusIndex,
+    openGroups,
+    saveOpen,
+    toggleGroup,
+  } from '$lib/nav-menu';
   import { appHref, type Route } from '$lib/paths';
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
@@ -41,6 +50,37 @@
         ? 'Glossar & Hilfe'
         : (currentArea?.label ?? ''),
   );
+
+  const entries = $derived(buildNavEntries(areas));
+  // Gemerkte Auswahl pro Browser; der Bereich der aktuellen Seite ist immer offen (Direktlinks,
+  // Neuladen). Ohne Speicher funktioniert alles, nur ohne Erinnerung.
+  let stored = loadOpen(() => localStorage);
+  let userOpen = $state<Set<string>>(new Set());
+  let seeded = false;
+  $effect(() => {
+    // Beim ersten Lauf und bei jedem Bereichswechsel: Gruppe der aktuellen Seite aufklappen.
+    const ids = groupIds(entries);
+    const active = activeAreaId;
+    untrack(() => {
+      userOpen = openGroups(seeded ? [...userOpen] : stored, ids, active);
+      seeded = true;
+    });
+  });
+  function toggle(id: string) {
+    userOpen = toggleGroup(userOpen, id);
+    saveOpen(() => localStorage, userOpen);
+  }
+
+  let navEl = $state<HTMLElement | null>(null);
+  function navKeydown(event: KeyboardEvent) {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !navEl) return;
+    const items = [...navEl.querySelectorAll<HTMLElement>('[data-nav-item]')];
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const target = items[nextFocusIndex(items.length, current, event.key)];
+    if (!target) return;
+    event.preventDefault();
+    target.focus();
+  }
 
   $effect(() => {
     const media = window.matchMedia('(max-width: 1023px)');
@@ -84,7 +124,7 @@
   }
 
   const link =
-    'flex min-h-10 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-muted';
+    'flex min-h-10 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-muted focus-visible:outline-offset-[-2px]';
 </script>
 
 <svelte:window onkeydown={keydown} />
@@ -117,23 +157,71 @@
   <SettingsSearch {areas} bind:query bind:input={searchInput} onpick={() => (drawer = false)} />
 
   {#if !query.trim()}
-    <nav class="min-h-0 flex-1 overflow-auto" aria-label="Hauptnavigation">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <nav
+      class="min-h-0 flex-1 overflow-auto"
+      aria-label="Hauptnavigation"
+      bind:this={navEl}
+      onkeydown={navKeydown}
+    >
       {#each ['Zuhause', 'Verwaltung'] as group (group)}
-        {@const groupAreas = areas.filter((a) => a.group === group)}
-        {#if groupAreas.length}
+        {@const groupEntries = entries.filter((e) => e.area.group === group)}
+        {#if groupEntries.length}
           <div class="px-2.5 pt-4 pb-1.5 text-xs font-medium text-muted-foreground">{group}</div>
-          {#each groupAreas as area (area.id)}
+          {#each groupEntries as entry (entry.area.id)}
+            {@const area = entry.area}
             {@const Icon = AREA_ICONS[area.id]}
             {@const active = activeAreaId === area.id}
-            <a
-              class="{link} {active ? 'bg-secondary font-medium' : ''}"
-              href={appHref(prefix, areaPath(area.id))}
-              aria-current={active ? 'page' : undefined}
-              title={area.description}
-            >
-              <Icon size={18} class="shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span>{area.label}</span>
-            </a>
+            {#if entry.kind === 'link'}
+              <a
+                data-nav-item
+                class="{link} {active ? 'bg-secondary font-medium' : ''}"
+                href={appHref(prefix, entry.to)}
+                aria-current={active ? 'page' : undefined}
+                title={area.description}
+              >
+                <Icon size={18} class="shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span>{area.label}</span>
+              </a>
+            {:else}
+              {@const open = userOpen.has(area.id)}
+              <button
+                type="button"
+                data-nav-item
+                class="{link} w-full text-left {active ? 'font-medium' : ''}"
+                aria-expanded={open}
+                aria-controls="nav-sub-{area.id}"
+                title={area.description}
+                onclick={() => toggle(area.id)}
+              >
+                <Icon size={18} class="shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span class="flex-1">{area.label}</span>
+                <ChevronDown
+                  size={16}
+                  class="shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none {open
+                    ? 'rotate-180'
+                    : ''}"
+                  aria-hidden="true"
+                />
+              </button>
+              <ul id="nav-sub-{area.id}" class="ml-[22px] border-l pl-2" hidden={!open}>
+                {#each entry.pages as { page, to } (page.id)}
+                  {@const here =
+                    route.kind === 'page' && route.areaId === area.id && route.pageId === page.id}
+                  <li>
+                    <a
+                      data-nav-item={open ? '' : undefined}
+                      tabindex={open ? undefined : -1}
+                      class="{link} {here ? 'bg-secondary font-medium' : ''}"
+                      href={appHref(prefix, to)}
+                      aria-current={here ? 'page' : undefined}
+                    >
+                      {page.label}
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           {/each}
         {/if}
       {/each}

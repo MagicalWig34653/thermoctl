@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   ACCOUNT_PATHS,
   AREAS,
+  areaPath,
   buildVisibleAreas,
   searchNavigation,
   type ServerNavItem,
@@ -124,4 +125,9 @@ test('Anlagenbild steht unter Geräte und erscheint mit der Geräteübersicht, n
   const none = buildVisibleAreas([{ path: '/audit', label: 'Protokoll', section: 'analysis' }]);
   assert.equal(none.some((a) => a.id === 'geraete'), false);
   assert.deepEqual(searchNavigation(some, 'Anlagenbild').map((r) => r.to), ['/geraete/anlagenbild']);
+});
+
+test('Bereichsseite bleibt als Direktlink adressierbar (Lesezeichen)', () => {
+  assert.equal(areaPath('geraete'), '/geraete');
+  assert.equal(areaPath('uebersicht'), '/');
 });
