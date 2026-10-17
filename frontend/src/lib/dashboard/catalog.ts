@@ -1,4 +1,4 @@
-// Die zehn Kacheltypen: Beschriftung, Kategorie, was sie brauchen. Reine Darstellungsdaten.
+// Die elf Kacheltypen: Beschriftung, Kategorie, was sie brauchen. Reine Darstellungsdaten.
 // Ob eine Kachel gezeigt werden darf, entscheidet der Server bei jedem Abruf.
 
 import type { Destination, Metric, PeriodDays, TileKind, Width } from './types';
@@ -27,6 +27,7 @@ export interface CatalogEntry {
 
 export const CATALOG: readonly CatalogEntry[] = [
   { kind: 'room', name: 'Raum', description: 'Temperatur, Sollwert und Zustand eines Raums.', category: 'rooms', needsZone: true, adminOnly: false, keywords: 'zimmer ist soll temperatur', defaultWidth: 4 },
+  { kind: 'control', name: 'Raum bedienen', description: 'Sollwert eines Raums direkt ändern und eine Übersteuerung beenden.', category: 'rooms', needsZone: true, adminOnly: false, keywords: 'thermostat bedienen sollwert wärmer kälter regeln steuern', defaultWidth: 4 },
   { kind: 'chart', name: 'Temperaturverlauf', description: 'Verlauf eines Raums über den gewählten Zeitraum.', category: 'time', needsZone: true, adminOnly: false, keywords: 'diagramm kurve historie', defaultWidth: 8 },
   { kind: 'metric', name: 'Kennzahl', description: 'Räume, Heizanforderung, Auffälligkeiten oder Außentemperatur.', category: 'plant', needsZone: false, adminOnly: false, keywords: 'zahl wert anzahl', defaultWidth: 3 },
   { kind: 'agenda', name: 'Heute relevant', description: 'Auffälligkeiten und nächste Wechsel deiner Räume.', category: 'rooms', needsZone: false, adminOnly: false, keywords: 'hinweise störung fenster übersteuert', defaultWidth: 4 },

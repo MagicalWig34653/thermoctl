@@ -11,6 +11,9 @@
     <div class="flex items-end justify-between"><span class="text-2xl leading-none font-semibold tabular-nums">21,5°</span><span class="text-xs text-muted-foreground">Soll 21,0</span></div>
     <div class="mt-2 flex h-2 overflow-hidden rounded-full"><span class="w-1/4 bg-blue-400/70"></span><span class="w-2/4 bg-orange-400/70"></span><span class="w-1/4 bg-blue-400/70"></span></div>
     <div class="mt-2 h-2 w-1/2 rounded bg-muted"></div>
+  {:else if kind === 'control'}
+    <div class="flex items-center justify-center gap-3"><span class="grid size-7 place-items-center rounded-md border text-sm">−</span><span class="text-xl font-semibold tabular-nums">21,0°</span><span class="grid size-7 place-items-center rounded-md border text-sm">+</span></div>
+    <div class="mt-3 h-2 w-2/3 rounded bg-muted"></div>
   {:else if kind === 'chart'}
     <svg viewBox="0 0 120 60" class="h-full w-full" preserveAspectRatio="none"><polyline points="0,40 15,38 30,30 45,34 60,22 75,26 90,18 105,24 120,16" fill="none" stroke="var(--h-temp)" stroke-width="2" /><polyline points="0,44 40,44 41,28 80,28 81,36 120,36" fill="none" stroke="var(--h-sched)" stroke-width="1.5" stroke-dasharray="3 2" /></svg>
   {:else if kind === 'metric'}

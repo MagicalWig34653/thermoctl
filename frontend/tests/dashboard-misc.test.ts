@@ -47,10 +47,10 @@ test('Netzwerk, Sitzung, Berechtigung und Sonstiges', () => {
   assert.equal(dashboardFailure(new Error('x')).kind, 'other');
 });
 
-test('Katalog: alle zehn Kacheltypen genau einmal', () => {
+test('Katalog: alle elf Kacheltypen genau einmal', () => {
   assert.deepEqual([...CATALOG.map((e) => e.kind)].sort(), [...TILE_KINDS].sort());
-  assert.equal(CATALOG.length, 10);
-  for (const e of CATALOG) assert.equal(e.needsZone, ['room', 'chart', 'schedule', 'heating'].includes(e.kind), e.kind);
+  assert.equal(CATALOG.length, 11);
+  for (const e of CATALOG) assert.equal(e.needsZone, ['room', 'chart', 'schedule', 'heating', 'control'].includes(e.kind), e.kind);
   assert.deepEqual(CATALOG.filter((e) => e.adminOnly).map((e) => e.kind).sort(), ['devices', 'system']);
 });
 
@@ -66,7 +66,7 @@ test('Zeiträume: Verlauf 1/7/30, Heizzeit 7/30/90, sonst keiner', () => {
 
 test('Galeriesuche findet über Name, Beschreibung und Stichworte', () => {
   const find = (q: string) => CATALOG.filter((e) => matchesQuery(e, q)).map((e) => e.kind);
-  assert.equal(find('').length, 10);
+  assert.equal(find('').length, 11);
   assert.deepEqual(find('verlauf'), ['chart']);
   assert.ok(find('trockenlauf').includes('system'));
   assert.deepEqual(find('xyz'), []);
@@ -178,4 +178,12 @@ test('Notizen werden nie als HTML eingesetzt', () => {
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.svelte'))) {
     assert.ok(!readFileSync(join(dir, file), 'utf8').includes('{@html'), `${file} darf kein {@html} enthalten`);
   }
+});
+
+test('Raum bedienen: Katalogeintrag, findbar über Thermostat, braucht einen Raum', () => {
+  const entry = CATALOG.find((e) => e.kind === 'control');
+  assert.ok(entry);
+  assert.equal(entry.needsZone, true);
+  assert.equal(entry.adminOnly, false);
+  assert.ok(CATALOG.filter((e) => matchesQuery(e, 'thermostat')).some((e) => e.kind === 'control'));
 });

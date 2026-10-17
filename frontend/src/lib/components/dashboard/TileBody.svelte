@@ -8,6 +8,7 @@
   import HelpTip from '$lib/components/rooms/HelpTip.svelte';
   import HistoryChart from '$lib/components/history/HistoryChart.svelte';
   import RoomCard from '$lib/components/rooms/RoomCard.svelte';
+  import ControlTile from './ControlTile.svelte';
   import { DESTINATION_LABELS, DESTINATION_PATHS, entryOf } from '$lib/dashboard/catalog';
   import { agendaItems, metricValue, tileTitle } from '$lib/dashboard/tiles';
   import type { Tile } from '$lib/dashboard/types';
@@ -15,7 +16,7 @@
   import ScheduleTile from './ScheduleTile.svelte';
   import TileCard from './TileCard.svelte';
 
-  let { tile, data, zones }: { tile: Tile; data: Rooms; zones: { id: number; name: string }[] } = $props();
+  let { tile, data, zones, onchanged = () => {} }: { tile: Tile; data: Rooms; zones: { id: number; name: string }[]; onchanged?: () => void } = $props();
   const { prefix } = useApp();
 
   const room = $derived(tile.zone_id === null ? null : (data.rooms.find((r) => r.id === tile.zone_id) ?? null));
@@ -26,6 +27,8 @@
 
 {#if tile.kind === 'room'}
   {#if room}<RoomCard {room} heading={tile.title.trim() || undefined} timezone={data.timezone} nowFraction={data.now_fraction} />{/if}
+{:else if tile.kind === 'control'}
+  {#if room}<ControlTile {room} heading={tile.title.trim() || undefined} timezone={data.timezone} {onchanged} />{/if}
 {:else if tile.kind === 'chart'}
   {#if tile.zone_id !== null && zones.some((z) => z.id === tile.zone_id)}
     {#key `${tile.zone_id}|${chartPeriod}`}

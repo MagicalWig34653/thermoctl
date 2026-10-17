@@ -12,7 +12,8 @@ export type TileKind =
   | 'devices'
   | 'system'
   | 'note'
-  | 'shortcut';
+  | 'shortcut'
+  | 'control';
 export type Metric = 'rooms' | 'heating' | 'issues' | 'outdoor';
 export type Destination =
   | 'schedule'
@@ -43,6 +44,7 @@ export const TILE_KINDS: readonly TileKind[] = [
   'system',
   'note',
   'shortcut',
+  'control',
 ];
 export const METRICS: readonly Metric[] = ['rooms', 'heating', 'issues', 'outdoor'];
 export const DESTINATIONS: readonly Destination[] = [

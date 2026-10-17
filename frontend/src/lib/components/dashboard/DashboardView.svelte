@@ -64,7 +64,7 @@
   // Räume aus der frischen Raumliste (Rechte gelten bei jedem Abruf), nicht aus dem Bootstrap.
   const zones = $derived((data?.rooms ?? []).map((r) => ({ id: r.id, name: r.name })));
   const zoneIds = $derived(new Set(zones.map((z) => z.id)));
-  const ZONE_KINDS = new Set<TileKind>(['room', 'chart', 'schedule', 'heating']);
+  const ZONE_KINDS = new Set<TileKind>(['room', 'chart', 'schedule', 'heating', 'control']);
 
   const shown = $derived<readonly DraftSection[]>(
     dash.editing
@@ -464,7 +464,7 @@
                   </div>
                 </div>
               {:else}
-                <TileBody {tile} {data} {zones} />
+                <TileBody {tile} {data} {zones} onchanged={() => void rooms.refresh()} />
               {/if}
             </li>
           {:else}
