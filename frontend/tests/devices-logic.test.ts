@@ -61,7 +61,10 @@ test('Speicher: kaputte, fehlende und gesperrte Werte ergeben leere Voreinstellu
     pos: { a: { x: 1, y: 2 }, b: { x: 'x', y: 1 }, c: null },
     view: { x: 1, y: 2, k: 0.5 }, collapsed: ['a', 3], technical: true,
   }));
-  assert.deepEqual(ok, { pos: { a: { x: 1, y: 2 } }, view: { x: 1, y: 2, k: 0.5 }, collapsed: ['a'], technical: true });
+  // Ältere Stände ohne Merkmal gelten mit Inhalt als noch nicht an den Server gesendet.
+  assert.deepEqual(ok, { pos: { a: { x: 1, y: 2 } }, view: { x: 1, y: 2, k: 0.5 }, collapsed: ['a'], technical: true, dirty: true });
+  assert.equal(parsePrefs(JSON.stringify({ technical: true })).dirty, false);
+  assert.equal(parsePrefs(JSON.stringify({ pos: { a: { x: 1, y: 2 } }, dirty: false })).dirty, false);
   assert.equal(parsePrefs(JSON.stringify({ view: { x: 1, y: 2, k: 0 } })).view, null);
   const throwing = () => ({ getItem: () => { throw new Error('gesperrt'); }, setItem: () => { throw new Error('voll'); } });
   assert.deepEqual(loadPrefs(throwing), EMPTY_PREFS);

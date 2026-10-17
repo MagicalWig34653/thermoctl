@@ -61,7 +61,7 @@
 {:else}
   {#if query.failure}<div class="mb-3"><Notice tone="error">{query.failure.message}</Notice></div>{/if}
   {#if tab === 'karte'}
-    <DeviceMapCanvas map={query.data} {actions} />
+    <DeviceMapCanvas map={query.data} {actions} {client} />
   {:else}
     <MapList map={query.data} {actions} />
   {/if}
