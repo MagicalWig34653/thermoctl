@@ -9,6 +9,46 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.20.0 — 2026-10-17
+
+### Beim Upgrade zu wissen
+
+- **Zwei Datenbankmigrationen** (Kachelart `control`, Alembic `d4b8f2a60c19`; Übersichtsvorlagen, Tabellen
+  `dashboard_template*`, `e7a3c15b9d28`). Sie laufen beim Start von selbst; das Zurückstufen entfernt Kacheln der Art
+  „Raum bedienen“ und löscht die Vorlagen.
+- **Keine neuen Add-on-Optionen**, keine neuen Einstellungen.
+- Wer Übersichten anderer Personen und Vorlagen pflegen will, braucht das Recht `user.manage` (und die Anlagensicht,
+  wie bei der übrigen Benutzerverwaltung). Solche Änderungen stehen im Änderungsprotokoll.
+- Praxistest an der echten Anlage steht weiter aus (siehe 0.18.0).
+
+### Neu
+
+- **Kachel „Raum bedienen“:** Auf der Übersicht lässt sich der Sollwert eines Raums direkt in halben Grad ändern und
+  eine laufende Übersteuerung beenden. Es sind dieselben Aufrufe wie auf der Raumseite; was der Server nicht anbietet,
+  wird ausgeblendet.
+- **Vorlagen für die Übersicht:** Unter „Personen & Rechte“, Reiter „Übersichten“, lassen sich Vorlagen anlegen, aus der
+  Übersicht einer Person übernehmen, bearbeiten und löschen. Beim Anlegen einer Person wählt man eine Vorlage; die Person
+  bekommt eine Kopie und kann sie selbst anpassen. Räume, die sie nicht sehen darf, erscheinen auch mit Vorlage nicht.
+- **Übersicht einer beliebigen Person bearbeiten** (und auf Standard zurücksetzen), im selben Reiter. Der Editor zeigt,
+  was die Person sieht; ihre Rechte begrenzen, welche Räume und Kacheln hineinkommen.
+- **20 statt 6 Akzentfarben**, darunter Gelb.
+
+### Geändert
+
+- **Glow sichtbarer:** Im Dunkelmodus leuchtet er in aufgehellter Akzentfarbe. Ab Stufe „Kräftig“ liegt ein Farbschein im
+  Hintergrund; bei „Intensiv“ sind Seitenleiste, Kopfzeile, Karten und Dialoge durchscheinend mit Weichzeichner. Auch
+  grüne, gelbe, rote und blaue Statusfarben leuchten in ihrer eigenen Farbe. Die Abschaltung über „Transparenz
+  reduzieren“ entfällt (der Glow ist keine Transparenz).
+- **Als Web-App auf iOS:** Das Symbol fehlte, weil iOS ein PNG verlangt. Jetzt gibt es `apple-touch-icon`, ein
+  Web-App-Manifest und die iOS-Angaben. Eine bereits ohne Symbol angelegte Web-App muss einmal entfernt und neu
+  hinzugefügt werden.
+- **Raumkarte auf schmalen Kacheln** (Handy): Sollwert und Status brechen um, statt sich zu überlappen; Kachel-Titel
+  werden nicht mehr abgeschnitten.
+- **Einheitliche Abstände:** Überall 24 Pixel zwischen Seitenkopf und Inhalt (bisher 32 auf manchen Seiten der
+  Bereiche Regelung und Betrieb); Reiterleiste der Geräteseite angeglichen.
+
+---
+
 ## 0.19.1 — 2026-10-17
 
 ### Beim Upgrade zu wissen
