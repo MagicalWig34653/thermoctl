@@ -2,6 +2,7 @@
 // (`plant`, `home`, `actuation` aus /ui-api/rooms); nichts davon wird im Browser entschieden.
 // Die Einzelriegel zeigt die Kachel `system`; hier nur die Aussage „schaltet nicht“.
 
+import { roleOf, untilText } from '../cluster-role';
 import { formatAge } from './logic';
 import type { Actuation, ActuationState, Home, Plant, Room, RoomRef } from './types';
 
@@ -25,11 +26,19 @@ export function restartRequired(a: Actuation): boolean {
 
 /** Einzeilige Meldung, wenn die Anlage NICHT schaltet; sonst null. Die Gründe sind getrennt
  *  benannt (Reserve, Neustart fehlt, Trockenlauf); die Einzelriegel zeigt die Kachel `system`. */
-export function notSwitchingLine(a: Actuation): { reason: 'standby' | 'restart' | 'dry_run'; text: string } | null {
+export function notSwitchingLine(a: Actuation): { reason: 'standby' | 'determining' | 'restart' | 'dry_run'; text: string } | null {
   if (isSwitching(a)) return null;
   if (effectiveState(a) === 'dry_run') return { reason: 'dry_run', text: 'Trockenlauf: Entscheidungen werden nur protokolliert, es wird nichts geschaltet.' };
   if (restartRequired(a)) return { reason: 'restart', text: 'Freigabe gespeichert, Neustart fehlt: Es wird nichts geschaltet.' };
-  // Übrig bleibt nur: freigegeben und gesendet, aber Reserve.
+  // Übrig bleibt nur: freigegeben und gesendet, aber ohne Führung. Direkt nach einem Start heißt das
+  // „wird ermittelt“, nicht Reserve: ein Anspruch der Vorgängerin muss erst ablaufen.
+  if (roleOf(a) === 'determining') {
+    const until = untilText(a.determining_until);
+    return {
+      reason: 'determining',
+      text: `Führung wird ermittelt${until ? ` (bis ca. ${until})` : ''}: Diese Instanz schaltet noch nichts.`,
+    };
+  }
   return { reason: 'standby', text: 'Reserve: Diese Instanz regelt nicht und schaltet nichts.' };
 }
 

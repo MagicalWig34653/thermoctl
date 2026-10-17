@@ -2,6 +2,7 @@
 // Keine Fachregel: Sollwert, Entscheidung, Rechte und Tagesverlauf kommen fertig vom Server.
 
 import { ApiError } from '../api';
+import { roleLabel } from '../cluster-role';
 import { sameTemperature } from './decimal';
 import type { Actions, Actuation, DaySegment, Room, RoomDetail } from './types';
 
@@ -180,8 +181,8 @@ export function actuationRows(actuation: Actuation): ActuationRow[] {
     {
       id: 'role',
       title: 'Führung',
-      value: actuation.cluster_standby ? 'Reserve – schaltet nicht' : 'Führend',
-      tone: actuation.cluster_standby ? 'warn' : 'ok',
+      value: roleLabel(actuation).value,
+      tone: roleLabel(actuation).tone,
       help: 'cluster_standby',
     },
   ];

@@ -12,7 +12,7 @@ export const OPS_TERMS: Record<string, Term> = {
   },
   role: {
     title: 'Führungsrolle im Verbund',
-    text: 'Laufen mehrere Instanzen, führt genau eine. Die übrigen sind Reserve und schalten nicht, auch wenn Freigabe und Sendefreigabe stehen.',
+    text: 'Laufen mehrere Instanzen, führt genau eine. Die übrigen sind Reserve und schalten nicht, auch wenn Freigabe und Sendefreigabe stehen. Direkt nach einem Start heißt es „wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft. Währenddessen schaltet sie nichts.',
   },
   dry_run: {
     title: 'Trockenlauf',

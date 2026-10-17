@@ -4,6 +4,7 @@
 // Eingaben zu einer Anfrage zusammengesetzt werden. Zahlen bleiben Zeichenketten.
 
 import { compareDecimal } from '../rooms/decimal';
+import { roleLabel, roleOf } from '../cluster-role';
 import { formatInstant, toFailure, type Failure } from '../rooms/logic';
 import type {
   ArmedResult, ControlFieldName, EmergencyActuator, InterfaceDetail, NotificationTest, NumberField,
@@ -444,11 +445,14 @@ export function stateCards(a: OperationActuation): StateCard[] {
     {
       id: 'role',
       title: 'Führungsrolle im Verbund',
-      value: a.cluster_standby ? 'Reserve' : 'Führend',
-      detail: a.cluster_standby
-        ? 'Diese Instanz wartet. Eine Reserve schaltet nicht.'
-        : 'Diese Instanz führt und darf schalten, sofern Freigabe und Sendefreigabe stehen.',
-      tone: a.cluster_standby ? 'warn' : 'ok',
+      value: roleOf(a) === 'determining' ? roleLabel(a).value : a.cluster_standby ? 'Reserve' : 'Führend',
+      detail:
+        roleOf(a) === 'determining'
+          ? 'Die Instanz ist gerade gestartet und wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft. Sie schaltet währenddessen nichts.'
+          : a.cluster_standby
+            ? 'Diese Instanz wartet. Eine Reserve schaltet nicht.'
+            : 'Diese Instanz führt und darf schalten, sofern Freigabe und Sendefreigabe stehen.',
+      tone: roleLabel(a).tone,
       help: 'role',
     },
     {
@@ -474,7 +478,13 @@ export function operationHeadline(a: OperationActuation): { text: string; tone: 
   }
   if (a.state === 'live') {
     return a.cluster_standby
-      ? { text: 'Freigabe und Sendefreigabe stehen, aber diese Instanz ist Reserve und schaltet nicht.', tone: 'warn' }
+      ? {
+          text:
+            roleOf(a) === 'determining'
+              ? 'Freigabe und Sendefreigabe stehen, aber die Führung wird noch ermittelt: Diese Instanz schaltet noch nichts.'
+              : 'Freigabe und Sendefreigabe stehen, aber diese Instanz ist Reserve und schaltet nicht.',
+          tone: 'warn',
+        }
       : { text: 'Freigabe und Sendefreigabe stehen: Entscheidungen werden an Aktoren gesendet.', tone: 'ok' };
   }
   return { text: 'Trockenlauf: Entscheidungen werden protokolliert, es wird nichts geschaltet.', tone: 'neutral' };
@@ -485,7 +495,12 @@ export function operationHeadline(a: OperationActuation): { text: string; tone: 
 export function decisionEffect(a: OperationActuation): { executes: boolean; text: string } {
   if (a.restart_required) return { executes: false, text: 'Wird nicht ausgeführt: Der Sende-Riegel (MQTT und Meross) öffnet erst beim Neustart.' };
   if (a.dry_run) return { executes: false, text: 'Wird nicht ausgeführt: Trockenlauf.' };
-  if (a.cluster_standby) return { executes: false, text: 'Wird nicht ausgeführt: Diese Instanz ist Reserve.' };
+  if (a.cluster_standby) {
+    return {
+      executes: false,
+      text: roleOf(a) === 'determining' ? 'Wird nicht ausgeführt: Die Führung wird noch ermittelt.' : 'Wird nicht ausgeführt: Diese Instanz ist Reserve.',
+    };
+  }
   return { executes: true, text: 'Wird an die Aktoren gesendet.' };
 }
 
@@ -510,7 +525,10 @@ export function armOutcome(requested: boolean, result: ArmedResult): ArmOutcome 
       };
     }
     if (a.cluster_standby) {
-      return { tone: 'info', text: `${lead} Diese Instanz ist Reserve und schaltet nicht.` };
+      return {
+        tone: 'info',
+        text: `${lead} ${roleOf(a) === 'determining' ? 'Die Führung wird noch ermittelt, bis dahin schaltet diese Instanz nichts.' : 'Diese Instanz ist Reserve und schaltet nicht.'}`,
+      };
     }
     return a.live
       ? { tone: 'success', text: `${lead} Freigabe und Sendefreigabe stehen: Entscheidungen werden ausgeführt.` }

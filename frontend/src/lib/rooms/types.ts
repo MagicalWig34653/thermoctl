@@ -86,6 +86,9 @@ export interface Actuation {
   control_armed: boolean;
   sending_allowed: boolean;
   cluster_standby: boolean;
+  // Vom Server seit 0.18.1; fehlt es, gilt `cluster_standby` wie bisher.
+  cluster_state?: 'leading' | 'standby' | 'determining';
+  determining_until?: string | null;
   state: ActuationState;
 }
 

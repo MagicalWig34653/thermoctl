@@ -61,7 +61,7 @@ export const TERMS: Record<string, Term> = {
   },
   cluster_standby: {
     title: 'Führung',
-    text: 'Bei mehreren Instanzen schaltet nur die führende. Eine Reserve entscheidet nicht und sendet nichts.',
+    text: 'Bei mehreren Instanzen schaltet nur die führende. Eine Reserve entscheidet nicht und sendet nichts. Direkt nach einem Start steht dort „Führung wird ermittelt“: Die Instanz wartet, bis der Anspruch einer eventuell abgestürzten Vorgängerin abläuft; erst danach gilt sie als Reserve. Währenddessen schaltet sie nichts.',
   },
   history_band: {
     title: 'Min./Max.',
