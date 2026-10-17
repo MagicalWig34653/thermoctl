@@ -35,7 +35,7 @@
   }
 </script>
 
-<section class="grid max-w-3xl gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="sessions-title">
+<section class="grid w-full max-w-[820px] gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="sessions-title">
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
       <h2 id="sessions-title" class="m-0 text-lg">Angemeldete Geräte</h2>

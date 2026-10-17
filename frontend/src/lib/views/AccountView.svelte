@@ -33,7 +33,7 @@
 </header>
 
 <div class="grid gap-6">
-  <section class="grid max-w-xl gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="profile-title">
+  <section class="grid w-full max-w-[820px] gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="profile-title">
     <h2 id="profile-title" class="m-0 text-lg">Profil</h2>
     {#if account.error && !account.data}
       <Notice tone="error">{account.error}</Notice>
@@ -59,7 +59,7 @@
   {#if account.data?.passkeys_available}<PasskeysCard />{/if}
   <ReportCard />
 
-  <section class="max-w-xl rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="help-title">
+  <section class="w-full max-w-[820px] rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="help-title">
     <h2 id="help-title" class="m-0 text-lg">Hilfe</h2>
     <p class="mb-0 text-sm"><a href={appHref(prefix, '/hilfe')}>Glossar und Hilfe</a> erklärt die Begriffe der Oberfläche.</p>
   </section>

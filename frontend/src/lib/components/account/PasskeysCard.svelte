@@ -65,7 +65,7 @@
   }
 </script>
 
-<section class="grid max-w-3xl gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="passkeys-title">
+<section class="grid w-full max-w-[820px] gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="passkeys-title">
   <div>
     <h2 id="passkeys-title" class="m-0 text-lg">Passkeys</h2>
     <p class="m-0 text-sm text-muted-foreground">Anmelden mit Fingerabdruck, Gesicht oder Sicherheitsschlüssel statt Passwort.</p>

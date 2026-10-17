@@ -35,7 +35,7 @@
   const weak = $derived(actions.notice?.failure?.field === 'new_password');
 </script>
 
-<section class="grid max-w-xl gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="pw-title">
+<section class="grid w-full max-w-[820px] gap-4 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="pw-title">
   <div>
     <h2 id="pw-title" class="m-0 text-lg">Passwort ändern</h2>
     <p class="m-0 text-sm text-muted-foreground">Dein bisheriges Passwort ist nötig. Danach enden alle anderen angemeldeten Sitzungen.</p>

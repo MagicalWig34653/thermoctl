@@ -75,7 +75,7 @@
   {#if !hideWhenEmpty}<p class="text-sm text-muted-foreground" role="status">Meldeoptionen werden geladen …</p>{/if}
 {:else if loadFailure}
   {#if !hideWhenEmpty || loadFailure.kind === 'network' || loadFailure.kind === 'server'}
-    <section class="grid max-w-xl gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}">
+    <section class="grid w-full max-w-[820px] gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}">
       <h2 id="report-title-{idSuffix}" class="m-0 text-lg">Problem melden</h2>
       <Notice tone="error">{loadFailure.message}</Notice>
       <div><Button variant="outline" onclick={load}>Erneut versuchen</Button></div>
@@ -83,13 +83,13 @@
   {/if}
 {:else if options && rooms.length === 0}
   {#if !hideWhenEmpty}
-    <section class="grid max-w-xl gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}">
+    <section class="grid w-full max-w-[820px] gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}">
       <h2 id="report-title-{idSuffix}" class="m-0 text-lg">Problem melden</h2>
       <p class="m-0 text-sm text-muted-foreground">Für dein Konto ist kein Raum zum Melden freigegeben.</p>
     </section>
   {/if}
 {:else if options}
-  <section class="grid max-w-xl gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}" data-testid="report-card">
+  <section class="grid w-full max-w-[820px] gap-3 rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="report-title-{idSuffix}" data-testid="report-card">
     <div>
       <h2 id="report-title-{idSuffix}" class="m-0 text-lg">Problem melden</h2>
       <p class="m-0 text-sm text-muted-foreground">Die Meldung geht an die Betreiber der Anlage und wird protokolliert.</p>
