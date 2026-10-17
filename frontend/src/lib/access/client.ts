@@ -12,7 +12,7 @@ const C = '/ui-api/account';
 export function createAccessClient(api: Api) {
   return {
     users: () => api.get<UsersData>(`${A}/users`),
-    createUser: (body: { username: string; display_name: string; password: string; group_id: number | null }) =>
+    createUser: (body: { username: string; display_name: string; password: string; group_id: number | null; template_id?: number | null }) =>
       api.post<UserRow>(`${A}/users`, body),
     setActive: (id: number, active: boolean) => api.put<UserRow>(`${A}/users/${id}/active`, { active }),
     setUserGroup: (id: number, groupId: number | null) => api.put<UserRow>(`${A}/users/${id}/group`, { group_id: groupId }),

@@ -9,7 +9,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import PlantStatus from '$lib/components/rooms/PlantStatus.svelte';
   import { historyKey } from '$lib/schedule/keyboard';
-  import { createDashboard } from '$lib/dashboard/editor.svelte';
+  import { createDashboard, type DashboardTarget } from '$lib/dashboard/editor.svelte';
   import { createDrag } from '$lib/dashboard/drag.svelte';
   import { entryOf } from '$lib/dashboard/catalog';
   import {
@@ -37,9 +37,22 @@
   import TileBody from './TileBody.svelte';
   import TileSettings from './TileSettings.svelte';
 
+  // Ohne Angaben ist das die eigene Übersicht. Mit `target` pflegt ein Administrator die Übersicht
+  // eines Benutzers oder eine Vorlage: andere Überschrift, Anpassen startet sofort, keine Anlagenhinweise.
+  let {
+    target,
+    heading = 'Übersicht',
+    lead = 'Dein persönliches Dashboard: Räume, Verläufe und Anlagenzustand.',
+    autoEdit = false,
+  }: { target?: DashboardTarget; heading?: string; lead?: string; autoEdit?: boolean } = $props();
+  // Das Ziel gilt für die Lebensdauer der Ansicht (der Aufrufer setzt sie per `{#key}` neu).
+  // svelte-ignore state_referenced_locally
+  const foreign = target !== undefined;
+
   const { api, session } = useApp();
   const rooms = createResource(() => api.get<Rooms>('/ui-api/rooms'));
-  const dash = createDashboard(api);
+  // svelte-ignore state_referenced_locally
+  const dash = createDashboard(api, target);
   const layout = dash.layout;
   onMount(() => {
     const stopRooms = rooms.start();
@@ -232,6 +245,14 @@
   const onMoveToSection = (key: string, sectionKey: string) =>
     dash.apply((s) => moveTile(s, key, sectionKey, Number.MAX_SAFE_INTEGER));
 
+  let autoStarted = false;
+  $effect(() => {
+    if (autoEdit && !autoStarted && layout.data && data && !dash.editing) {
+      autoStarted = true;
+      void startEdit();
+    }
+  });
+
   async function startEdit() {
     if (!dash.enter()) return;
     announcement = 'Anpassungsmodus. Kacheln lassen sich ziehen oder mit den Pfeiltasten am Griff verschieben.';
@@ -293,8 +314,8 @@
 
 <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <div class="min-w-0">
-    <h1>Übersicht</h1>
-    <p class="text-muted-foreground">Dein persönliches Dashboard: Räume, Verläufe und Anlagenzustand.</p>
+    <h1>{heading}</h1>
+    <p class="text-muted-foreground">{lead}</p>
   </div>
   {#if layout.data && data && !dash.editing}
     <Button variant="outline" onclick={startEdit} data-testid="edit-layout"><Pencil aria-hidden="true" />Anpassen</Button>
@@ -320,7 +341,7 @@
       </Notice>
     {/if}
 
-    <PlantStatus {data} />
+    {#if !foreign}<PlantStatus {data} />{/if}
 
     {#if dash.editing}
       <div class="dash-bar p-2" bind:this={barEl} tabindex="-1" role="toolbar" aria-label="Dashboard anpassen" data-testid="edit-bar">
@@ -330,7 +351,7 @@
             <Button variant="outline" size="icon" aria-label="Rückgängig" title="Rückgängig (Strg+Z)" disabled={!dash.canUndo || dash.saving} onclick={() => dash.undo()} data-testid="undo"><Undo2 aria-hidden="true" /></Button>
             <Button variant="outline" size="icon" aria-label="Wiederholen" title="Wiederholen (Strg+Umschalt+Z)" disabled={!dash.canRedo || dash.saving} onclick={() => dash.redo()} data-testid="redo"><Redo2 aria-hidden="true" /></Button>
             <Button variant="outline" onclick={() => openGallery()} disabled={dash.saving} data-testid="open-gallery"><Plus aria-hidden="true" />Kachel hinzufügen</Button>
-            <Button variant="outline" onclick={reset} disabled={dash.saving || !layout.data.customized} title={layout.data.customized ? undefined : 'Das Standardlayout ist schon aktiv.'} data-testid="reset"><RotateCcw aria-hidden="true" />Standard wiederherstellen</Button>
+            {#if dash.canReset}<Button variant="outline" onclick={reset} disabled={dash.saving || !layout.data.customized} title={layout.data.customized ? undefined : 'Das Standardlayout ist schon aktiv.'} data-testid="reset"><RotateCcw aria-hidden="true" />Standard wiederherstellen</Button>{/if}
             <Button variant="outline" onclick={cancel} disabled={dash.saving} data-testid="cancel">Abbrechen</Button>
             <Button onclick={save} disabled={dash.saving || !dash.dirty} data-testid="save">{dash.saving ? 'Speichert …' : 'Speichern'}</Button>
           </div>
@@ -347,7 +368,7 @@
           </Notice></div>
         {:else if confirm === 'reset'}
           <div class="mt-2"><Notice tone="warn">
-            Deine gespeicherte Anordnung wird gelöscht und das Standardlayout gilt sofort. Räume bleiben unverändert.
+            {foreign ? 'Die gespeicherte Anordnung dieser Übersicht' : 'Deine gespeicherte Anordnung'} wird gelöscht und das Standardlayout gilt sofort. Räume bleiben unverändert.
             <span class="mt-2 flex flex-wrap gap-2">
               <Button size="sm" variant="destructive" onclick={reset} data-testid="confirm-reset">Standard wiederherstellen</Button>
               <Button size="sm" variant="outline" onclick={() => (confirm = null)}>Zurück</Button>

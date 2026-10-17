@@ -23,8 +23,23 @@ import {
 import { dashboardFailure, type DashboardFailure } from './errors';
 import type { Layout } from './types';
 
-export function createDashboard(api: Api) {
-  const layout = createResource(() => api.get<Layout>('/ui-api/dashboard'));
+/** Woher das Layout kommt und wohin es geht. Vorgabe: die eigene Übersicht; Administratoren
+ *  setzen die Übersicht eines Benutzers oder eine Vorlage ein. `reset` fehlt, wo es keinen
+ *  „Standard“ gibt (Vorlage). */
+export interface DashboardTarget {
+  load(): Promise<Layout>;
+  save(payload: ReturnType<typeof toPayload>): Promise<Layout>;
+  reset?(): Promise<Layout>;
+}
+
+export const ownTarget = (api: Api): DashboardTarget => ({
+  load: () => api.get<Layout>('/ui-api/dashboard'),
+  save: (payload) => api.put<Layout>('/ui-api/dashboard', payload),
+  reset: () => api.delete<Layout>('/ui-api/dashboard'),
+});
+
+export function createDashboard(api: Api, target: DashboardTarget = ownTarget(api)) {
+  const layout = createResource(() => target.load());
 
   let editing = $state(false);
   let history = $state.raw<History>(createHistory([]));
@@ -62,6 +77,9 @@ export function createDashboard(api: Api) {
     },
     get canRedo() {
       return history.future.length > 0;
+    },
+    get canReset() {
+      return target.reset !== undefined;
     },
     get saving() {
       return saving;
@@ -124,7 +142,7 @@ export function createDashboard(api: Api) {
       saving = true;
       clearMessages();
       try {
-        const saved = await api.put<Layout>('/ui-api/dashboard', toPayload(base.version, history.present));
+        const saved = await target.save(toPayload(base.version, history.present));
         layout.adopt(saved);
         editing = false;
         conflict = false;
@@ -141,11 +159,11 @@ export function createDashboard(api: Api) {
 
     /** Standard wiederherstellen: löscht die gespeicherte Anordnung (DELETE), nie einen Raum. */
     async reset(): Promise<boolean> {
-      if (saving) return false;
+      if (saving || !target.reset) return false;
       saving = true;
       clearMessages();
       try {
-        const fresh = await api.delete<Layout>('/ui-api/dashboard');
+        const fresh = await target.reset();
         layout.adopt(fresh);
         editing = false;
         conflict = false;
@@ -161,7 +179,7 @@ export function createDashboard(api: Api) {
     /** Nach 409: Serverstand und Version holen, den Entwurf behalten. */
     async reloadKeepingDraft(): Promise<boolean> {
       try {
-        const fresh = await api.get<Layout>('/ui-api/dashboard');
+        const fresh = await target.load();
         layout.adopt(fresh);
         base = snapshot(fresh);
         conflict = false;
@@ -177,7 +195,7 @@ export function createDashboard(api: Api) {
     /** Nach 409: Entwurf verwerfen und den Serverstand zeigen. */
     async discardForServer(): Promise<boolean> {
       try {
-        const fresh = await api.get<Layout>('/ui-api/dashboard');
+        const fresh = await target.load();
         layout.adopt(fresh);
         editing = false;
         conflict = false;

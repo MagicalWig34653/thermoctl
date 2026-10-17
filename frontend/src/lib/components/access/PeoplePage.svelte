@@ -2,6 +2,7 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import type { VisiblePage } from '$lib/navigation';
   import GroupsPanel from './GroupsPanel.svelte';
+  import OverviewsPanel from './OverviewsPanel.svelte';
   import UsersPanel from './UsersPanel.svelte';
 
   // Welche Reiter es gibt, richtet sich nach den Pfaden, die der Server für diese Person geliefert
@@ -20,12 +21,14 @@
 
 {#if hasUsers && hasGroups}
   <Tabs.Root value={current} onValueChange={(v) => (tab = v)}>
-    <Tabs.List class="mb-5 h-11 max-w-sm">
+    <Tabs.List class="mb-5 h-11 max-w-lg">
       <Tabs.Trigger value="users">Benutzer</Tabs.Trigger>
       <Tabs.Trigger value="groups">Gruppen und Rechte</Tabs.Trigger>
+      <Tabs.Trigger value="overviews">Übersichten</Tabs.Trigger>
     </Tabs.List>
     <Tabs.Content value="users"><UsersPanel /></Tabs.Content>
     <Tabs.Content value="groups"><GroupsPanel /></Tabs.Content>
+    <Tabs.Content value="overviews"><OverviewsPanel /></Tabs.Content>
   </Tabs.Root>
 {:else if hasUsers}
   <UsersPanel />

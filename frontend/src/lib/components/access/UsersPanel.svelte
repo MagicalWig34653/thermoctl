@@ -12,6 +12,7 @@
   import { createResource } from '$lib/access/resource.svelte';
   import { formatDateTime } from '$lib/access/format';
   import type { UserRow, UsersData } from '$lib/access/types';
+  import { dashboardAdmin, type TemplateItem } from '$lib/dashboard/admin';
 
   const { api } = useApp();
   const client = createAccessClient(api);
@@ -28,11 +29,18 @@
 
   // -- Anlegen ----------------------------------------------------------------------------
   let createOpen = $state(false);
-  let form = $state({ username: '', display_name: '', password: '', group_id: '' });
-  function openCreate() {
-    form = { username: '', display_name: '', password: '', group_id: '' };
+  let templates = $state<TemplateItem[]>([]);
+  let form = $state({ username: '', display_name: '', password: '', group_id: '', template_id: '' });
+  async function openCreate() {
+    form = { username: '', display_name: '', password: '', group_id: '', template_id: '' };
     actions.clear();
     createOpen = true;
+    // Die Vorlagenliste ist Zugabe: scheitert sie, bleibt das Anlegen ohne Vorlage möglich.
+    try {
+      templates = (await dashboardAdmin(api).templates()).templates;
+    } catch {
+      templates = [];
+    }
   }
   async function create(event: SubmitEvent) {
     event.preventDefault();
@@ -44,6 +52,7 @@
           display_name: form.display_name,
           password: form.password,
           group_id: form.group_id ? Number(form.group_id) : null,
+          template_id: form.template_id ? Number(form.template_id) : null,
         }),
       null,
     );
@@ -193,6 +202,15 @@
         </select>
         <span class="text-xs font-normal text-muted-foreground">Ohne Gruppe hat die Person keinerlei Rechte.</span>
       </label>
+      {#if templates.length > 0}
+        <label class="grid gap-1 text-sm font-medium">Vorlage für die Übersicht
+          <select class={field} bind:value={form.template_id} data-testid="create-template">
+            <option value="">Standard</option>
+            {#each templates as t (t.id)}<option value={String(t.id)}>{t.name}</option>{/each}
+          </select>
+          <span class="text-xs font-normal text-muted-foreground">Die Person bekommt eine Kopie und kann sie danach selbst anpassen. Räume, die sie nicht sehen darf, erscheinen nicht.</span>
+        </label>
+      {/if}
       {#if actions.notice?.where === 'create'}<Notice tone={actions.notice.tone}>{actions.notice.text}</Notice>{/if}
       <Dialog.Footer>
         <Button type="button" variant="outline" onclick={() => (createOpen = false)}>Abbrechen</Button>
