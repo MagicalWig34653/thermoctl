@@ -85,7 +85,8 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f("ix_map_layout_node_user_id"), ["user_id"])
     op.create_table(
         "map_layout_default",
-        sa.Column("id", sa.Integer(), nullable=False),
+        # autoincrement=False: MariaDB refuses a CHECK on an AUTO_INCREMENT column (error 1901).
+        sa.Column("id", sa.Integer(), autoincrement=False, nullable=False),
         *_head_columns(),
         sa.CheckConstraint("id = 1", name=op.f("ck_map_layout_default_einzige_zeile")),
         sa.CheckConstraint(_VIEW_OK, name=op.f("ck_map_layout_default_ansicht_gueltig")),

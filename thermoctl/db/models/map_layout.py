@@ -94,7 +94,9 @@ class MapLayoutDefault(Base):
         CheckConstraint(_VIEW_OK, name="ansicht_gueltig"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # autoincrement=False is mandatory: MariaDB refuses a CHECK on an AUTO_INCREMENT column
+    # (error 1901) and the single row is always id 1 anyway (same as `setting`, `cluster_claim`).
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     customized: Mapped[bool] = mapped_column(Boolean, nullable=False)
     view_x: Mapped[float | None] = mapped_column(Float, nullable=True)
