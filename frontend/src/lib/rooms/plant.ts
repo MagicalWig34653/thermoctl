@@ -1,12 +1,9 @@
 // Dauerhafte Anlagenhinweise der Übersicht. Reine Darstellung der Serverwerte
 // (`plant`, `home`, `actuation` aus /ui-api/rooms); nichts davon wird im Browser entschieden.
-// Die drei Zustände – Aktorfreigabe, MQTT-Ausgabe, Verbundrolle – bleiben getrennte Aussagen:
-// keine folgt aus einer anderen, und keine darf eine andere verdecken.
+// Die Einzelriegel zeigt die Kachel `system`; hier nur die Aussage „schaltet nicht“.
 
 import { formatAge } from './logic';
 import type { Actuation, ActuationState, Home, Plant, Room, RoomRef } from './types';
-
-export type Tone = 'ok' | 'warn' | 'neutral';
 
 /** Der wirksame Zustand der Aktorfreigabe. Widersprechen sich `state` und die beiden Riegel,
  *  gilt der vorsichtigere: „schaltet“ wird nur gezeigt, wenn alle drei Angaben es sagen. */
@@ -26,71 +23,14 @@ export function restartRequired(a: Actuation): boolean {
   return effectiveState(a) === 'armed_restart_missing';
 }
 
-export interface Latch {
-  id: 'actuation' | 'mqtt' | 'role';
-  title: string;
-  value: string;
-  tone: Tone;
-  text: string;
-  help: string;
-}
-
-/** Die drei Riegel mit den Texten der Alt-Startseite (`start.html`). */
-export function latches(a: Actuation): Latch[] {
-  const state = effectiveState(a);
-  const actuation: Latch =
-    state === 'live'
-      ? {
-          id: 'actuation',
-          title: 'Aktorfreigabe',
-          value: 'Scharf und neu gestartet',
-          tone: 'ok',
-          text: 'Ausgabe freigegeben – alle zugeordneten Aktoren werden angesteuert.',
-          help: 'control_armed',
-        }
-      : state === 'armed_restart_missing'
-        ? {
-            id: 'actuation',
-            title: 'Aktorfreigabe',
-            value: 'Scharf, Neustart fehlt',
-            tone: 'warn',
-            text: 'Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.',
-            help: 'control_armed',
-          }
-        : {
-            id: 'actuation',
-            title: 'Aktorfreigabe',
-            value: 'Trockenlauf',
-            tone: 'neutral',
-            text: 'Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.',
-            help: 'control_armed',
-          };
-  const mqtt: Latch = {
-    id: 'mqtt',
-    title: 'MQTT-Ausgabe',
-    value: a.sending_allowed ? 'frei' : 'gesperrt',
-    tone: a.sending_allowed ? 'ok' : a.control_armed ? 'warn' : 'neutral',
-    text: 'Dieser Riegel entsteht beim Prozessstart. Eine Änderung an der gespeicherten Freigabe wirkt hier erst nach einem Neustart.',
-    help: 'sending_allowed',
-  };
-  const role: Latch = a.cluster_standby
-    ? {
-        id: 'role',
-        title: 'Rolle im Verbund',
-        value: 'Bereitschaft',
-        tone: 'warn',
-        text: 'Diese Instanz steht in Bereitschaft: Sie regelt nicht und schaltet nichts, unabhängig von den beiden anderen Riegeln.',
-        help: 'cluster_standby',
-      }
-    : {
-        id: 'role',
-        title: 'Rolle im Verbund',
-        value: 'Führend oder Alleinbetrieb',
-        tone: 'ok',
-        text: 'Diese Instanz regelt. Entweder ist kein Verbund eingerichtet, oder sie führt ihn gerade.',
-        help: 'cluster_standby',
-      };
-  return [actuation, mqtt, role];
+/** Einzeilige Meldung, wenn die Anlage NICHT schaltet; sonst null. Die Gründe sind getrennt
+ *  benannt (Reserve, Neustart fehlt, Trockenlauf); die Einzelriegel zeigt die Kachel `system`. */
+export function notSwitchingLine(a: Actuation): { reason: 'standby' | 'restart' | 'dry_run'; text: string } | null {
+  if (isSwitching(a)) return null;
+  if (effectiveState(a) === 'dry_run') return { reason: 'dry_run', text: 'Trockenlauf: Entscheidungen werden nur protokolliert, es wird nichts geschaltet.' };
+  if (restartRequired(a)) return { reason: 'restart', text: 'Freigabe gespeichert, Neustart fehlt: Es wird nichts geschaltet.' };
+  // Übrig bleibt nur: freigegeben und gesendet, aber Reserve.
+  return { reason: 'standby', text: 'Reserve: Diese Instanz regelt nicht und schaltet nichts.' };
 }
 
 export interface Chip {
