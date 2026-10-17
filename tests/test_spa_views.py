@@ -74,3 +74,32 @@ def test_missing_build_is_an_honest_503(
     response = client.get("/app/")
     assert response.status_code == 503
     assert "npm run build" in response.text
+
+
+def test_shell_links_icons_and_manifest_under_the_prefix(
+    client_with_prefix: TestClient, built: None
+) -> None:
+    prefix = client_with_prefix.headers["X-Ingress-Path"]
+    text = client_with_prefix.get("/app/").text
+    assert f'rel="apple-touch-icon" href="{prefix}/static/apple-touch-icon.png"' in text
+    assert f'rel="manifest" href="{prefix}/app/manifest.webmanifest"' in text
+    assert 'name="apple-mobile-web-app-capable" content="yes"' in text
+
+
+def test_manifest_and_icons_are_served_under_the_prefix(client_with_prefix: TestClient) -> None:
+    prefix = client_with_prefix.headers["X-Ingress-Path"]
+    response = client_with_prefix.get("/app/manifest.webmanifest")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    manifest = response.json()
+    assert manifest["start_url"] == f"{prefix}/app/"
+    assert manifest["display"] == "standalone"
+    for icon in manifest["icons"]:
+        assert icon["src"].startswith(f"{prefix}/static/")
+        served = client_with_prefix.get(icon["src"].removeprefix(prefix))
+        assert served.status_code == 200, icon["src"]
+        assert served.content.startswith(b"\x89PNG"), icon["src"]
+    # Die Startseite für iOS gibt es ebenfalls als echtes PNG.
+    apple = client_with_prefix.get("/static/apple-touch-icon.png")
+    assert apple.status_code == 200
+    assert apple.content.startswith(b"\x89PNG")

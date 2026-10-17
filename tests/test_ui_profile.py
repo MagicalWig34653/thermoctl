@@ -213,6 +213,7 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     # (/ui-api), die die Oberfläche aufruft.
     ("GET", "/app"): "statische Svelte-Hülle ohne Anlagendaten",
     ("GET", "/app/{path:path}"): "statische Svelte-Hülle ohne Anlagendaten",
+    ("GET", "/app/manifest.webmanifest"): "Installations-Manifest mit festen Texten und Pfaden, keine Anlagendaten",
     ("GET", "/ui-api/bootstrap"): "meldet das Profil statt zu verzweigen",
     ("POST", "/ui-api/csrf-probe"): "ändert nichts; Wirkungsprobe der CSRF-Prüfung",
     ("POST", "/ui-api/login"): "Anmeldung selbst; Rechte kommen erst danach",
