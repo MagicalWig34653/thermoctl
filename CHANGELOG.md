@@ -9,9 +9,41 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## 0.18.1 — 2026-10-17
+## 0.19.0 — 2026-10-17
+
+### Beim Upgrade zu wissen
+
+- **Eine Datenbankmigration** (Anordnung der Gerätekarte, Tabellen `device_map_layout*`, Alembic `c5e1a9d3b072`). Sie läuft
+  beim Start von selbst.
+- **Keine neuen Add-on-Optionen**, keine neuen Einstellungen.
+- **Die Anordnung der Gerätekarte liegt jetzt auf dem Server**, je Benutzer. Was bisher nur im Browser (`localStorage`)
+  stand, wird als Rückfall weiter gelesen, aber nicht automatisch hochgeladen; wer seine Anordnung behalten will,
+  verschiebt einen Knoten einmal oder speichert sie als Vorgabe.
+- **Nach einem Start zeigt die Anlage „Führung wird ermittelt“ statt „Reserve“**, solange der Anspruch einer abgestürzten
+  Vorgängerinstanz noch gültig ist (Übernahmezeit, Standard 5 Minuten). Währenddessen schaltet die Instanz nichts, wie bei
+  der Reserve; an der Schaltlogik hat sich nichts geändert.
+- Praxistest an der echten Anlage steht weiter aus (siehe 0.18.0).
+
+### Neu
+
+- **Gerätekarte:** Anordnung je Benutzer auf dem Server; ein Administrator mit dem anlagenweiten Recht `device.manage`
+  kann sie als Vorgabe für alle hinterlegen und wieder entfernen. „Anordnung zurücksetzen“ führt zur Vorgabe.
+- **Aufklappbare Navigation:** Bereiche mit mehreren Seiten klappen in der Seitenleiste auf (Tastatur, merkt den Zustand).
+- **Glow-Schalter** im Darstellungsdialog: Akzente leuchten leicht, vor allem im Dunkelmodus.
+- **Schnellere Seiten:** Seiten werden erst beim Aufruf geladen, gehashte Dateien lange gecacht, statische Dateien
+  komprimiert. Gemessen mit gedrosseltem Netz (1,6 Mbit/s, 150 ms): erster Besuch etwa 5,3 s auf 2,3 s, weiterer Besuch
+  etwa 1,1 s auf 0,4 s.
+
+### Geändert
+
+- Der breite Anlagenstatus-Block oben in der Übersicht entfällt; die Kachel „Anlagenstatus“ zeigt die drei Riegel weiter
+  getrennt, und eine einzeilige Meldung erscheint, wenn die Anlage nicht schaltet.
+- Abstände auf der Seite „Betrieb & Freigaben“ überarbeitet.
+- Alle Karten auf „Konto & Sicherheit“ sind gleich breit (820 px).
 
 ### Behoben
+
+- **Temperaturmodi:** Das Feld „Reihenfolge“ ragte über den Kartenrand.
 - **Die Aussagen zu 0.18.0 waren in zwei Punkten falsch.** Das Formular für neue Schaltpunkte und Zeiträume im Wochenplan
   und die Anzeige von Takt-Phase, Taktquelle, Frist und Sensor-Timeout in der Notbetrieb-Aktortabelle waren schon in
   0.18.0 enthalten, nicht offen. Berichtigt in diesem Changelog, in `docs/STATUS.md` und in den Unterlagen unter

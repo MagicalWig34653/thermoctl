@@ -2,11 +2,12 @@
 
 Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **Letzte Freigabe:** 0.18.0 (Svelte-Oberfläche, siehe unten): Tag `v0.18.0`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), CI grün; Add-on-Repository wird nachgezogen.
+- **In Freigabe:** 0.19.0 (Gerätekarte-Anordnung auf dem Server, schnellere Seiten, aufklappbare Navigation, Glow, Führung wird ermittelt): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
+- **Letzte Freigabe:** 0.18.0 (Svelte-Oberfläche, siehe unten): Tag `v0.18.0`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl`; das Altsystem (Host, vier Skripte) bleibt parallel als
   Rückfallebene und ist nicht abgelöst. Repository öffentlich (AGPL-3.0), Betrieb als Docker-Container und als
   Home-Assistant-Add-on (eigenes Repository `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `a7c3e91d5b24`.
+- **Migrationskopf:** `c5e1a9d3b072`.
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
@@ -222,6 +223,10 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 
 ### Zuordnungskarte und Ventilbetriebsarten
 
+- **Anordnung der Karte** (Positionen, Ausschnitt, eingeklappte Knoten) liegt je Benutzer auf dem Server (Tabellen
+  `device_map_layout*`, Version gegen Konflikte, nur sichtbare Knoten); ein Administrator mit anlagenweitem `device.manage`
+  kann sie als Vorgabe für alle hinterlegen. Der Schalter „technische Werte“ bleibt im Browser; ohne Netz greift der
+  `localStorage` als Rückfall. Reine Darstellung, nichts davon beeinflusst die Regelung.
 - **Betriebsart je Thermostatventil** (`thermostat_mode`: `controlled` / `self_regulating` / `reading_only`,
   `domain/thermostat_mode.py`): `reading_only` schreibt nur den Istwert (kein Sollwert, kein Ein/Aus, kein Notbetrieb-
   Eintrag, keine Übergabe); `self_regulating` an einem Ventil ohne beschreibbaren Sollwert schreibt gar nichts.
