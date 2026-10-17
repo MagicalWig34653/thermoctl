@@ -57,8 +57,8 @@
 </script>
 
 <section class="max-w-[820px] rounded-xl border bg-card p-5" aria-labelledby="arm-title" data-testid="arm-panel">
-  <h2 id="arm-title" class="mb-1">Freigabe ändern</h2>
-  <p class="mb-4 text-sm text-muted-foreground">
+  <h2 id="arm-title" class="ops-h2">Freigabe ändern</h2>
+  <p class="ops-lead">
     Das ändert nur die gespeicherte Freigabe. Die Sendefreigabe ändert sich dadurch nicht. <span data-testid="arm-latch-note">{SENDING_LATCH_NOTE}</span>
   </p>
 

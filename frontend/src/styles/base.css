@@ -57,6 +57,19 @@
   p {
     margin: 0 0 12px;
   }
+  /* Betriebsseiten: Abschnittstitel, Erklärung und Inhalt mit gleichem, sichtbarem Abstand. */
+  .ops-h2 {
+    margin: 0 0 8px;
+  }
+  .ops-h2-bare {
+    margin: 0 0 16px;
+  }
+  .ops-lead {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--muted-foreground);
+  }
   @media (max-width: 760px) {
     h1 {
       font-size: 28px;
