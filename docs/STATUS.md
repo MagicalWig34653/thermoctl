@@ -1,75 +1,66 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-17. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-10-18. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **In Freigabe:** 0.20.3 (Glow „Intensiv“ ohne Kasten hinter dem Seitenkopf): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
-- **Letzte Freigabe:** 0.20.2 (Räume wieder über das Menü anlegbar, gescheitertes Nachladen von Seiten wird wiederholt): Tag `v0.20.2`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
-- **Unbestätigte Ursache:** „Seiten laden manchmal erst beim zweiten Mal“ (Meldung des Projektinhabers) ließ sich lokal nicht nachstellen (kalte Aufrufe aller Seiten, gedrosseltes Netz, parallele Anfragen auf SQLite: keine Fehler). Angenommen wird ein gescheitertes Nachladen von Seitencode; die Abhilfe (Wiederholung, einmaliges Neuladen) ist in 0.20.2, ob sie das Verhalten an der Anlage beseitigt, ist offen.
-- **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl`; das Altsystem (Host, vier Skripte) bleibt parallel als
-  Rückfallebene und ist nicht abgelöst. Repository öffentlich (AGPL-3.0), Betrieb als Docker-Container und als
-  Home-Assistant-Add-on (eigenes Repository `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `e7a3c15b9d28`.
+- **In Freigabe:** 0.21.0 (Rechte allein entscheiden, Vorschau für Administratoren, `audit.read` raumbezogen, Audit nachgezogen, Schaltprotokoll mit Obergrenze, Sperren für letzten Inhaber und eigenes Konto): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
+- **Letzte Freigabe:** 0.20.3 (Glow „Intensiv“ ohne Kasten hinter dem Seitenkopf): Tag `v0.20.3`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
+- **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
+  (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
+  (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
+  `MagicalWig34653/thermoctl-addon`).
+- **Migrationskopf:** `b3f5d7a92c61`.
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
 ## Offene Entscheidungen (Projektinhaber)
 
-Bestehende:
+Entschieden am 2026-10-18 (Projektinhaber), umgesetzt in 0.21.0: Das Gruppenprofil sperrt nichts, allein das Recht
+entscheidet (das Profil steuert nur noch Darstellung wie Wortwahl und Wohnungsstart); Phase 2 abgeschlossen und das
+Altsystem abgelöst; Audit-Lücken nachgezogen; OAuth-Zustimmung bleibt serverseitig; Rechteeskalation begrenzt
+(nur andere verwalten); letzter Inhaber von `group.manage` gesperrt; `audit.read` filtert nach Räumen; das
+Schaltprotokoll ist auf 3 Jahre und etwa 2 GiB begrenzt.
 
-- **UI-Profil als Sichtbarkeitssperre:** Das Zielbild der neuen Oberfläche war „Sichtbarkeit folgt allein den
-  Rechten". Das gilt heute nur für den Wochenplan (`schedule.manage` je Raum, Entscheidung des Projektinhabers
-  2026-10-16). Geräte, Betrieb und Einstellungen, Personen und Gruppen, Berichte, Urlaub und Modi prüft der Server
-  weiter zuerst am Gruppenprofil (`_require_admin_ui`/`_need_profile` in `thermoctl/web/ui_api*.py`, Navigation in
-  `thermoctl/web/navigation.py`); ein Konto mit Mieterprofil sieht diese Bereiche auch mit passendem Recht nicht. Das
-  ist das Verhalten seit 0.9.0 und bricht nichts. Offen: soll das Profil entfallen und allein das Recht entscheiden?
+Offen:
+
 - **Impressum der öffentlichen Seite** (`site/`, GitHub Pages): bewusst **offen gelassen** (Projektinhaber,
   2026-10-10). Für eine öffentliche Seite aus Deutschland kann ein Impressum nötig sein; es wurde nichts
   erfunden. Die Seite setzt keine Cookies, speichert nichts im Browser und stellt keine Anfragen an Dritte
   (per Test abgesichert, `tests/test_landingpage.py`). Wird eines gewünscht: `impressum.html` und ein
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
-- **Phase 2 wirklich abschließen.** Ein Auszug der Produktivdatenbank wurde am 2026-09-04 gegen die drei
-  Abnahmekriterien geprüft ([phase-2-abnahme.md](phase-2-abnahme.md)) -- **nicht abnahmereif**: Fünf der sechs Zonen
-  wurden erst nach dem Scharfschalten angelegt und liefen nie im Schattenbetrieb; Kriterium 3 (Altsystemvergleich)
-  entfällt ersatzlos, weil der Vergleichsbetrieb übersprungen wurde. Eine Zone braucht mehrere Tage Schattenbetrieb
-  ab ihrer Anlage, bevor das Kriterium für sie erfüllbar ist.
-- **Die Ablösung des Altsystems** (Host, vier Skripte) ist noch nicht vollzogen.
 - **Automatische Übernahme der Home-Assistant-eigenen MQTT-Broker-Zugangsdaten** ins Add-on ist nicht gebaut
   (`services: ["mqtt:want"]` gewährt nur Zugriff auf die Supervisor-API und füllt `options.json` nicht von selbst).
-- **Sicherheitsstand** ([sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md), am 2026-09-04 gegen
-  den Code nachgeprüft): Von acht Hoch-/Mittel-Befunden sind sechs behoben oder teilweise behoben. **Weiterhin offen:**
-  der MQTT-Befehlspfad (dokumentiert, im Code nicht erzwingbar -- Frage der Broker-Konfiguration), unbegrenzte/
-  unmaskierte Meross-Cloud-Antworten, das unbegrenzt wachsende Schaltprotokoll, die HTTP-Netzwerkvorgabe (`0.0.0.0`
-  ohne TLS-Erzwingung) und die CSRF-Ausnahme für Login/Logout. (Stand 2026-09-04; ob die SPA daran etwas ändert, ist
-  nicht neu bewertet.)
+- **Sicherheitsstand** ([sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md), Stand 2026-09-04,
+  teils überholt): **Weiterhin offen:** der MQTT-Befehlspfad (dokumentiert, im Code nicht erzwingbar -- Frage der
+  Broker-Konfiguration), unbegrenzte/unmaskierte Meross-Cloud-Antworten, die HTTP-Netzwerkvorgabe (`0.0.0.0` ohne
+  TLS-Erzwingung) und die CSRF-Ausnahme für Login/Logout. Das unbegrenzt wachsende Schaltprotokoll ist mit 0.21.0
+  erledigt.
 
 Neu aus der Svelte-Umstellung:
 
-- **Fehlendes Audit** bei der Ausstellung von API-Tokens und Kiosk-Tokens sowie bei `set_binding` und
-  `configure_channel`. Dasselbe gilt für Setup, `jump_to_next_switch`, Boost und `send_test` (Testmeldung): sie
-  schreiben bzw. lösen etwas aus, ohne dass ein Audit-Eintrag entsteht. Entscheiden: nachziehen oder bewusst lassen.
-- **OAuth-Zustimmung** (`/oauth/consent`): serverseitig lassen (Clickjacking-Schutz, absolute Weiterleitung, Vorlage
-  ohne Fremdcode) oder in die SPA holen.
+- **Weiteres ohne Audit (Verdacht aus einer groben Suche, nicht Funktion für Funktion geprüft):** das anlagenweite
+  Standard-Kartenlayout (`/devices/map/layout/default`), Geräteverbindungen (`connect`, `disconnect`, `regulation`),
+  Raum anlegen/ändern/löschen (ob die Domäne protokolliert), REST und MCP (laufen über Domäne und Änderungsprotokoll),
+  OAuth-Ausstellung (bewusst nicht je Refresh). Eigene Übersicht und Anordnung sind persönliche Einstellungen.
 - **Einrichtung (`/setup`)** als SPA-Seite mit `POST /ui-api/setup` -- derzeit als eigene Seite umgesetzt; Entscheidung
   über die endgültige Form steht aus.
-- **Rechteeskalation über `user.manage` und `group.manage`:** wer Benutzer bzw. Gruppen verwaltet, kann sich Rechte
-  verschaffen (Gruppenwechsel, Passwort für andere setzen). Gewollt oder zu begrenzen?
-- **`group.manage` kann der letzte Inhaber sich selbst entziehen** -- danach gibt es niemanden mehr, der Gruppen
-  verwalten darf. Sperre (letzter Inhaber) ja oder nein?
-- **`audit.read` wirkt anlagenweit:** Audit und Schaltprotokoll zeigen auch Räume, die der Benutzer sonst nicht sieht.
 - **Der Fehlversuchszähler der Anmeldung liegt im Prozessspeicher** und gilt je Instanz (mehrere Prozesse bzw. beide
   Instanzen im Verbund zählen getrennt; ein Neustart setzt ihn zurück).
 - **Mutationsmessungen neu fahren:** `mutation/cosmic-ray-administration`, `-authz`, `-auth-sessions`, `-auth-kiosk`,
   `-schedule` u. a. wurden gegen den Stand vor dem Entfernen der Alt-Testfunktionen gemessen und sollten danach neu
   gemessen werden (Regeln dafür: `CLAUDE.md`, Abschnitt „Praktisches zur Agentenarbeit").
-- **Praxistest der neuen Oberfläche an der echten Anlage steht aus:** Passkey-Registrierung mit echtem Authenticator,
-  Ingress-Betrieb unter Home Assistant, Touchgeräte (Zuordnungskarte, Wochenplan, Kiosk).
+- **Praxistest an Sonderfällen:** Passkey-Registrierung mit echtem Authenticator, Ingress-Betrieb unter Home Assistant
+  und Touchgeräte (Zuordnungskarte, Wochenplan, Kiosk) sind nicht gesondert abgenommen; die Oberfläche im
+  Alltag sieht laut Projektinhaber sehr gut aus.
+- **Vorschau-Grenze:** Die Übersicht in der Vorschau eines Kontos rendert Raumkacheln mit den Raumdaten der
+  ansehenden Person; Räume, die diese selbst nicht sieht, fehlen dort.
+- **`AbsencePanel`** (Abwesenheit) erscheint nur im Mieterprofil, nicht nach Recht (`can_start`); offen, ob angleichen.
 
 ## Oberfläche auf Svelte umgestellt (2026-10-17, freigegeben mit 0.18.0)
 
 Die Jinja/HTMX/Bootstrap-Oberfläche ist entfernt (Auftrag des Projektinhabers, „die alte UI rausschmeißen"; Bedingung
 „alle Funktionen in der neuen UI" laut zweiter Paritätsprüfung erfüllt, Belege `docs/ui-migration/FUNKTIONSMATRIX.md`).
-Stand Worktree `ui/delete-legacy`, **nicht gemergt, nicht released, Version unverändert, Add-on-Repository unberührt.**
+Seit 0.18.0 freigegeben.
 
 - **Es gibt nur noch die Svelte-SPA** unter `/app` (Quelle `frontend/`, Ausgabe `thermoctl/web/static/app/`, nicht
   eingecheckt), Daten über `/ui-api` (Sitzung, CSRF-Header) und `/kiosk-api` (Kiosk-Cookie). Node nur zur Build-Zeit;
@@ -199,8 +190,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 - **Ein gescheiterter Befehl wird jeden scharfen Zyklus erneut versucht** (einmal je Ausfallepisode geloggt;
   der Zwischenspeicher trägt das Ergebnis im Schlüssel). Für Meross gilt stattdessen der Anmelde-Backoff (unten).
 - **Schaltprotokoll** (`device_command`, Recht `audit.read`): drei Ergebnisse `executed`/`suppressed`/`failed`
-  (kein „verworfen"); Eintrag überlebt Löschen/Umbenennen von Zone oder Gerät (Namens-Momentaufnahme); keine
-  automatische Aufbewahrung (bekannte offene Sicherheitsfrage, s. o.). REST/MCP lesen es noch nicht (bewusst).
+  (kein „verworfen"); Eintrag überlebt Löschen/Umbenennen von Zone oder Gerät (Namens-Momentaufnahme); Aufbewahrung höchstens 3 Jahre (`command_log_retention_days`) und etwa 2 GiB (`command_log_max_mb`, aus der Zeilengröße geschätzt), täglich im Aufbewahrungslauf. Das Recht `audit.read` ist raumbezogen: ohne anlagenweite Vergabe sieht man nur Einträge der eigenen Räume.
 - **Anlaufriegel:** `app.state.sending_allowed` liest nur `control_armed`; die Primärrolle wird weiterhin je Sendevorgang
   geprüft.
 
@@ -334,8 +324,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 - Die Testsuite baut ihr Schema über `create_all()`; was von Zeilen aus Migrationen abhängt (z. B. `cluster_claim`),
   braucht einen Test über `alembic upgrade head` (`tests/test_migrations.py`).
 - **Retention** (`services/retention.py`): `shadow_decision_retention_days` Vorgabe **365**, `measurement_retention_days`
-  Vorgabe 30; Vergleichszeilen und Aktorentscheidungen folgen der Entscheidungsfrist; das Schaltprotokoll hat keine
-  Aufbewahrungsgrenze. Das Lese-vor-Schreiben-Muster in `services/retention.py` kann unter SQLite selten einen
+  Vorgabe 30; Vergleichszeilen und Aktorentscheidungen folgen der Entscheidungsfrist; das Schaltprotokoll hat Zeit- und Größengrenze (siehe oben). Das Lese-vor-Schreiben-Muster in `services/retention.py` kann unter SQLite selten einen
   Sperrfehler eines einzelnen Zyklus verursachen (bekannt, kein stiller Datenfehler).
 - Die Übersicht liest je Zone die jüngste Entscheidung über `domain/zones.py::latest_decisions_by_zone` (gruppierte
   `MAX()`-Abfragen, Kosten proportional zur Zonenzahl) und `BulkSetpointContext` statt N+1; `next_switch` wird je Zone
@@ -343,12 +332,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 
 ## Als Nächstes
 
-1. **Svelte-Umstellung freigeben:** `ui/delete-legacy` prüfen (volle Suite gegen SQLite **und** MariaDB, Ruff, mypy,
-   Frontend-Prüfung, Docker-Bau), die offenen Entscheidungen oben beurteilen, mergen, Version anheben, `CHANGELOG.md`,
-   Tag und Release, danach das Add-on-Repository nachziehen.
-2. **Praxistest der neuen Oberfläche** an der echten Anlage (Passkey, Ingress, Touch).
-3. **Mutationsläufe neu fahren** (siehe oben) und Wächter/Smoke-Tests nach dem Entfernen der Alt-Oberfläche
+1. **Mutationsläufe neu fahren** (siehe oben) und Wächter/Smoke-Tests nach dem Entfernen der Alt-Oberfläche
    gegenlesen.
-4. **Notbetrieb abnehmen** (Plan Abschnitt 4, zuerst im Schattenbetrieb) und **Phase 2** mit echten Betriebsdaten
-   abschließen, danach die Ablösung des Altsystems.
-5. Offene Sicherheitspunkte (Audit-Lücken, Rechteeskalation, Fehlversuchszähler) entscheiden und umsetzen.
+2. **Notbetrieb abnehmen** (Plan Abschnitt 4; Wandfühler abklemmen, Ersatzquelle, Übergabe, Rückkehr).
+3. Offene Entscheidungen oben (Fehlversuchszähler, Einrichtungsseite, Audit-Verdachtsliste, `AbsencePanel`) entscheiden.

@@ -9,6 +9,28 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.21.0 — 2026-10-18
+
+### Beim Upgrade zu wissen
+
+- **Zwei Migrationen.** Die erste legt zwei Spalten für die Aufbewahrung des Schaltprotokolls an, die zweite macht `audit.read` raumbezogen. Wer auf die Vorversion zurückgeht, verliert dabei alle auf Räume beschränkten Vergaben von `audit.read`.
+- **Schaltprotokoll mit Obergrenze.** Es bleibt höchstens 3 Jahre (`command_log_retention_days`, Vorgabe 1095) und höchstens etwa 2 GiB (`command_log_max_mb`, Vorgabe 2048, aus der Zeilengröße geschätzt). Beides steht auf der Seite „Regelvorgaben“. Der tägliche Aufbewahrungslauf löscht die ältesten Zeilen in Blöcken; bei einem großen Bestand kann der erste Lauf länger dauern.
+- **REST:** `PUT /control/defaults` verlangt die beiden neuen Felder wie die übrigen Aufbewahrungswerte. Clients, die den vollen Satz senden, müssen sie ergänzen.
+- **Das Gruppenprofil sperrt nichts mehr.** Sichtbarkeit und Zugriff folgen allein den Rechten. Ein Konto mit Mieterprofil sieht Geräte, Betrieb, Berichte und Verwaltung, sobald es das passende Recht hat. Wer das nicht will, entzieht das Recht.
+
+### Neu
+
+- **Vorschau für Administratoren:** Unter „Personen“ zeigt „Vorschau“ je Konto, wie die Oberfläche für diese Person aussieht (Navigation, Rechte, Übersicht). Nur Ansicht, nichts lässt sich darin bedienen.
+- **`audit.read` lässt sich auf Räume beschränken.** Dann zeigen Audit, Schaltprotokoll, Relaisverschleiß und Änderungen (Oberfläche, REST, MCP) nur Einträge dieser Räume; anlagenweite Ereignisse sehen weiter nur Konten mit dem Recht für die ganze Anlage.
+- **Mehr Einträge im Audit:** Ausstellung von API- und Kiosk-Token, Tastenbelegung und Kanalkonfiguration von Bediengeräten, Einrichtung, „Zur nächsten Schaltzeit springen“, Boost am Kiosk und die Testmeldung. Geheimnisse stehen nie darin.
+
+### Geändert
+
+- **Letzter Inhaber von `group.manage` geschützt:** Wie bei `user.manage` lässt sich das letzte Konto mit diesem Recht weder sperren noch umgruppieren, und die letzte Gruppe damit nicht löschen oder entrechten.
+- **Nur andere verwalten:** Das eigene Konto lässt sich unter „Personen“ nicht deaktivieren oder umgruppieren, und der eigenen Gruppe lassen sich keine Rechte hinzufügen. Ausnahme: Ist man die einzige Person mit `group.manage`, bleibt Erweitern möglich.
+
+---
+
 ## 0.20.3 — 2026-10-18
 
 ### Beim Upgrade zu wissen
