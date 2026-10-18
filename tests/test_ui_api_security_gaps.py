@@ -368,14 +368,13 @@ def test_the_profile_cannot_be_switched_from_the_client(
             body = client.get("/ui-api/bootstrap", headers=headers, params=params).json()
             assert body["ui_profile"] == own, (headers, params)
             assert body["navigation"] == plain["navigation"]
-            # Profilabhängige Aktionen: die Abwesenheit gehört der Wohnungssicht, die
-            # Plan-Übersicht der Anlagensicht -- beide folgen dem Profil der Gruppe.
+            # Das Profil sperrt nichts: beide Konten erreichen die Abwesenheit, und die
+            # Anlagenübersicht bleibt allein am fehlenden Recht (`device.read`) zu.
             absence = client.get("/ui-api/absence", headers=headers, params=params)
             plant = client.get("/ui-api/plant", headers=headers, params=params)
-            assert (absence.status_code == 200) is (own == "tenant")
+            assert absence.status_code == 200
             assert plant.status_code == 403
-            if own == "tenant":
-                assert plant.json()["code"] == "wrong_profile"
+            assert plant.json()["code"] == "forbidden"
     finally:
         client.cookies.delete("ui_profile")
 
@@ -538,23 +537,20 @@ def _paths(client: TestClient) -> set[str]:
     return {item["path"] for item in client.get("/ui-api/bootstrap").json()["navigation"]}
 
 
-def test_an_administrator_with_every_right_gets_every_plant_item_and_no_tenant_item(
-    client_als: Als,
+def test_every_account_with_every_right_gets_every_item_whatever_its_profile(
+    client_als: Als, tenant_client: Als
 ) -> None:
-    paths = _paths(client_als(ALL_CODES))
-    admin_items = {i.path for i in NAVIGATION_ITEMS if i.profile is WebUiProfile.ADMIN}
-    tenant_items = {i.path for i in NAVIGATION_ITEMS if i.profile is WebUiProfile.TENANT}
-    assert len(admin_items) >= 15
-    assert paths == admin_items
-    assert paths.isdisjoint(tenant_items)
-    # Der Verlauf der Wohnungssicht steht ausdrücklich nicht in der Anlagen-Navigation.
-    assert "/temperature-history" not in paths
+    """Allein die Rechte entscheiden: Anlagen- und Mieterprofil sehen dasselbe."""
+    everything = {i.path for i in NAVIGATION_ITEMS}
+    assert len(everything) >= 15
+    assert _paths(client_als(ALL_CODES)) == everything
+    assert _paths(tenant_client(ALL_CODES)) == everything
+    assert "/temperature-history" in everything
 
 
-def test_a_tenant_with_every_right_gets_no_plant_item(tenant_client: Als) -> None:
-    paths = _paths(tenant_client(ALL_CODES))
-    assert paths == {i.path for i in NAVIGATION_ITEMS if i.profile is WebUiProfile.TENANT}
-    assert "/temperature-history" in paths
+def test_a_tenant_profile_sees_the_plant_items_its_rights_allow(tenant_client: Als) -> None:
+    assert _paths(tenant_client([("zone.read", None)])).isdisjoint({"/users", "/audit", "/devices"})
+    assert "/users" in _paths(tenant_client([("zone.read", None), ("user.manage", None)]))
 
 
 def test_zone_scoped_zone_read_shows_the_zone_list_but_not_the_plant_wide_pages(

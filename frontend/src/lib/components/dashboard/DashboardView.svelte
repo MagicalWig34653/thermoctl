@@ -44,7 +44,8 @@
     heading = 'Übersicht',
     lead = 'Dein persönliches Dashboard: Räume, Verläufe und Anlagenzustand.',
     autoEdit = false,
-  }: { target?: DashboardTarget; heading?: string; lead?: string; autoEdit?: boolean } = $props();
+    readonly = false,
+  }: { target?: DashboardTarget; heading?: string; lead?: string; autoEdit?: boolean; readonly?: boolean } = $props();
   // Das Ziel gilt für die Lebensdauer der Ansicht (der Aufrufer setzt sie per `{#key}` neu).
   // svelte-ignore state_referenced_locally
   const foreign = target !== undefined;
@@ -73,7 +74,6 @@
   let barEl = $state<HTMLElement | null>(null);
 
   const data = $derived(rooms.data);
-  const admin = $derived(session.bootstrap?.ui_profile === 'admin');
   // Räume aus der frischen Raumliste (Rechte gelten bei jedem Abruf), nicht aus dem Bootstrap.
   const zones = $derived((data?.rooms ?? []).map((r) => ({ id: r.id, name: r.name })));
   const zoneIds = $derived(new Set(zones.map((z) => z.id)));
@@ -317,7 +317,7 @@
     <h1>{heading}</h1>
     <p class="text-muted-foreground">{lead}</p>
   </div>
-  {#if layout.data && data && !dash.editing}
+  {#if layout.data && data && !dash.editing && !readonly}
     <Button variant="outline" onclick={startEdit} data-testid="edit-layout"><Pencil aria-hidden="true" />Anpassen</Button>
   {/if}
 </header>
@@ -484,6 +484,9 @@
                     {/if}
                   </div>
                 </div>
+              {:else if readonly}
+                <!-- Vorschau: inert, damit nichts bedient werden kann. -->
+                <div class="h-full" inert><TileBody {tile} {data} {zones} /></div>
               {:else}
                 <TileBody {tile} {data} {zones} onchanged={() => void rooms.refresh()} />
               {/if}
@@ -503,6 +506,6 @@
     {/if}
   </div>
 
-  <Gallery bind:open={galleryOpen} sections={dash.draft} {zones} {admin} bind:targetKey={galleryTarget} onAdd={addFromGallery} />
+  <Gallery bind:open={galleryOpen} sections={dash.draft} {zones} admin bind:targetKey={galleryTarget} onAdd={addFromGallery} />
   <TileSettings bind:open={settingsOpen} tile={settingsTile} sections={dash.draft} {zones} {onPatch} onMove={onMoveToSection} />
 {/if}

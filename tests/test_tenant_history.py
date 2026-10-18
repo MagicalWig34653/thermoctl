@@ -223,7 +223,6 @@ def test_the_plant_history_pages_show_no_tenant_notice(
 def test_the_navigation_entry_is_bound_to_the_right_the_view_checks() -> None:
     (entry,) = [item for item in NAVIGATION_ITEMS if item.path == "/temperature-history"]
     assert (entry.permission, entry.scope, entry.section) == ("zone.read", "any_zone", "tenant")
-    assert entry.profile is WebUiProfile.TENANT
     assert entry.label == "Verlauf"
 
 

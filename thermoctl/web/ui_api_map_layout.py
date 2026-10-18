@@ -49,7 +49,7 @@ from thermoctl.db.models.map_layout import (
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web.ui_api_devices import _hidden_device_ids
-from thermoctl.web.ui_api_rooms import RoomApiError, _require_admin_ui, _RoomsRoute
+from thermoctl.web.ui_api_rooms import RoomApiError, _RoomsRoute
 
 router = APIRouter(
     prefix="/ui-api",
@@ -290,7 +290,6 @@ def read_layout(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> LayoutOut:
-    _require_admin_ui(principal)
     return _read(session, principal)
 
 
@@ -318,7 +317,6 @@ def save_layout(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> LayoutOut:
-    _require_admin_ui(principal)
     return _save(session, principal, _Store(principal.user_id), body)
 
 
@@ -328,7 +326,6 @@ def reset_layout(
     session: Annotated[Session, Depends(get_session)],
 ) -> LayoutOut:
     """Zurück zur Vorgabe (oder zur automatischen Anordnung)."""
-    _require_admin_ui(principal)
     _visible_keys(session, principal)  # 403 ohne Recht
     _Store(principal.user_id).reset(session)
     session.flush()
@@ -336,7 +333,6 @@ def reset_layout(
 
 
 def _need_default_right(principal: Principal) -> None:
-    _require_admin_ui(principal)
     if not _may_set_default(principal):
         raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden")
 

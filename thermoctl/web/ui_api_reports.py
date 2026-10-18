@@ -78,7 +78,6 @@ from thermoctl.web.ui_api_rooms import (
     RoomApiError,
     _actor,
     _iso,
-    _require_admin_ui,
     _RoomsRoute,
     _visible_zone,
 )
@@ -467,7 +466,6 @@ def show_relay_wear(
     zone_id: int | None = None,
 ) -> RelayWearOut:
     """Bestätigte Schaltwechsel je Gerät und Tag samt Hochrechnung (Anlagensicht, `audit.read`)."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     timezone_name, settings = _timezone(session)
     zones = _selected_zones(session, principal, zone_id)
@@ -574,7 +572,6 @@ def show_audit(
     page: str = "1",
 ) -> AuditOut:
     """Das Protokoll mit Filtern und Seiten (50 je Seite), neueste zuerst."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     from_day, to_day, needle = _audit_filters(from_date, to_date, q)
     number = _page(page)
@@ -640,7 +637,6 @@ def export_audit_csv(
     q: str = "",
 ) -> Response:
     """Die gefilterten Ereignisse als CSV (höchstens `MAX_EXPORT_ROWS`, sonst Hinweiszeile)."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     from_day, to_day, needle = _audit_filters(from_date, to_date, q)
     timezone_name, _settings = _timezone(session)
@@ -770,7 +766,6 @@ def show_changes(
     page: str = "1",
 ) -> ChangesOut:
     """Das Änderungsprotokoll (50 je Seite), neueste zuerst."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
     if from_day is not None and to_day is not None and to_day < from_day:
@@ -810,7 +805,6 @@ def show_change(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> ChangeOut:
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     return _change(_existing_change(session, change_id))
 
@@ -846,7 +840,6 @@ def revert(
 ) -> RevertOut:
     """Nimmt eine Änderung zurück. Ohne `force` bei Konflikt: 409 mit `conflicts` und
     `force_token`; mit `force` und genau diesem Token wird trotzdem zurückgesetzt."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     if body.force and not hmac.compare_digest(
         body.force_token or "", confirmation_token(request, change_id)

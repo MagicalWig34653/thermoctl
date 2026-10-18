@@ -111,15 +111,25 @@ def test_without_device_read_everything_is_forbidden(client: TestClient, session
     assert client.delete(URL, headers=_headers(client)).status_code == 403
 
 
-def test_a_tenant_profile_has_no_access_even_with_the_rights(
+def test_a_tenant_profile_with_the_rights_has_access(
     client: TestClient, session: Session
 ) -> None:
+    """Das Profil sperrt nichts: allein die Rechte entscheiden."""
     _login(client, session, "m", MANAGE, WebUiProfile.TENANT)
-    assert client.get(URL).json()["code"] == "wrong_profile"
+    assert client.get(URL).status_code == 200
+    assert _put(client, 0, []).status_code == 200
+    assert client.delete(URL, headers=_headers(client)).status_code == 200
+    assert _put(client, 0, [], url=DEFAULT_URL).status_code == 200
+    assert client.delete(DEFAULT_URL, headers=_headers(client)).status_code == 200
+
+
+def test_a_tenant_profile_without_the_rights_has_no_access(
+    client: TestClient, session: Session
+) -> None:
+    _login(client, session, "m2", [("zone.read", None)], WebUiProfile.TENANT)
+    assert client.get(URL).json()["code"] == "forbidden"
     assert _put(client, 0, []).status_code == 403
-    assert client.delete(URL, headers=_headers(client)).status_code == 403
     assert _put(client, 0, [], url=DEFAULT_URL).status_code == 403
-    assert client.delete(DEFAULT_URL, headers=_headers(client)).status_code == 403
 
 
 def test_the_default_needs_plant_wide_device_manage(client: TestClient, session: Session) -> None:

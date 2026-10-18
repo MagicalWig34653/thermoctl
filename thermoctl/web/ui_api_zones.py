@@ -7,9 +7,8 @@ der früheren HTML-Oberfläche -- `create_zone`,
 
 Rechte wie in der früheren HTML-Oberfläche, in jedem Endpunkt neu geprüft:
 
-- Anlegen: `zone.manage` anlagenweit (403), Anlagensicht (`wrong_profile`).
-- Formulardaten, Bearbeiten, Löschfolgen, Löschen: `zone.manage` für diese Zone,
-  Anlagensicht.
+- Anlegen: `zone.manage` anlagenweit (403).
+- Formulardaten, Bearbeiten, Löschfolgen, Löschen: `zone.manage` für diese Zone.
 - Problem melden: `report.create` für diese Zone, **beide** Oberflächen (kein Profil-Wächter,
   wie schon früher); ausdrücklich nicht `zone.read` -- etwas nach außen Auslösendes
   darf nicht aus einem Leserecht folgen.
@@ -54,7 +53,7 @@ from thermoctl.domain.zones import (
     zone_dependencies,
 )
 from thermoctl.web.shared.report import submit_report
-from thermoctl.web.ui_api_operations import Number, _forbidden, _need, _need_admin_ui, _text
+from thermoctl.web.ui_api_operations import Number, _forbidden, _need, _text
 from thermoctl.web.ui_api_rooms import NamedOut, RoomApiError, _RoomsRoute, _visible_zone
 
 router = APIRouter(
@@ -279,7 +278,6 @@ def _manageable_zone(session: Session, principal: Principal, zone_id: int) -> Zo
     zone = _visible_zone(session, principal, zone_id)
     if not has_permission(principal, "zone.manage", zone.id):
         raise _forbidden()
-    _need_admin_ui(principal)
     return zone
 
 
@@ -316,7 +314,6 @@ def room_form(
 @router.get("/room-orders")
 def room_orders(principal: Prin, session: Sess) -> RoomOrdersOut:
     """Sortierwert der sichtbaren Räume (Anlagensicht, `zone.read`) für die Räume-Liste."""
-    _need_admin_ui(principal)
     return RoomOrdersOut(
         rooms=[
             RoomOrderOut(id=zone.id, sort_order=zone.sort_order)

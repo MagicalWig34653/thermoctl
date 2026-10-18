@@ -19,7 +19,7 @@ Rechte und Sichtbarkeit wie `ui_api_rooms`: unbekannte und nicht lesbare Zonen
 antworten gleich (404), erst danach kommt die Aktion (403). Den Zeitplan schreiben
 (Bereich, Punkte, Blöcke, Tag/Plan kopieren, Rücknahme) entscheidet allein
 `schedule.manage` je Raum, nicht das UI-Profil (Entscheidung des Projektinhabers); das
-Profil trennt nur Urlaub und Modi (Anlagensicht) von der Abwesenheit (Wohnungssicht).
+Profil sperrt auch Urlaub, Modi und Abwesenheit nicht mehr; dort gilt ebenfalls nur das Recht.
 
 Block-Operationen (`/block/move|duplicate|resize|delete`): ein Block ist der Lauf von
 einem Schaltpunkt bis zum nächsten (er darf über Mitternacht und die Wochennaht reichen,
@@ -95,7 +95,6 @@ from thermoctl.domain.schedule import (
     week_segments,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web import warmth_fraction
 from thermoctl.web.shared.schedule import undo_payload, undo_token
 from thermoctl.web.ui_api_rooms import (
@@ -379,11 +378,6 @@ def _visible(session: Session, principal: Principal, zone_id: int) -> Zone:
 def _need(principal: Principal, permission: str, zone: Zone | None = None) -> None:
     if not has_permission(principal, permission, zone.id if zone is not None else None):
         raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden")
-
-
-def _need_profile(principal: Principal, profile: WebUiProfile) -> None:
-    if principal.ui_profile is not profile:
-        raise RoomApiError(403, "Diese Aktion gehört nicht zu Ihrer Oberfläche.", "wrong_profile")
 
 
 def _editable_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
@@ -1156,14 +1150,12 @@ def _date(text: str, field: str) -> date:
 
 @router.get("/vacation")
 def show_vacation(principal: Who, session: Sess) -> VacationStateOut:
-    _need_profile(principal, WebUiProfile.ADMIN)
     _need(principal, "zone.read")
     return _vacation_state(session, principal)
 
 
 @router.post("/vacation")
 def set_vacation(body: VacationIn, principal: Who, session: Sess) -> VacationStateOut:
-    _need_profile(principal, WebUiProfile.ADMIN)
     _need(principal, "vacation.manage")
     settings = _settings(session)
     start = _date(body.start_date, "start_date")
@@ -1195,7 +1187,6 @@ def set_vacation(body: VacationIn, principal: Who, session: Sess) -> VacationSta
 
 @router.delete("/vacation")
 def end_vacation(principal: Who, session: Sess) -> VacationStateOut:
-    _need_profile(principal, WebUiProfile.ADMIN)
     _need(principal, "vacation.manage")
     recorded = change_log.cancel_vacation(session, _actor(principal), now=utcnow())
     if recorded.result is None:
@@ -1237,7 +1228,6 @@ def _absence_state(session: Session, principal: Principal) -> AbsenceStateOut:
 
 @router.get("/absence")
 def show_absence(principal: Who, session: Sess) -> AbsenceStateOut:
-    _need_profile(principal, WebUiProfile.TENANT)
     return _absence_state(session, principal)
 
 
@@ -1245,7 +1235,6 @@ def show_absence(principal: Who, session: Sess) -> AbsenceStateOut:
 def begin_absence(body: AbsenceIn, principal: Who, session: Sess) -> AbsenceStateOut:
     """„Ich bin bis <Datum> weg": die eigenen Räume (`override.create`) sparsamer
     regeln. Die Räume bestimmt allein der Server, nicht der Aufrufer."""
-    _need_profile(principal, WebUiProfile.TENANT)
     settings = _settings(session)
     zones = visible_zones(session, principal, "override.create")
     if not zones:
@@ -1273,7 +1262,6 @@ def begin_absence(body: AbsenceIn, principal: Who, session: Sess) -> AbsenceStat
 def finish_absence(principal: Who, session: Sess) -> AbsenceStateOut:
     """Beendet die eigene laufende Abwesenheit -- **jede** laufende, wie die HTML-Ansicht
     (zwei gleichzeitig abgeschickte Formulare können zwei Klammern anlegen)."""
-    _need_profile(principal, WebUiProfile.TENANT)
     now = utcnow()
     running = running_absences(session, principal.user_id, now)
     if not running:
@@ -1303,7 +1291,6 @@ def _modes_out(session: Session) -> ModesOut:
 
 
 def _mode_admin(principal: Principal) -> None:
-    _need_profile(principal, WebUiProfile.ADMIN)
     _need(principal, "mode.manage")
 
 

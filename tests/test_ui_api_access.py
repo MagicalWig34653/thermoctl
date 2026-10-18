@@ -235,16 +235,19 @@ def test_zone_scoped_right_does_not_open_the_plant_wide_endpoints(client_als: Al
         _err(_call(client, method, url, body), 403, "forbidden")
 
 
-def test_tenant_profile_is_refused_before_the_right_is_checked(
-    tenant_client: Als, client_als: Als
-) -> None:
+def test_tenant_profile_does_not_block_the_rights(tenant_client: Als) -> None:
+    """Das Profil sperrt nichts mehr: ein Mieterprofil mit allen Rechten kommt überall hin."""
     client = tenant_client(ADMIN)
     for method, url, body, _perm in ENDPOINTS:
-        _err(_call(client, method, url, body), 403, "wrong_profile")
-    # Das Konto gehört beiden Oberflächen.
-    assert client.get("/ui-api/account").status_code == 200
-    assert client.get("/ui-api/account/sessions").status_code == 200
-    assert client.get("/ui-api/account/passkeys").status_code == 200
+        response = _call(client, method, url, body)
+        assert response.status_code != 403, (method, url, response.text)
+
+
+def test_tenant_profile_alone_is_not_enough(tenant_client: Als) -> None:
+    """Und umgekehrt: ohne Recht bleibt es ein 403 (`forbidden`), nicht `wrong_profile`."""
+    client = tenant_client([("zone.read", None)])
+    for method, url, body, _perm in ENDPOINTS:
+        _err(_call(client, method, url, body), 403, "forbidden")
 
 
 def test_unknown_ids_are_404_with_identical_bodies(client_als: Als, session: Session) -> None:

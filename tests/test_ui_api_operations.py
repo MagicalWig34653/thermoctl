@@ -246,16 +246,28 @@ def test_parameters_without_manage_are_403(client_als: Als, session: Session) ->
     assert _ereignisse(session, "zone_settings") == []
 
 
-def test_parameters_tenant_profile_is_wrong_profile(
+def test_parameters_tenant_profile_does_not_block_the_rights(
     tenant_client: Als, session: Session
 ) -> None:
     _, zone = _anlage(session)
     client = tenant_client(ALLES)
-    _fehler(client.get(f"/ui-api/rooms/{zone.id}/parameters"), 403, "wrong_profile")
+    assert client.get(f"/ui-api/rooms/{zone.id}/parameters").status_code == 200
+    response = _call(client, "PUT", f"/ui-api/rooms/{zone.id}/parameters", {"hysteresis_k": "0.5"})
+    assert response.status_code == 200, response.text
+    session.refresh(zone)
+    assert zone.hysteresis_k is not None
+
+
+def test_parameters_tenant_profile_without_rights_is_forbidden(
+    tenant_client: Als, session: Session
+) -> None:
+    _, zone = _anlage(session)
+    client = tenant_client([("zone.read", None)])
+    _fehler(client.get(f"/ui-api/rooms/{zone.id}/parameters"), 403, "forbidden")
     _fehler(
         _call(client, "PUT", f"/ui-api/rooms/{zone.id}/parameters", {"hysteresis_k": "0.5"}),
         403,
-        "wrong_profile",
+        "forbidden",
     )
     session.refresh(zone)
     assert zone.hysteresis_k is None
@@ -585,9 +597,10 @@ def test_operation_needs_plant_wide_zone_read(client_als: Als, session: Session)
     _fehler(client_als([("setting.manage", None)]).get("/ui-api/operation"), 403, "forbidden")
 
 
-def test_operation_tenant_profile_is_wrong_profile(tenant_client: Als, session: Session) -> None:
+def test_operation_tenant_profile_follows_the_rights(tenant_client: Als, session: Session) -> None:
     _anlage(session)
-    _fehler(tenant_client(ALLES).get("/ui-api/operation"), 403, "wrong_profile")
+    assert tenant_client(ALLES).get("/ui-api/operation").status_code == 200
+    _fehler(tenant_client([]).get("/ui-api/operation"), 403, "forbidden")
 
 
 def test_operation_without_setup_is_503(client_als: Als) -> None:
@@ -876,16 +889,20 @@ def test_arming_needs_control_arm(client_als: Als, session: Session) -> None:
     assert _ereignisse(session, "setting") == []
 
 
-def test_arming_tenant_profile_is_wrong_profile(tenant_client: Als, session: Session) -> None:
+def test_arming_tenant_profile_follows_the_rights(tenant_client: Als, session: Session) -> None:
     row, _ = _anlage(session)
     _fehler(
-        _call(tenant_client(ALLES), "PUT", "/ui-api/operation/armed",
+        _call(tenant_client([("zone.read", None)]), "PUT", "/ui-api/operation/armed",
               {"armed": True, "reason": "x"}),
         403,
-        "wrong_profile",
+        "forbidden",
     )
     session.refresh(row)
     assert row.control_armed is False
+    response = _call(
+        tenant_client(ALLES), "PUT", "/ui-api/operation/armed", {"armed": True, "reason": "x"}
+    )
+    assert response.status_code != 403, response.text
 
 
 def test_arming_without_csrf_is_403(client_als: Als, session: Session) -> None:
@@ -1032,12 +1049,12 @@ def test_settings_show_every_group_with_limits(client_als: Als, session: Session
     assert client_als(ALLES).get("/ui-api/settings").json()["may_edit"] is True
 
 
-def test_settings_need_plant_wide_zone_read_and_the_admin_profile(
+def test_settings_need_plant_wide_zone_read_not_a_profile(
     client_als: Als, tenant_client: Als, session: Session
 ) -> None:
     _, zone = _anlage(session)
     _fehler(client_als([("zone.read", zone.id)]).get("/ui-api/settings"), 403, "forbidden")
-    _fehler(tenant_client(ALLES).get("/ui-api/settings"), 403, "wrong_profile")
+    assert tenant_client(ALLES).get("/ui-api/settings").status_code == 200
 
 
 def test_settings_without_setup_are_503(client_als: Als) -> None:
@@ -1096,13 +1113,16 @@ def test_settings_writes_need_setting_manage_and_change_nothing(
 
 
 @pytest.mark.parametrize("index", range(len(SCHREIBEND)))
-def test_settings_writes_tenant_profile_is_wrong_profile(
+def test_settings_writes_tenant_profile_follows_the_rights(
     tenant_client: Als, session: Session, index: int
 ) -> None:
     _anlage(session)
     method, url, body = SCHREIBEND[index]
-    _fehler(_call(tenant_client(ALLES), method, url, body), 403, "wrong_profile")
+    granted = [p for p in ALLES if p[0] != "setting.manage"]
+    _fehler(_call(tenant_client(granted), method, url, body), 403, "forbidden")
     assert _ereignisse(session, "setting") == []
+    response = _call(tenant_client(ALLES), method, url, body)
+    assert response.status_code != 403, response.text
 
 
 @pytest.mark.parametrize("index", range(len(SCHREIBEND)))
@@ -1559,12 +1579,12 @@ def test_test_notification_reports_success_and_failure_and_honours_the_cooldown(
 # -- Schnittstellen -----------------------------------------------------------------------
 
 
-def test_interfaces_need_setting_manage_and_the_admin_profile(
+def test_interfaces_need_setting_manage_not_a_profile(
     client_als: Als, tenant_client: Als, session: Session
 ) -> None:
     _anlage(session)
     _fehler(client_als(LESEN).get("/ui-api/interfaces"), 403, "forbidden")
-    _fehler(tenant_client(ALLES).get("/ui-api/interfaces"), 403, "wrong_profile")
+    assert tenant_client(ALLES).get("/ui-api/interfaces").status_code == 200
 
 
 def test_interfaces_never_return_a_secret(

@@ -3,7 +3,6 @@ import importlib
 import inspect
 import re
 
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.navigation import NAVIGATION_ITEMS
 
 _PERMISSION = re.compile(r"^[a-z]+\.[a-z]+$")
@@ -44,13 +43,6 @@ def _permission_checks(endpoint: str) -> set[str]:
             elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 pending.append(node.func.id)
     return found
-
-
-def test_every_navigation_entry_carries_a_profile_that_exists() -> None:
-    """Ein Eintrag ohne gültiges Profil erschiene in keiner der beiden Oberflächen --
-    er wäre unsichtbar, ohne dass irgendwo etwas fehlschlüge."""
-    for item in NAVIGATION_ITEMS:
-        assert isinstance(item.profile, WebUiProfile)
 
 
 def test_navigation_permissions_match_destination_guards() -> None:
