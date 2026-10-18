@@ -9,6 +9,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.20.3 — 2026-10-18
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration**, keine neuen Einstellungen oder Add-on-Optionen.
+
+### Behoben
+
+- **Glow „Intensiv“ zeigte hinter dem Seitenkopf einen Kasten.** Die durchscheinende Fläche mit Weichzeichner galt für jedes
+  Kopf-Element, auch für den Titelbereich jeder Seite. Sie gilt jetzt nur noch für Seitenleiste, Kopfzeile, Karten und Dialoge.
+
+---
+
 ## 0.20.2 — 2026-10-18
 
 ### Beim Upgrade zu wissen

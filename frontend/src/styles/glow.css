@@ -123,7 +123,7 @@
 :root[data-glow='on'][data-glow-step='6'] [data-slot='card'],
 :root[data-glow='on'][data-glow-step='6'] .rounded-xl.border.bg-card,
 :root[data-glow='on'][data-glow-step='6'] [data-slot='dialog-content'],
-:root[data-glow='on'][data-glow-step='6'] header,
+:root[data-glow='on'][data-glow-step='6'] .app-topbar,
 :root[data-glow='on'][data-glow-step='6'] #app-sidebar {
   background-color: color-mix(in srgb, var(--card, var(--background)) 66%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
