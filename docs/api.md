@@ -174,6 +174,8 @@ Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
 | `stuck_reading_hours` | Messwert gilt als festhängend nach (Stunden) | 1 – 168 | 12 |
 | `measurement_retention_days` | Messwerte aufbewahren (Tage) | 1 – 3.650 | 30 |
 | `shadow_decision_retention_days` | Schattenentscheidungen aufbewahren (Tage) | 1 – 3.650 | 365 |
+| `command_log_retention_days` | Schaltprotokoll aufbewahren (Tage) | 1 – 3.650 | 1.095 (3 Jahre) |
+| `command_log_max_mb` | Schaltprotokoll, höchstens (MB, geschätzt; die ältesten Einträge fallen zuerst weg) | 10 – 1.048.576 | 2.048 (2 GiB) |
 | `session_lifetime_seconds` | Sitzungsdauer (Sekunden) | 300 – 31.536.000 | 1.209.600 (14 Tage) |
 | `assumed_relay_lifetime_operations` | angenommene Relais-Lebensdauer (Schaltspiele), Grundlage für die Verschleiß-Hochrechnung unter `/relay-wear` | 1.000 – 10.000.000 | 500.000 |
 | `default_solar_setback_max_k` | Sonnenabsenkung, Obergrenze (K) | 0,0 – 10,0 | 2,0 |

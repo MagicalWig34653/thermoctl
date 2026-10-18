@@ -29,7 +29,7 @@
     { title: 'Schaltverhalten', help: 'hysteresis', names: ['default_hysteresis_k', 'default_min_on_seconds', 'default_min_off_seconds'] },
     { title: 'Sensoren und Fenster', names: ['default_sensor_timeout_seconds', 'default_window_resume_delay_seconds', 'stuck_reading_hours'] },
     { title: 'Takt', names: ['polling_interval_seconds', 'shadow_interval_seconds'] },
-    { title: 'Aufbewahrung und Sitzung', names: ['measurement_retention_days', 'shadow_decision_retention_days', 'session_lifetime_seconds'] },
+    { title: 'Aufbewahrung und Sitzung', names: ['measurement_retention_days', 'shadow_decision_retention_days', 'command_log_retention_days', 'command_log_max_mb', 'session_lifetime_seconds'] },
     { title: 'Relais', names: ['assumed_relay_lifetime_operations'] },
   ];
 

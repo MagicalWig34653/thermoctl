@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import (
     create_device,
+    create_device_command,
     create_settings,
     create_zone,
     create_zone_state,
@@ -20,15 +21,19 @@ from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.oauth import OAuthAuthorizationRequest
 from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
-from thermoctl.db.models.state import ShadowDecision
+from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.domain.oauth import register_client, start_request
 from thermoctl.services.retention import (
+    COMMAND_LOG_ROW_OVERHEAD_BYTES,
     delete_expired_oauth,
     delete_old_actuator_decisions,
     delete_old_changes,
+    delete_old_device_commands,
     delete_old_measurements,
     delete_old_sensor_failure_source_comparisons,
     delete_old_shadow_decisions,
+    estimate_device_command_bytes,
+    trim_device_commands_to_size,
 )
 from thermoctl.services.shadow_run import cycle
 
@@ -317,3 +322,154 @@ def test_changes_keep_days_is_configurable_and_validated(session: Session) -> No
         delete_old_changes(session, NOW, keep_days=0)
     with pytest.raises(ValueError, match="Blockgröße"):
         delete_old_changes(session, NOW, batch_size=0)
+
+
+# --- Schaltprotokoll: Alter und Größe -----------------------------------------
+
+
+def _commands(session: Session, ages_days: list[int], payload: str = "{}") -> None:
+    zone = create_zone(session, "protokollzone")
+    device = create_device(session, "protokollgeraet")
+    for age in ages_days:
+        create_device_command(session, zone, device, at=NOW - timedelta(days=age), payload=payload)
+
+
+def _remaining_ages(session: Session) -> list[int]:
+    rows = session.query(DeviceCommand.sent_at).order_by(DeviceCommand.sent_at.desc()).all()
+    return [(NOW - sent_at).days for (sent_at,) in rows]
+
+
+def test_the_command_log_defaults_are_three_years_and_two_gib(session: Session) -> None:
+    settings = create_settings(session)
+    session.flush()
+    session.refresh(settings)
+    assert settings.command_log_retention_days == 1095
+    assert settings.command_log_max_mb == 2048
+
+
+def test_old_device_commands_are_deleted_in_blocks_at_an_exclusive_boundary(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    settings.command_log_retention_days = 30
+    _commands(session, [29, 30, 31, 40, 500])
+
+    # Genau 30 Tage alt bleibt (Grenze exklusiv); drei Blöcke zu je zwei Zeilen.
+    assert delete_old_device_commands(session, NOW, batch_size=2) == 3
+    assert _remaining_ages(session) == [29, 30]
+
+
+def test_device_commands_within_the_age_limit_are_untouched(session: Session) -> None:
+    settings = create_settings(session)
+    settings.command_log_retention_days = 1095
+    _commands(session, [0, 1, 1094])
+
+    assert delete_old_device_commands(session, NOW) == 0
+    assert session.query(DeviceCommand).count() == 3
+
+
+def test_device_command_block_size_must_be_positive(session: Session) -> None:
+    with pytest.raises(ValueError, match="größer als null"):
+        delete_old_device_commands(session, NOW, batch_size=0)
+    with pytest.raises(ValueError, match="größer als null"):
+        trim_device_commands_to_size(session, batch_size=0)
+
+
+def test_the_size_estimate_counts_text_lengths_plus_a_constant_per_row(
+    session: Session,
+) -> None:
+    create_settings(session)
+    assert estimate_device_command_bytes(session) == 0
+
+    zone = create_zone(session, "z")
+    device = create_device(session, "g")
+    entry = create_device_command(session, zone, device, payload="x" * 1000)
+    entry.error = "fehler"
+    entry.reason_code = "abc"
+    session.flush()
+
+    text = (
+        entry.zone_name,
+        entry.device_name,
+        entry.command,
+        entry.payload,
+        entry.error,
+        entry.reason,
+        entry.reason_code,
+    )
+    expected = COMMAND_LOG_ROW_OVERHEAD_BYTES + sum(len(t) for t in text if t)
+    assert estimate_device_command_bytes(session) == expected
+
+
+def test_nothing_is_trimmed_while_the_log_is_below_the_size_limit(session: Session) -> None:
+    settings = create_settings(session)
+    settings.command_log_max_mb = 10
+    _commands(session, [3, 2, 1], payload="x" * 1000)
+
+    assert trim_device_commands_to_size(session) == 0
+    assert session.query(DeviceCommand).count() == 3
+
+
+def test_an_empty_log_is_not_trimmed(session: Session) -> None:
+    settings = create_settings(session)
+    settings.command_log_max_mb = 10
+    assert trim_device_commands_to_size(session) == 0
+
+
+def test_only_the_oldest_commands_fall_away_until_the_log_fits(session: Session) -> None:
+    settings = create_settings(session)
+    settings.command_log_max_mb = 10
+    limit = 10 * 1024 * 1024
+    payload = "x" * 60_000  # bleibt unter der TEXT-Grenze von MariaDB
+    # Neueste zuerst eingefügt: das Alter entscheidet, nicht die Id.
+    _commands(session, list(range(1, 201)), payload=payload)
+    total = estimate_device_command_bytes(session)
+    assert total > limit
+    row_size = total // 200
+
+    removed = trim_device_commands_to_size(session, batch_size=7)
+
+    assert removed > 0
+    remaining = _remaining_ages(session)
+    assert len(remaining) == 200 - removed
+    # Es bleiben genau die jüngsten Einträge.
+    assert remaining == list(range(1, 201 - removed))
+    assert estimate_device_command_bytes(session) <= limit
+    # Und es wurde nicht mehr gelöscht als nötig.
+    assert estimate_device_command_bytes(session) + row_size > limit
+
+
+def test_a_log_exactly_at_the_size_limit_is_kept(session: Session) -> None:
+    settings = create_settings(session)
+    settings.command_log_max_mb = 10
+    limit = 10 * 1024 * 1024
+    # Payloads bleiben unter der TEXT-Grenze von MariaDB (65.535 Byte).
+    _commands(session, list(range(2, 176)), payload="x" * 60_000)
+    first = session.query(DeviceCommand).first()
+    assert first is not None
+    gap = limit - estimate_device_command_bytes(session)
+    filler = gap - COMMAND_LOG_ROW_OVERHEAD_BYTES - 3  # Namen "a", "b", Befehl "c"
+    assert 0 < filler < 60_000
+    session.add(
+        DeviceCommand(
+            sent_at=NOW - timedelta(days=1),
+            source_id=first.source_id,
+            zone_name="a",
+            device_name="b",
+            command="c",
+            payload="x" * filler,
+            outcome_id=first.outcome_id,
+        )
+    )
+    session.flush()
+    # Genau auf der Grenze: Überhang null, nichts fällt weg.
+    assert estimate_device_command_bytes(session) == limit
+    assert trim_device_commands_to_size(session) == 0
+    assert session.query(DeviceCommand).count() == 175
+
+    # Ein einziges Byte darüber: genau der älteste Eintrag fällt weg.
+    settings.command_log_max_mb = 10
+    first.payload = first.payload + "x"
+    session.flush()
+    assert trim_device_commands_to_size(session) == 1
+    assert session.query(DeviceCommand).count() == 174

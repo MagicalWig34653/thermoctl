@@ -104,9 +104,11 @@ from thermoctl.services.retention import (
     delete_expired_oauth,
     delete_old_actuator_decisions,
     delete_old_changes,
+    delete_old_device_commands,
     delete_old_measurements,
     delete_old_sensor_failure_source_comparisons,
     delete_old_shadow_decisions,
+    trim_device_commands_to_size,
 )
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
@@ -726,6 +728,8 @@ async def _shadow_loop(app: FastAPI) -> None:
                 if now >= next_retention:
                     delete_old_measurements(session, now)
                     delete_old_shadow_decisions(session, now)
+                    delete_old_device_commands(session, now)
+                    trim_device_commands_to_size(session)
                     delete_old_sensor_failure_source_comparisons(session, now)
                     delete_old_actuator_decisions(session, now)
                     delete_expired_oauth(session)

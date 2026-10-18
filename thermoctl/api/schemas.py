@@ -313,6 +313,8 @@ class ControlResponse(BaseModel):
     stuck_reading_hours: int
     measurement_retention_days: int
     shadow_decision_retention_days: int
+    command_log_retention_days: int
+    command_log_max_mb: int
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int
@@ -347,6 +349,8 @@ class WriteControl(BaseModel):
     stuck_reading_hours: int
     measurement_retention_days: int
     shadow_decision_retention_days: int
+    command_log_retention_days: int
+    command_log_max_mb: int
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int
