@@ -17,13 +17,13 @@ Es gibt **eine** Weboberfläche für alle: Bewohner und Verwaltung sehen dieselb
 die Seitenleiste zeigt nur, was für das eigene Konto erreichbar ist. Das entscheiden die
 **Rechte der Gruppe** — eine Person darf alles, was mindestens eine ihrer Gruppen erlaubt,
 und Rechte für Räume lassen sich auf einzelne Räume beschränken. Daneben trägt jede Gruppe
-ein **Oberflächen-Profil** (Anlage oder Wohnung). Es ist keine Berechtigung, sondern trennt
-nur einzelne Bereiche voneinander: Die Seitenleiste eines Wohnungsprofils führt nur
-Übersicht, Wochenpläne, Temperatur & Heizzeit und das Konto; Urlaub für die ganze Anlage, Geräte,
-Betrieb, Einstellungen, Benutzer- und Gruppenverwaltung, die Betriebsart und die Temperaturen
-je Modus eines Raums gehören zum Anlagenprofil, die persönliche Abwesenheit zum
-Wohnungsprofil (nur dieses sieht sie auf der Seite Wochenpläne). Alles Übrige — etwa das Bearbeiten von Wochenplan-Zeiten eines Raums —
-entscheidet allein das Recht für diesen Raum.
+ein **Oberflächen-Profil** (Anlage oder Wohnung). Es ist keine Berechtigung und sperrt
+keinen Bereich: Welche Seiten jemand in der Seitenleiste sieht und öffnen kann, entscheiden
+allein die Rechte der Gruppen — auch ein Konto mit Wohnungsprofil sieht Geräte, Betrieb,
+Benutzerverwaltung und alles Übrige, wenn die Rechte es erlauben. Das Profil bestimmt nur die
+Darstellung: die Startseite (Wohnungsstart oder Anlagenstatus), die Wortwahl in den Verläufen
+und die persönliche Abwesenheit auf der Seite Wochenpläne, die das Wohnungsprofil anzeigt.
+Was jemand tatsächlich darf, entscheidet das Recht für den jeweiligen Raum oder die Anlage.
 
 ![Übersicht der Verwaltung mit Aktorfreigabe, MQTT-Ausgabe, Rolle im Verbund, einem Notbetriebs-Hinweis und den Kennzahlen „Auf einen Blick“](bilder/anlage-startseite.png)
 
@@ -395,8 +395,13 @@ Gruppen angehört, darf alles, was mindestens eine davon erlaubt. Vier eingebaut
 decken die üblichen Fälle ab (Bedienung, Integration, Nur lesen, Verwaltung); eigene Gruppen
 lassen sich anlegen. Zonenbezogene Rechte lassen sich auf einzelne Räume beschränken, statt
 anlagenweit zu gelten. Jede Gruppe trägt außerdem das **Oberflächen-Profil** (Anlage oder
-Wohnung, siehe oben); beim Upgrade behält jede bestehende Gruppe das Anlagenprofil, für eine
+Wohnung, siehe oben; es sperrt nichts); beim Upgrade behält jede bestehende Gruppe das Anlagenprofil, für eine
 Mietergruppe wird das Profil ausdrücklich auf Wohnung gestellt.
+
+**Vorschau:** In der Benutzerliste zeigt „Vorschau“, wie die Oberfläche für eine Person
+aussieht — Navigation (als Baum, nicht klickbar), ihre Rechte als Liste und ihre Übersicht.
+Das ist reine Ansicht: Man meldet sich nicht als diese Person an und kann nichts verändern.
+Nötig ist das Recht `user.manage`.
 
 **API-Tokens** stellt man für den Zugriff über REST-API und MCP aus; **Kiosk-Zugänge** sind
 der Zugang für ein Wandtablet (siehe Kiosk).

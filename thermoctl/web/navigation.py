@@ -3,7 +3,6 @@ from typing import Literal
 
 from thermoctl.domain.authz import has_permission
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.ui_profile import WebUiProfile
 
 
 @dataclass(frozen=True)
@@ -22,11 +21,6 @@ class NavigationItem:
     # "access" die Zugänge -- die vier Blöcke der Admin-Demo. Für Mietereinträge
     # bedeutungslos, deren Navigation hat nur eine Ebene.
     section: Literal["main", "analysis", "system", "access", "tenant"] = "system"
-    # Für welche Oberfläche der Eintrag gilt. Ausdrücklich nur Navigation: dass eine
-    # Mieteroberfläche `/settings` nicht anzeigt, ist Darstellung -- dass sie sie
-    # nicht öffnen kann, entscheidet der Wächter am Router (`web/guards.py`), und
-    # ob sie dort etwas darf, entscheidet weiterhin die Rechteprüfung im Endpunkt.
-    profile: WebUiProfile = WebUiProfile.ADMIN
     # Auf kleinen Bildschirmen zeigt die Admin-Oberfläche nur eine reduzierte
     # Leiste (Übersicht, Zonen, Geräte, Mehr) -- alles Übrige liegt unter "Mehr".
     in_bottom_navigation: bool = False
@@ -189,7 +183,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.ui_api_access.list_kiosk_tokens",
         section="access",
     ),
-    # -- Mieteroberfläche ----------------------------------------------------------
+    # -- Wohnungsbereiche (Wohnungsstart, Zeitplan, Verlauf, Konto) ---------------------
     NavigationItem(
         "/schedule",
         "Zeitplan",
@@ -197,7 +191,6 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.ui_api_schedule.show_schedule",
         "any_zone",
         "tenant",
-        profile=WebUiProfile.TENANT,
     ),
     NavigationItem(
         "/heating-time",
@@ -206,7 +199,6 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.ui_api_reports.show_heating_time",
         "any_zone",
         "tenant",
-        profile=WebUiProfile.TENANT,
     ),
     NavigationItem(
         "/temperature-history",
@@ -215,7 +207,6 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.ui_api_reports.show_history",
         "any_zone",
         "tenant",
-        profile=WebUiProfile.TENANT,
     ),
     NavigationItem(
         "/account",
@@ -227,7 +218,6 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         None,
         "thermoctl.web.ui_api_access.show_account",
         section="tenant",
-        profile=WebUiProfile.TENANT,
     ),
 )
 
@@ -239,16 +229,14 @@ def visible_navigation(principal: Principal) -> tuple[NavigationItem, ...]:
     available.  A plant-wide endpoint stays hidden for a merely zone-scoped grant,
     matching ``has_permission(principal, code)`` at that endpoint.
 
-    Zusätzlich gefiltert nach dem UI-Profil: ein Mieter sieht keine Anlageneinträge,
-    ein Administrator keine Mietereinträge. Das bleibt reine Darstellung -- ob eine
-    Adresse geöffnet werden kann, entscheidet der Wächter am Router, ob dort etwas
-    erlaubt ist, weiterhin der Endpunkt.
+    Allein die Rechte entscheiden (Entscheidung des Projektinhabers): das Gruppenprofil
+    (Mieter/Admin) filtert hier nichts. Ob eine Adresse geöffnet werden kann, entscheidet
+    ebenfalls nur die Rechteprüfung im Endpunkt.
     """
     return tuple(
         item
         for item in NAVIGATION_ITEMS
-        if item.profile is principal.ui_profile
-        and (
+        if (
             item.permission is None
             or has_permission(principal, item.permission)
             or (

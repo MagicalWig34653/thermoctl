@@ -3,7 +3,7 @@
 import type { Api } from '../api';
 import type {
   Account, Grant, GroupRow, GroupsData, IssuedKiosk, IssuedToken, KioskData, KioskRow, PasskeysData,
-  SessionRow, TokenRow, TokensData, UserRow, UsersData,
+  SessionRow, TokenRow, TokensData, UserPreview, UserRow, UsersData,
 } from './types';
 
 const A = '/ui-api/access';
@@ -16,6 +16,8 @@ export function createAccessClient(api: Api) {
       api.post<UserRow>(`${A}/users`, body),
     setActive: (id: number, active: boolean) => api.put<UserRow>(`${A}/users/${id}/active`, { active }),
     setUserGroup: (id: number, groupId: number | null) => api.put<UserRow>(`${A}/users/${id}/group`, { group_id: groupId }),
+    /** Schreibgeschützte Vorschau: Navigation, Rechte und Übersicht dieses Kontos. */
+    userPreview: (id: number) => api.get<UserPreview>(`${A}/users/${id}/preview`),
     setUserPassword: (id: number, password: string) => api.put<{ ok: boolean }>(`${A}/users/${id}/password`, { password }),
 
     groups: () => api.get<GroupsData>(`${A}/groups`),

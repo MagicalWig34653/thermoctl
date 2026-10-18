@@ -123,7 +123,10 @@ def test_default_layout_carries_the_system_tile_only_for_who_may_see_it(
     assert body["customized"] is False
     summary = body["sections"][0]["tiles"]
     assert [t["kind"] for t in summary][-1] == "system"
+    # Das Profil sperrt nichts: auch ein Mieterprofil mit dem Recht bekommt die Kachel.
     _login(client, session, "mieter-hat-recht", EVERYTHING, WebUiProfile.TENANT)
+    assert "system" in [t["kind"] for t in _tiles(_get(client))]
+    _login(client, session, "mieter-ohne-recht", ZONE_READ, WebUiProfile.TENANT)
     assert "system" not in [t["kind"] for t in _tiles(_get(client))]
 
 
@@ -332,19 +335,25 @@ def test_revoking_a_function_right_removes_its_tiles(
     ]
 
 
-def test_a_tenant_never_gets_plant_tiles(client: TestClient, session: Session) -> None:
+def test_plant_tiles_follow_the_rights_not_the_profile(
+    client: TestClient, session: Session
+) -> None:
     create_zone(session, "wohnen")
-    _login(client, session, "mieter", EVERYTHING, WebUiProfile.TENANT)
-    for tile in (
+    tiles = (
         {"kind": "devices"},
         {"kind": "system"},
         {"kind": "shortcut", "destination": "devices"},
-    ):
+    )
+    _login(client, session, "mieter", EVERYTHING, WebUiProfile.TENANT)
+    for tile in tiles:
+        version = _get(client)["version"]
+        response = _put(client, version, [_section("X", tile)])
+        assert response.status_code == 200, (tile, response.text)
+    _login(client, session, "mieter-ohne", ZONE_READ, WebUiProfile.TENANT)
+    for tile in tiles:
         response = _put(client, 0, [_section("X", tile)])
         assert response.status_code == 422, tile
         assert response.json()["code"] == "validation"
-    allowed = _put(client, 0, [_section("X", {"kind": "shortcut", "destination": "schedule"})])
-    assert allowed.status_code == 200, allowed.text
 
 
 # -- Manipulierte Eingabe --------------------------------------------------------------

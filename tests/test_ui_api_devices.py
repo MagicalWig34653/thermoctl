@@ -275,12 +275,22 @@ def test_writes_without_csrf_are_403_stale(client_als: Als, world: World) -> Non
             assert response.status_code == 403 and response.json()["stale"] is True, url
 
 
-def test_tenant_profile_is_refused_everywhere(tenant_client: Als, world: World) -> None:
+def test_tenant_profile_does_not_block_the_rights(tenant_client: Als, world: World) -> None:
+    """Das Profil sperrt nichts: mit den Rechten kommt auch ein Mieterprofil durch."""
     client = tenant_client(ALLES)
     for method, url, body in _endpoints(world):
-        _fehler(_call(client, method, url, body), 403, "wrong_profile")
+        response = _call(client, method, url, body)
+        assert response.status_code != 403, (method, url, response.text)
     for method, url, body, _write in _zone_endpoints(world):
-        _fehler(_call(client, method, url, body), 403, "wrong_profile")
+        response = _call(client, method, url, body)
+        assert response.status_code != 403, (method, url, response.text)
+
+
+def test_tenant_profile_without_rights_is_forbidden(tenant_client: Als, world: World) -> None:
+    client = tenant_client([])
+    for method, url, body in _endpoints(world):
+        response = _call(client, method, url, body)
+        assert response.status_code == 403 and response.json()["code"] != "wrong_profile", url
 
 
 def test_malformed_bodies_are_422(client_als: Als, world: World) -> None:

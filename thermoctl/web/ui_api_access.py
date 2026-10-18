@@ -11,8 +11,8 @@ Sicherheitsregeln, die in jedem Endpunkt gelten:
 
 * Nur die Cookie-Sitzung (`current_principal`): Bearer-Token und Kiosk-Cookie führen
   zu 401, ein Token kann hier nichts verwalten.
-* Reihenfolge wie in der früheren HTML-Oberfläche: erst Profil (Anlagensicht, `wrong_profile`), dann
-  Recht (`forbidden`), dann Existenz (404). Das Konto (`/ui-api/account`) gehört beiden
+* Reihenfolge: erst Recht (`forbidden`; das Gruppenprofil sperrt nichts), dann Existenz (404).
+  Das Konto (`/ui-api/account`) gehört beiden
   Oberflächen und braucht kein Recht.
 * Der Klartext eines Tokens steht genau einmal in der Antwort auf das Ausstellen (mit
   `Cache-Control: no-store`) und nirgends sonst -- nicht in Listen, nicht im Protokoll,
@@ -69,7 +69,7 @@ from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
 from thermoctl.web.shared.login import record_failure, reset_failures, throttle
 from thermoctl.web.shared.tokens import replace_token_grants, token_grants
-from thermoctl.web.ui_api_rooms import RoomApiError, _iso, _require_admin_ui, _RoomsRoute
+from thermoctl.web.ui_api_rooms import RoomApiError, _iso, _RoomsRoute
 
 router = APIRouter(
     prefix="/ui-api",
@@ -91,8 +91,7 @@ def _need(principal: Principal, code: str) -> None:
 
 
 def _admin(principal: Principal, code: str) -> None:
-    """Profil vor Recht -- die Reihenfolge der früheren Oberfläche."""
-    _require_admin_ui(principal)
+    """Nur das Recht entscheidet (das Gruppenprofil sperrt nichts)."""
     _need(principal, code)
 
 

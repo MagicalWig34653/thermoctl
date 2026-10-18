@@ -285,15 +285,15 @@ def test_hidden_and_unknown_zone_are_identical_404(
 @pytest.mark.parametrize(
     "index", [i for i, e in enumerate(ENDPUNKTE) if e[3] in {"admin", "mieter"}]
 )
-def test_wrong_profile_is_403(
+def test_the_profile_blocks_no_endpoint(
     client_als: Als, tenant_client: Als, session: Session, index: int
 ) -> None:
     zone = _raum(session)
     method, template, body, profil, *_ = ENDPUNKTE[index]
     client = tenant_client(PLAN) if profil == "admin" else client_als(PLAN)
-    before = (_points(session, zone), session.query(AuditEvent).count())
-    _fehler(_call(client, method, _url(session, zone, template), body), 403, "wrong_profile")
-    assert (_points(session, zone), session.query(AuditEvent).count()) == before
+    response = _call(client, method, _url(session, zone, template), body)
+    # Das Profil sperrt nichts mehr: ob es klappt, entscheiden allein die Rechte.
+    assert response.json().get("code") != "wrong_profile", response.text
 
 
 def test_incomplete_setup_is_503(client_als: Als, session: Session) -> None:

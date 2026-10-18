@@ -571,11 +571,9 @@ def test_relay_wear_access(client_als: Als, tenant_client: Als, session: Session
     create_settings(session)
     zone = create_zone(session, "relais")
     foreign = create_zone(session, "fremd")
-    _fehler(
-        tenant_client([("audit.read", None), ("zone.read", zone.id)]).get("/ui-api/relay-wear"),
-        403,
-        "wrong_profile",
-    )
+    assert (
+        tenant_client([("audit.read", None), ("zone.read", zone.id)]).get("/ui-api/relay-wear")
+    ).status_code == 200
     _fehler(client_als([("zone.read", zone.id)]).get("/ui-api/relay-wear"), 403, "forbidden")
     # audit.read nur zonenbezogen reicht nicht (anlagenweites Protokoll)
     _fehler(
@@ -654,7 +652,7 @@ def _events(session: Session, count: int = 3) -> None:
 
 def test_audit_access(client_als: Als, tenant_client: Als, client: TestClient) -> None:
     assert client.get("/ui-api/audit").status_code == 401
-    _fehler(tenant_client([("audit.read", None)]).get("/ui-api/audit"), 403, "wrong_profile")
+    assert tenant_client([("audit.read", None)]).get("/ui-api/audit").status_code == 200
     _fehler(client_als([("zone.read", None)]).get("/ui-api/audit"), 403, "forbidden")
 
 
@@ -876,7 +874,7 @@ def test_audit_csv_access_and_validation(
     client_als: Als, tenant_client: Als, client: TestClient, session: Session
 ) -> None:
     assert client.get("/ui-api/audit.csv").status_code == 401
-    _fehler(tenant_client([("audit.read", None)]).get("/ui-api/audit.csv"), 403, "wrong_profile")
+    assert tenant_client([("audit.read", None)]).get("/ui-api/audit.csv").status_code == 200
     _fehler(client_als([("zone.read", None)]).get("/ui-api/audit.csv"), 403, "forbidden")
     create_settings(session)
     admin = client_als([("audit.read", None)])
@@ -905,14 +903,12 @@ def test_changes_access(client_als: Als, tenant_client: Als, client: TestClient)
     ]:
         assert client.request(method, path).status_code == 401
     for path in ("/ui-api/changes", "/ui-api/changes/1"):
-        _fehler(tenant_client([("audit.read", None)]).get(path), 403, "wrong_profile")
+        reader = tenant_client([("audit.read", None)])
+        assert reader.get(path).status_code != 403
         _fehler(client_als([("zone.read", None)]).get(path), 403, "forbidden")
     tenant = tenant_client([("audit.read", None)])
-    _fehler(
-        tenant.post("/ui-api/changes/1/revert", json={}, headers=_csrf(tenant)),
-        403,
-        "wrong_profile",
-    )
+    revert = tenant.post("/ui-api/changes/1/revert", json={}, headers=_csrf(tenant))
+    assert revert.status_code != 403
     plain = client_als([("zone.read", None)])
     _fehler(plain.post("/ui-api/changes/1/revert", json={}, headers=_csrf(plain)), 403, "forbidden")
 

@@ -13,8 +13,7 @@ Rechte wie in der früheren HTML-Oberfläche, in jedem Endpunkt neu geprüft:
 - Betrieb lesen und Einstellungen lesen: `zone.read` anlagenweit. Freigabe setzen:
   `control.arm`. Einstellungen schreiben, Schnittstellen, Benachrichtigungen:
   `setting.manage`.
-- Alle Seiten gehören zur Anlagensicht (früher `admin_ui_only`); hier prüft
-  das jeder Endpunkt (`wrong_profile`).
+- Allein das Recht entscheidet; das Gruppenprofil sperrt keine dieser Seiten.
 
 **Die drei Sperren bleiben getrennt**, wie auf der Betriebsseite: gespeicherte Freigabe
 (`control_armed`), MQTT-Sendefreigabe (`sending_allowed`, beim Prozessstart gebaut) und die
@@ -81,7 +80,6 @@ from thermoctl.domain.sensor_failure_policy import (
 )
 from thermoctl.domain.sensor_failure_policy import read_defaults as read_sensor_failure_defaults
 from thermoctl.domain.statistics import pi_switching_model
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zone_settings import (
     BY_NAME,
     ControlParameters,
@@ -140,22 +138,15 @@ def _forbidden() -> RoomApiError:
 
 
 def _need(principal: Principal, permission: str) -> None:
-    """Anlagenweites Recht (wie `authz.require` in den Views); danach die Anlagensicht."""
+    """Anlagenweites Recht (wie `authz.require` in den Views)."""
     if not has_permission(principal, permission):
         raise _forbidden()
-    _need_admin_ui(principal)
-
-
-def _need_admin_ui(principal: Principal) -> None:
-    if principal.ui_profile is not WebUiProfile.ADMIN:
-        raise RoomApiError(403, "Diese Aktion gehört nicht zu Ihrer Oberfläche.", "wrong_profile")
 
 
 def _need_zone_manage(session: Session, principal: Principal, zone_id: int) -> Zone:
     zone = _visible_zone(session, principal, zone_id)
     if not has_permission(principal, "zone.manage", zone.id):
         raise _forbidden()
-    _need_admin_ui(principal)
     return zone
 
 

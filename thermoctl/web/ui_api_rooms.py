@@ -374,12 +374,6 @@ def _require(principal: Principal, permission: str, zone: Zone) -> None:
         raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden")
 
 
-def _require_admin_ui(principal: Principal) -> None:
-    """Die Seiten dahinter gehören zur Anlagensicht."""
-    if principal.ui_profile is not WebUiProfile.ADMIN:
-        raise RoomApiError(403, "Diese Aktion gehört nicht zu Ihrer Oberfläche.", "wrong_profile")
-
-
 def _actor(principal: Principal) -> change_log.Actor:
     return change_log.Actor(principal.user_id, principal.token_id, "web")
 
@@ -392,14 +386,13 @@ def _settings_or_error(session: Session) -> Setting:
 
 
 def _actions(principal: Principal, zone: Zone) -> ActionsOut:
-    admin_ui = principal.ui_profile is WebUiProfile.ADMIN
     return ActionsOut(
         override=has_permission(principal, "override.create", zone.id),
         cancel_override=has_permission(principal, "override.cancel", zone.id),
         edit_setpoint_step=has_permission(principal, "setpoint.write", zone.id),
-        edit_mode_setpoints=admin_ui and has_permission(principal, "setpoint.write", zone.id),
+        edit_mode_setpoints=has_permission(principal, "setpoint.write", zone.id),
         jump_next=has_permission(principal, "override.create", zone.id),
-        set_operating_mode=admin_ui and has_permission(principal, "zone.manage", zone.id),
+        set_operating_mode=has_permission(principal, "zone.manage", zone.id),
     )
 
 
@@ -822,7 +815,6 @@ def set_mode_setpoint(
     `null` löscht den Sollwert dieses Modus."""
     zone = _visible_zone(session, principal, zone_id)
     _require(principal, "setpoint.write", zone)
-    _require_admin_ui(principal)
     if session.get(SetpointMode, mode_id) is None:
         raise RoomApiError(404, "Modus nicht gefunden.", "mode_not_found")
     value = _temperature(body.temperature_c) if body.temperature_c is not None else None
@@ -877,7 +869,6 @@ def change_operating_mode(
     geht das nur im Raumformular (`zone.manage`, Anlagensicht); hier dieselben Bedingungen."""
     zone = _visible_zone(session, principal, zone_id)
     _require(principal, "zone.manage", zone)
-    _require_admin_ui(principal)
     try:
         set_operating_mode(session, zone, body.code, actor_id=principal.user_id)
     except UnknownOperatingMode as exc:

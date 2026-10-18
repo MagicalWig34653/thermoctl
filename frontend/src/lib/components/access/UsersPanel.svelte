@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { KeyRound, Plus, UserCheck, UserX } from '@lucide/svelte';
+  import { Eye, KeyRound, Plus, UserCheck, UserX } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
   import * as Dialog from '$lib/components/ui/dialog';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import UserPreviewDialog from './UserPreviewDialog.svelte';
   import { createAccessClient } from '$lib/access/client';
   import { createActions } from '$lib/access/actions.svelte';
   import { createResource } from '$lib/access/resource.svelte';
@@ -26,6 +27,10 @@
   function replace(row: UserRow) {
     if (users.data) users.set({ ...users.data, users: users.data.users.map((u) => (u.id === row.id ? row : u)) });
   }
+
+  // -- Vorschau ---------------------------------------------------------------------------
+  let previewTarget = $state<UserRow | null>(null);
+  let previewOpen = $state(false);
 
   // -- Anlegen ----------------------------------------------------------------------------
   let createOpen = $state(false);
@@ -150,6 +155,9 @@
                 {#each users.data.groups as g (g.id)}<option value={String(g.id)}>{g.name}</option>{/each}
               </select>
             </label>
+            <Button variant="outline" class="h-11" onclick={() => { previewTarget = user; previewOpen = true; }} data-testid="user-preview-open">
+              <Eye size={16} aria-hidden="true" />Vorschau
+            </Button>
             {#if !user.is_self}
               <Button variant="outline" class="h-11" disabled={actions.busy} onclick={() => { pwTarget = user; pw = ''; actions.clear(); pwOpen = true; }}>
                 <KeyRound size={16} aria-hidden="true" />Passwort setzen
@@ -239,6 +247,8 @@
     </form>
   </Dialog.Content>
 </Dialog.Root>
+
+<UserPreviewDialog bind:open={previewOpen} user={previewTarget} />
 
 <ConfirmDialog
   bind:open={lockOpen}

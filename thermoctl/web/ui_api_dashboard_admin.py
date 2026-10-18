@@ -1,6 +1,6 @@
 """Übersicht pflegen: Vorlagen und die Übersicht beliebiger Benutzer (`/ui-api/dashboard/...`).
 
-Nur mit dem Recht `user.manage` (und Anlagensicht, wie die übrige Benutzerverwaltung).
+Nur mit dem Recht `user.manage` (das Gruppenprofil sperrt nichts; allein das Recht entscheidet).
 Dünner Adapter: Speichern, Zurücksetzen und die Rechtefilterung sind dieselben Funktionen
 wie beim eigenen Layout (`ui_api_dashboard`); hier wird nur anstelle des Administrators der
 bearbeitete Benutzer als Principal eingesetzt. Damit begrenzen *seine* Rechte, welche Räume
@@ -16,16 +16,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.dashboard import MAX_SECTIONS, MAX_TITLE_LENGTH, DashboardTemplate
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.lookup import Permission
+from thermoctl.db.models.zone import Zone
 from thermoctl.domain import dashboard_templates as templates
 from thermoctl.domain.authz import principal_for_user
 from thermoctl.domain.dashboard_templates import TILE_FIELDS, TemplateError
 from thermoctl.domain.principal import Principal
+from thermoctl.web.navigation import visible_navigation
 from thermoctl.web.ui_api_access import _admin
 from thermoctl.web.ui_api_dashboard import (
     LayoutIn,
@@ -170,6 +174,75 @@ def reset_user_dashboard(
         user_id=principal.user_id,
     )
     return out
+
+
+# -- Vorschau ---------------------------------------------------------------------------
+
+
+class PreviewNavItem(BaseModel):
+    path: str
+    label: str
+    section: str
+
+
+class PreviewPermission(BaseModel):
+    code: str
+    description: str
+    zone_id: int | None
+    zone_name: str | None
+
+
+class PreviewOut(BaseModel):
+    user_id: int
+    username: str
+    display_name: str | None
+    is_active: bool
+    ui_profile: str
+    navigation: list[PreviewNavItem]
+    permissions: list[PreviewPermission]
+    dashboard: LayoutOut
+
+
+@router.get("/access/users/{user_id}/preview")
+def preview_user(
+    user_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PreviewOut:
+    """Wie die Oberfläche für diesen Benutzer aussieht -- nur Lesen.
+
+    Keine Identitätsübernahme: es entsteht keine Sitzung und nichts wird als diese Person
+    ausgeführt. Navigation, Rechte und Übersicht kommen aus denselben Funktionen wie in
+    ihrer eigenen Sitzung (`principal_for_user`, `visible_navigation`, `_read`).
+    """
+    _admin(principal, "user.manage")
+    target = _target(session, user_id)
+    user = session.get(User, user_id)
+    assert user is not None  # `_target` hat ihn eben geladen
+    descriptions = {p.code: p.description for p in session.scalars(select(Permission))}
+    zone_names = {z.id: z.display_name for z in session.scalars(select(Zone))}
+    grants = sorted(target.grants, key=lambda g: (g[0], g[1] or 0))
+    return PreviewOut(
+        user_id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        ui_profile=target.ui_profile.value,
+        navigation=[
+            PreviewNavItem(path=i.path, label=i.label, section=i.section)
+            for i in visible_navigation(target)
+        ],
+        permissions=[
+            PreviewPermission(
+                code=code,
+                description=descriptions.get(code, code),
+                zone_id=zone_id,
+                zone_name=zone_names.get(zone_id) if zone_id is not None else None,
+            )
+            for code, zone_id in grants
+        ],
+        dashboard=_read(session, target),
+    )
 
 
 # -- Vorlagen ---------------------------------------------------------------------------

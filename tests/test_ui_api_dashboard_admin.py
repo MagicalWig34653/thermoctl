@@ -73,7 +73,7 @@ def _login_as(client: TestClient, session: Session, username: str) -> None:
 # -- Zugang ------------------------------------------------------------------------------
 
 
-def test_every_endpoint_needs_login_right_and_the_plant_profile(
+def test_every_endpoint_needs_login_and_the_right(
     client: TestClient, session: Session
 ) -> None:
     target = user_with_permissions(session, "ziel", ZONE_READ).id
@@ -94,10 +94,11 @@ def test_every_endpoint_needs_login_right_and_the_plant_profile(
     for method, url, body in calls:
         response = client.request(method, url, json=body, headers=_headers(client))
         assert response.status_code == 403, (method, url)
-    _login(client, session, "mieter", ADMIN, WebUiProfile.TENANT)
+    # Das Profil sperrt nichts: nur ein Mieterprofil, aber mit Recht, kommt hinein.
+    _login(client, session, "mieter", [*ADMIN, ("zone.read", None)], WebUiProfile.TENANT)
     for method, url, body in calls:
         response = client.request(method, url, json=body, headers=_headers(client))
-        assert response.status_code == 403, (method, url)
+        assert response.status_code != 403, (method, url)
 
 
 def test_writes_need_the_csrf_header(client: TestClient, session: Session) -> None:

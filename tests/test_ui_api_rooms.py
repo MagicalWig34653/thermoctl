@@ -474,7 +474,7 @@ def test_unknown_and_invisible_zone_are_identical_404(client_als: Als, session: 
     assert hidden.json()["code"] == "not_found"
 
 
-def test_tenant_profile_reads_but_may_not_change_the_plant(
+def test_tenant_profile_with_the_rights_may_change_the_plant(
     tenant_client: Als, session: Session
 ) -> None:
     zone = _raum(session)
@@ -482,6 +482,24 @@ def test_tenant_profile_reads_but_may_not_change_the_plant(
     body = client.get(f"/ui-api/rooms/{zone.id}").json()
     assert body["actions"]["override"] is True
     assert body["actions"]["edit_setpoint_step"] is True
+    assert body["actions"]["edit_mode_setpoints"] is True
+    assert body["actions"]["set_operating_mode"] is True
+    mode = _mode(session, "tag")
+    response = _call(
+        client, "PUT", f"/ui-api/rooms/{zone.id}/modes/{mode.id}/setpoint",
+        {"temperature_c": "22.0"},
+    )
+    assert response.status_code == 200, response.text
+    response = _call(client, "PUT", f"/ui-api/rooms/{zone.id}/operating-mode", {"code": "auto"})
+    assert response.status_code == 200, response.text
+
+
+def test_tenant_profile_without_the_rights_may_not_change_the_plant(
+    tenant_client: Als, session: Session
+) -> None:
+    zone = _raum(session)
+    client = tenant_client([("zone.read", None), ("override.create", None)])
+    body = client.get(f"/ui-api/rooms/{zone.id}").json()
     assert body["actions"]["edit_mode_setpoints"] is False
     assert body["actions"]["set_operating_mode"] is False
     mode = _mode(session, "tag")
@@ -489,12 +507,12 @@ def test_tenant_profile_reads_but_may_not_change_the_plant(
         _call(client, "PUT", f"/ui-api/rooms/{zone.id}/modes/{mode.id}/setpoint",
               {"temperature_c": "22.0"}),
         403,
-        "wrong_profile",
+        "forbidden",
     )
     _fehler(
         _call(client, "PUT", f"/ui-api/rooms/{zone.id}/operating-mode", {"code": "auto"}),
         403,
-        "wrong_profile",
+        "forbidden",
     )
 
 

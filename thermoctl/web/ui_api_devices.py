@@ -7,7 +7,7 @@ Lesemodellen wie zuvor die HTML-Oberfläche (`build_mapping_map`, `plant_diagram
 Funktionen (`connect_ports`, `assign_device`, `set_thermostat_mode`, `swap_device`,
 `set_binding`, `configure_channel` ...). Hier steht keine Fachregel.
 
-Rechte werden in jedem Endpunkt neu geprüft, danach das Profil (Anlagensicht). Eine Zone,
+Rechte werden in jedem Endpunkt neu geprüft, das Gruppenprofil sperrt nichts. Eine Zone,
 die es nicht gibt, und eine, die der Principal nicht sehen darf, antworten mit demselben
 404; sichtbar, aber ohne `device.manage` ist ein 403. Ein Fehlschlag löst eine Ausnahme aus,
 damit die Transaktion zurückgerollt wird (`get_session`).
@@ -86,7 +86,6 @@ from thermoctl.web.ui_api_reports import _day, _invalid, _page, _timezone
 from thermoctl.web.ui_api_rooms import (
     RoomApiError,
     _iso,
-    _require_admin_ui,
     _RoomsRoute,
 )
 
@@ -138,7 +137,6 @@ def _zone_for(session: Session, principal: Principal, zone_id: int, permission: 
 
 def _manage_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     """Sichtbar mit `device.read` (sonst 404), dann `device.manage` je Zone (sonst 403)."""
-    _require_admin_ui(principal)
     zone = _zone_for(session, principal, zone_id, "device.read")
     if not has_permission(principal, "device.manage", zone.id):
         raise _forbidden()
@@ -215,7 +213,6 @@ def show_devices(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Alle Geräte mit Befunden, Auffälliges zuerst (wie die HTML-Seite; `device.read`)."""
-    _require_admin_ui(principal)
     _need(principal, "device.read")
     survey, defaults = build_device_survey(session)
     return {
@@ -256,7 +253,6 @@ def show_plant(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Welches Gerät tut was, wo -- `device.read`, Zonen nach `zone.read`."""
-    _require_admin_ui(principal)
     _need(principal, "device.read")
     diagram = plant_diagram(session, visible_zones(session, principal, "zone.read"))
     return {
@@ -420,7 +416,6 @@ def show_map(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Die Zuordnungskarte als Modell: Knoten, Anschlüsse, Linien, Gründe der Ablehnung."""
-    _require_admin_ui(principal)
     zones = _need_zones(session, principal, "device.read")
     editable = {z.id for z in zones if has_permission(principal, "device.manage", z.id)}
     graph = build_mapping_map(session, zones, editable)
@@ -437,7 +432,6 @@ def check_connection(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Ob zwei Anschlüsse zusammenpassen (`can_connect`), samt Begründung -- ohne zu speichern."""
-    _require_admin_ui(principal)
     zones = _need_zones(session, principal, "device.read")
     graph = build_mapping_map(session, zones, set())
     hidden = _hidden_device_ids(session, principal)
@@ -464,7 +458,6 @@ class DisconnectIn(BaseModel):
 
 
 def _need_manageable(session: Session, principal: Principal) -> None:
-    _require_admin_ui(principal)
     _need_zones(session, principal, "device.manage")
 
 
@@ -581,7 +574,6 @@ def show_data_flow(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Datenfluss aller Zonen (`zone.manage`, Zonenfilter wie die HTML-Seite)."""
-    _require_admin_ui(principal)
     zones = _need_zones(session, principal, "zone.manage")
     return {"zones": [_flow(session, zone) for zone in zones]}
 
@@ -592,7 +584,6 @@ def show_zone_data_flow(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
-    _require_admin_ui(principal)
     return _flow(session, _zone_for(session, principal, zone_id, "zone.manage"))
 
 
@@ -614,7 +605,6 @@ def show_zone_devices(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
-    _require_admin_ui(principal)
     zone = _zone_for(session, principal, zone_id, "device.read")
     return _zone_devices(session, principal, zone)
 
@@ -897,7 +887,6 @@ def show_controllers(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Bediengeräte mit Merkmalen, Kanälen und gesehenen Tasten (`device.read`, Zonenfilter)."""
-    _require_admin_ui(principal)
     _need_zones(session, principal, "device.read")
     return _controllers_json(session, principal)
 
@@ -927,7 +916,6 @@ def set_channel(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Kanal eines Bediengeräts konfigurieren; Zielzone braucht `device.manage`."""
-    _require_admin_ui(principal)
     _need_zones(session, principal, "device.read")
     device = _controller_device(session, principal, body.device_id)
     try:
@@ -964,7 +952,6 @@ def set_button(
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
     """Taste belegen: Aktion, Befehl (Raum, Richtung, Wert), Schrittweite."""
-    _require_admin_ui(principal)
     _need_zones(session, principal, "device.read")
     device = _controller_device(session, principal, body.device_id)
     _bind(session, principal, device, body)
@@ -1002,7 +989,6 @@ def show_device_commands(
     page: str = "1",
 ) -> Json:
     """Jeder gesendete oder zurückgehaltene Befehl an einen Aktor (`audit.read`)."""
-    _require_admin_ui(principal)
     _need(principal, "audit.read")
     from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
     if from_day is not None and to_day is not None and to_day < from_day:

@@ -4,15 +4,11 @@ Es gibt **eine** Weboberfläche (die Svelte-Anwendung unter ``/app``). Zwei Begr
 auseinandergehalten werden müssen, weil sie beim Lesen leicht zusammenfallen:
 
 * **UI-Profil** (hier) beantwortet *welche Hälfte der Verwaltungs- und Wohnungsfunktionen
-  für diesen Principal gilt*. Heute wirkt es an wenigen, einzeln benennbaren Stellen:
-  die Navigation des Servers (``web.navigation``: Mieterprofil sieht nur Zeitplan,
-  Heizzeit, Verlauf und Konto, Anlagenprofil die übrigen Einträge), die Verwaltungsaktionen
-  und -seiten, die ``_require_admin_ui``/``_need_admin_ui``/``_need_profile`` in
-  ``web/ui_api*.py`` voranstellen (u. a. Geräte, Betrieb und Einstellungen,
-  Benutzer- und Gruppenverwaltung, Urlaub, Modus-Sollwerte und Betriebsart eines Raums),
-  die Abwesenheit (nur Mieterprofil), einzelne Dashboard-Kacheln und -Ziele sowie
-  Außentemperatur und Anlagenbild in der Raumliste. Welche das genau sind, steht an den
-  Aufrufstellen, nicht hier.
+  für diesen Principal gilt*. Es sperrt **keinen Zugriff und verbirgt keine Navigation**
+  (Entscheidung des Projektinhabers 2026-10-18: allein das Recht entscheidet). Es wirkt nur
+  noch auf Darstellung: welche Startseiten-Hinweise die Raumliste liefert (Anlagenstatus mit
+  Außentemperatur, oder Wohnungshinweis), die Wortwahl der Verläufe und die Anzeige der
+  Abwesenheit auf der Wochenplanseite. Welche das genau sind, steht an den Aufrufstellen.
 * **Grants** (``domain.authz``) beantworten *was tatsächlich erlaubt ist* und entscheiden
   über alles Übrige -- zum Beispiel das Bearbeiten von Wochenplan-Zeiten, das allein am
   Recht ``schedule.manage`` je Raum hängt.
@@ -20,8 +16,8 @@ auseinandergehalten werden müssen, weil sie beim Lesen leicht zusammenfallen:
 Das Profil ist ausdrücklich **keine** Berechtigung und ersetzt keine Prüfung. Ein
 Admin-Profil ohne ``user.manage`` kommt weiterhin nicht an die Benutzerverwaltung,
 und ein Mieter-Profil mit ``zone.read`` auf einer Zone sieht weiterhin genau diese
-eine Zone. Die Profilprüfung steht in den Endpunkten *vor* der Rechteprüfung, nicht an
-ihrer Stelle.
+eine Zone. Seit 2026-10-18 gibt es keine Profilprüfung mehr in den Endpunkten; ein
+Mieter-Profil mit ``user.manage`` kommt an die Benutzerverwaltung.
 
 Das Profil hängt an der Gruppe, nicht am Benutzer: thermoctl ordnet Benutzer schon
 heute Gruppen zu, und die Gruppe ist auch der Ort, an dem die Rechte hängen. Ein

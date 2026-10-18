@@ -158,15 +158,19 @@ def test_management_needs_zone_manage_and_changes_nothing_without_it(
         ("DELETE", "/ui-api/rooms/{id}", None),
     ],
 )
-def test_management_belongs_to_the_plant_view(
+def test_management_follows_the_rights_not_the_profile(
     tenant_client: Als, session: Session, method: str, url: str, body: dict[str, Any] | None
 ) -> None:
     zone = _anlage(session)
-    response = _call(tenant_client(MANAGE), method, url.format(id=zone.id), body)
-    _fehler(response, 403, "wrong_profile")
+    # Ohne Recht: 403 `forbidden`, nichts ändert sich.
+    response = _call(tenant_client([("zone.read", None)]), method, url.format(id=zone.id), body)
+    _fehler(response, 403, "forbidden")
     session.refresh(zone)
     assert zone.display_name == "Bad"
     assert _count(session, Zone) == 1
+    # Mit Recht kommt auch ein Mieterprofil durch.
+    response = _call(tenant_client(MANAGE), method, url.format(id=zone.id), body)
+    assert response.status_code != 403, response.text
 
 
 @pytest.mark.parametrize(
@@ -697,11 +701,14 @@ def test_room_orders_list_only_visible_rooms_in_list_order(
     assert client_als([]).get("/ui-api/room-orders").json() == {"rooms": []}
 
 
-def test_room_orders_belong_to_the_plant_view(tenant_client: Als, session: Session) -> None:
+def test_room_orders_follow_zone_read_not_the_profile(
+    tenant_client: Als, session: Session
+) -> None:
     zone = _anlage(session)
-    _fehler(
-        tenant_client([("zone.read", zone.id)]).get("/ui-api/room-orders"), 403, "wrong_profile"
-    )
+    assert tenant_client([("zone.read", zone.id)]).get("/ui-api/room-orders").json() == {
+        "rooms": [{"id": zone.id, "sort_order": zone.sort_order}]
+    }
+    assert tenant_client([]).get("/ui-api/room-orders").json() == {"rooms": []}
 
 
 # -- Verdrahtung -------------------------------------------------------------------------------

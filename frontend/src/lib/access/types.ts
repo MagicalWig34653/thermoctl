@@ -1,4 +1,5 @@
 // Formen der Antworten von /ui-api/access/* und /ui-api/account/* (thermoctl/web/ui_api_access.py).
+import type { Layout } from '../dashboard/types';
 
 export interface Grant {
   code: string;
@@ -135,4 +136,23 @@ export interface PasskeyRow {
 export interface PasskeysData {
   available: boolean;
   passkeys: PasskeyRow[];
+}
+
+// GET /ui-api/access/users/{id}/preview (thermoctl/web/ui_api_dashboard_admin.py): wie die
+// Oberfläche für dieses Konto aussieht. Nur Lesen, keine Identitätsübernahme.
+export interface PreviewPermission {
+  code: string;
+  description: string;
+  zone_id: number | null;
+  zone_name: string | null;
+}
+export interface UserPreview {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  is_active: boolean;
+  ui_profile: string;
+  navigation: { path: string; label: string; section: string }[];
+  permissions: PreviewPermission[];
+  dashboard: Layout;
 }

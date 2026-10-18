@@ -119,26 +119,25 @@ def test_a_token_inherits_the_profile_of_its_owner(session: Session) -> None:
 # -- Die Navigation -----------------------------------------------------------
 
 
-def test_a_tenant_sees_no_plant_navigation(session: Session) -> None:
+def test_the_navigation_follows_the_rights_whatever_the_profile(session: Session) -> None:
+    """Das Profil filtert die Navigation nicht (Entscheidung des Projektinhabers)."""
+    rights = [("zone.read", None), ("user.manage", None), ("audit.read", None)]
+    tenant = user_with_permissions(session, "mieter-nav", rights, ui_profile=WebUiProfile.TENANT)
+    admin = user_with_permissions(session, "admin-nav", rights)
+    tenant_paths = {i.path for i in visible_navigation(principal_for_user(session, tenant))}
+    admin_paths = {i.path for i in visible_navigation(principal_for_user(session, admin))}
+    assert tenant_paths == admin_paths
+    for path in ("/users", "/audit", "/schedule", "/heating-time", "/account"):
+        assert path in tenant_paths, path
+
+
+def test_a_tenant_profile_without_the_rights_sees_no_plant_navigation(session: Session) -> None:
     tenant = user_with_permissions(
-        session,
-        "mieter-nav",
-        [("zone.read", None), ("user.manage", None), ("audit.read", None)],
-        ui_profile=WebUiProfile.TENANT,
+        session, "mieter-eng", [("zone.read", None)], ui_profile=WebUiProfile.TENANT
     )
-    # Ausdrücklich mit weitreichenden Rechten: die Einträge dürfen am Profil
-    # scheitern, nicht bloß an fehlenden Rechten.
     paths = {item.path for item in visible_navigation(principal_for_user(session, tenant))}
-    for plant_path in ("/users", "/audit", "/settings", "/control", "/devices", "/zones"):
+    for plant_path in ("/users", "/audit", "/devices", "/groups"):
         assert plant_path not in paths, plant_path
-    # Was übrig bleibt, gehört zur Wohnung -- und nur das.
-    assert paths == {"/schedule", "/heating-time", "/temperature-history", "/account"}
-
-
-def test_an_administrator_still_sees_the_plant_navigation(session: Session) -> None:
-    admin = user_with_permissions(session, "admin-nav", [("user.manage", None)])
-    paths = {item.path for item in visible_navigation(principal_for_user(session, admin))}
-    assert "/users" in paths
 
 
 # -- Der Wächter an den Routen ------------------------------------------------
@@ -196,243 +195,7 @@ def test_setting_the_profile_a_group_already_has_changes_nothing(
 
 
 
-# -- Der Wächtertest über alle HTML-Routen -------------------------------------
-
-#: Die HTML-Routen, die **absichtlich** keinen Profil-Wächter tragen, mit dem Grund.
-#: Jede andere Route muss einen haben. Der Test darunter vergleicht die Liste mit der
-#: gebauten Anwendung: wer eine Anlagenseite hinzufügt und den Wächter vergisst,
-#: scheitert hier -- und wer bewusst eine Ausnahme braucht, trägt sie samt Begründung
-#: ein, statt sie unbemerkt entstehen zu lassen.
-WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
-    ("GET", "/"): "verzweigt selbst nach dem Profil -- eine Adresse, zwei Ansichten",
-    ("GET", "/docs"): "die OpenAPI-Oberfläche der REST-Schnittstelle, kein HTML der UI",
-    # Der persönliche Bereich gehört beiden Oberflächen und braucht kein Recht.
-    ("GET", "/account"): "eigenes Konto",
-    ("GET", "/account/help"): "reiner Erklärtext, liest nichts aus der Datenbank",
-    # Svelte-Hülle: statisches HTML ohne Daten; Profil und Rechte prüft die Schnittstelle
-    # (/ui-api), die die Oberfläche aufruft.
-    ("GET", "/app"): "statische Svelte-Hülle ohne Anlagendaten",
-    ("GET", "/app/{path:path}"): "statische Svelte-Hülle ohne Anlagendaten",
-    ("GET", "/app/manifest.webmanifest"): "Manifest mit festen Texten, keine Anlagendaten",
-    ("GET", "/ui-api/bootstrap"): "meldet das Profil statt zu verzweigen",
-    ("POST", "/ui-api/csrf-probe"): "ändert nichts; Wirkungsprobe der CSRF-Prüfung",
-    ("POST", "/ui-api/login"): "Anmeldung selbst; Rechte kommen erst danach",
-    ("POST", "/ui-api/logout"): "eigene Sitzung",
-    ("GET", "/ui-api/login-options"): "vor der Anmeldung; nur der Passkey-Schalter",
-    ("GET", "/ui-api/setup"): "vor der Anmeldung; nur offen oder 404, danach gesperrt",
-    ("POST", "/ui-api/setup"): "vor der Anmeldung; Setup-Token, danach gesperrt",
-    ("GET", "/ui-api/rooms"): "Lesemodell, zone.read je Zone",
-    ("GET", "/ui-api/rooms/{zone_id}"): "wie die Liste; fremde Zone ist ein 404",
-    ("POST", "/ui-api/rooms/{zone_id}/override"): "Alltagsaktion beider Profile",
-    ("POST", "/ui-api/rooms/{zone_id}/override/cancel"): "Alltagsaktion beider Profile",
-    ("POST", "/ui-api/rooms/{zone_id}/setpoint-step"): "Alltagsaktion beider Profile",
-    ("POST", "/ui-api/rooms/{zone_id}/jump-next"): "Alltagsaktion beider Profile",
-    ("PUT", "/ui-api/rooms/{zone_id}/modes/{mode_id}/setpoint"): "Profilprüfung im Endpunkt",
-    ("PUT", "/ui-api/rooms/{zone_id}/operating-mode"): "Profilprüfung im Endpunkt",
-    ("GET", "/ui-api/history"): "Lesemodell, zone.read je Zone",
-    ("GET", "/ui-api/history.csv"): "wie /ui-api/history, als CSV",
-    ("GET", "/ui-api/heating-time"): "Lesemodell, zone.read je Zone",
-    ("GET", "/ui-api/dashboard/templates"): "Profil und Recht im Endpunkt",
-    ("POST", "/ui-api/dashboard/templates"): "Profil und Recht im Endpunkt",
-    ("GET", "/ui-api/dashboard/templates/{template_id}"): "Profil und Recht im Endpunkt",
-    ("PUT", "/ui-api/dashboard/templates/{template_id}"): "Profil und Recht im Endpunkt",
-    ("DELETE", "/ui-api/dashboard/templates/{template_id}"): "Profil und Recht im Endpunkt",
-    ("POST", "/ui-api/dashboard/templates/from-user/{user_id}"): "Profil und Recht im Endpunkt",
-    ("GET", "/ui-api/dashboard/users/{user_id}"): "Profil und Recht im Endpunkt",
-    ("PUT", "/ui-api/dashboard/users/{user_id}"): "Profil und Recht im Endpunkt",
-    ("DELETE", "/ui-api/dashboard/users/{user_id}"): "Profil und Recht im Endpunkt",
-    ("GET", "/ui-api/room-orders"): "Profilprüfung im Endpunkt (Anlagensicht), zone.read je Zone",
-    ("GET", "/ui-api/relay-wear"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
-    ("GET", "/ui-api/audit"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
-    ("GET", "/ui-api/audit.csv"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
-    ("GET", "/ui-api/changes"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
-    ("GET", "/ui-api/changes/{change_id}"): "Profilprüfung im Endpunkt, audit.read",
-    ("POST", "/ui-api/changes/{change_id}/revert"): "Profilprüfung im Endpunkt, audit.read",
-    # Zeitplan, Urlaub, Abwesenheit, Modi (`ui_api_schedule`): die Profilprüfung steht im
-    # Endpunkt (`_need_profile`), nicht als Router-Wächter -- Lesen und Tag/Plan kopieren
-    # gehören beiden Oberflächen, Editor/Urlaub/Modi der Anlagensicht, Abwesenheit der Wohnung.
-    ("GET", "/ui-api/schedule/{zone_id}"): "zone.read je Zone, beide Profile",
-    ("GET", "/ui-api/schedule/{zone_id}/preview"): "zone.read je Zone, beide Profile",
-    ("POST", "/ui-api/schedule/{zone_id}/paint"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("POST", "/ui-api/schedule/{zone_id}/points"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("PUT", "/ui-api/schedule/{zone_id}/points/{point_id}"):
-        "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("PUT", "/ui-api/schedule/{zone_id}/points/{point_id}/mode"):
-        "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("DELETE", "/ui-api/schedule/{zone_id}/points/{point_id}"):
-        "Profilprüfung im Endpunkt (Anlagensicht)",
-    **{
-        ("POST", f"/ui-api/schedule/{{zone_id}}/block/{name}"):
-            "Profilprüfung im Endpunkt (Anlagensicht)"
-        for name in ("move", "duplicate", "resize", "delete")
-    },
-    ("POST", "/ui-api/schedule/{zone_id}/copy-day"):
-        "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
-    ("POST", "/ui-api/schedule/{zone_id}/day-times"):
-        "wie die Mieteransicht (zwei Zeiten je Tag): beide Profile, schedule.manage je Zone",
-    ("POST", "/ui-api/schedule/{zone_id}/copy-week"):
-        "wie die Mieter-Übernahme: beide Profile, Ziele mit schedule.manage",
-    ("POST", "/ui-api/schedule/{zone_id}/undo"):
-        "wie die Mieteransicht: beide Profile, schedule.manage je Zone",
-    ("GET", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("POST", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("DELETE", "/ui-api/vacation"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("GET", "/ui-api/absence"): "Profilprüfung im Endpunkt (Wohnungssicht)",
-    ("POST", "/ui-api/absence"): "Profilprüfung im Endpunkt (Wohnungssicht)",
-    ("POST", "/ui-api/absence/end"): "Profilprüfung im Endpunkt (Wohnungssicht)",
-    ("GET", "/ui-api/modes"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("POST", "/ui-api/modes"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("PUT", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("DELETE", "/ui-api/modes/{mode_id}"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("GET", "/ui-api/devices/map/layout"):
-        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
-    ("PUT", "/ui-api/devices/map/layout"):
-        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
-    ("DELETE", "/ui-api/devices/map/layout"):
-        "Profilprüfung im Endpunkt (Anlagensicht), device.read",
-    ("PUT", "/ui-api/devices/map/layout/default"):
-        "Profilprüfung im Endpunkt (Anlagensicht), device.manage anlagenweit",
-    ("DELETE", "/ui-api/devices/map/layout/default"):
-        "Profilprüfung im Endpunkt (Anlagensicht), device.manage anlagenweit",
-    ("GET", "/ui-api/dashboard"): "eigenes Layout; Kacheln werden je Abruf gegen Rechte gefiltert",
-    ("PUT", "/ui-api/dashboard"): "eigenes Layout; Rechte- und Profilprüfung je Kachel im Endpunkt",
-    ("DELETE", "/ui-api/dashboard"): "eigenes Layout",
-    # Geräte (`ui_api_devices`): Anlagensicht; die Profilprüfung (`_require_admin_ui`) steht
-    # als erste Anweisung im Endpunkt, danach die Rechte.
-    **{
-        (method, path): "Profilprüfung im Endpunkt (Anlagensicht), device.read bzw. device.manage"
-        for method, path in (
-            ("GET", "/ui-api/devices"),
-            ("GET", "/ui-api/plant"),
-            ("GET", "/ui-api/devices/map"),
-            ("GET", "/ui-api/devices/map/check"),
-            ("POST", "/ui-api/devices/map/connect"),
-            ("POST", "/ui-api/devices/map/disconnect"),
-            ("GET", "/ui-api/zones/{zone_id}/devices"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/assign"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/detach"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/regulation"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/source"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/swap"),
-            ("POST", "/ui-api/zones/{zone_id}/devices/button"),
-            ("GET", "/ui-api/controllers"),
-            ("POST", "/ui-api/controllers/channel"),
-            ("POST", "/ui-api/controllers/button"),
-        )
-    },
-    ("GET", "/ui-api/zones/data-flow"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("GET", "/ui-api/zones/{zone_id}/data-flow"):
-        "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("GET", "/ui-api/device-commands"): "Profilprüfung im Endpunkt (Anlagensicht), audit.read",
-    # Raumtechnik, Betrieb, Einstellungen, Schnittstellen (`ui_api_operations`): die
-    # Profilprüfung (Anlagensicht) steht in jedem Endpunkt (`_need`, `_need_zone_manage`).
-    ("GET", "/ui-api/rooms/{zone_id}/parameters"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("PUT", "/ui-api/rooms/{zone_id}/parameters"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("GET", "/ui-api/operation"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("PUT", "/ui-api/operation/armed"): "Profilprüfung im Endpunkt (Anlagensicht), control.arm",
-    ("GET", "/ui-api/settings"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    **{
-        ("PUT", f"/ui-api/settings/{name}"): "Profilprüfung im Endpunkt (Anlagensicht)"
-        for name in (
-            "defaults",
-            "solar-location",
-            "window-alarm",
-            "window-temp-drop",
-            "sensor-failure",
-            "outdoor-source",
-            "notifications",
-        )
-    },
-    ("POST", "/ui-api/settings/notifications/test"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    ("GET", "/ui-api/interfaces"): "Profilprüfung im Endpunkt (Anlagensicht)",
-    # Räume anlegen/bearbeiten/löschen, Probleme melden, Glossar (`ui_api_zones`): Anlagensicht
-    # prüft der Endpunkt selbst (`wrong_profile`); Melden und Glossar gehören beiden Oberflächen.
-    ("GET", "/ui-api/room-form"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("POST", "/ui-api/rooms"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("PUT", "/ui-api/rooms/{zone_id}"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("GET", "/ui-api/rooms/{zone_id}/delete-impact"):
-        "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("DELETE", "/ui-api/rooms/{zone_id}"): "Profilprüfung im Endpunkt (Anlagensicht), zone.manage",
-    ("GET", "/ui-api/report-options"): "beide Oberflächen, report.create je Zone",
-    ("POST", "/ui-api/rooms/{zone_id}/report"): "beide Oberflächen, report.create je Zone",
-    ("GET", "/ui-api/glossary"): "reiner Erklärtext für beide Oberflächen, nur Anmeldung",
-    ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
-    # OAuth-Zustimmung stellt einen Zugang ausschließlich für den angemeldeten
-    # Nutzer aus. Beide Profile dürfen das mit dem Recht token.self; der Endpunkt
-    # prüft dieses Recht unabhängig vom Profil.
-    ("GET", "/oauth/consent"): "eigene OAuth-Zustimmung mit token.self",
-    ("POST", "/oauth/consent"): "eigene OAuth-Zustimmung mit token.self",
-    # Anmeldung, Abmeldung und Einrichtung stehen vor jedem Profil.
-    ("GET", "/login"): "vor der Anmeldung gibt es kein Profil",
-    ("GET", "/setup"): "Erstinbetriebnahme, es gibt noch keine Gruppe",
-    ("GET", "/passkeys"): "eigenes Konto",
-    ("POST", "/passkey/authentication/options"): "vor der Anmeldung",
-    ("POST", "/passkey/authentication/verify"): "vor der Anmeldung",
-    ("POST", "/passkey/registration/options"): "eigenes Konto",
-    ("POST", "/passkey/registration/verify"): "eigenes Konto",
-    # Der Kiosk ist ein eigener Zugangsweg mit eigenem Principal und eigener Hülle.
-    ("GET", "/kiosk"): "eigener Zugangsweg, eigener Principal",
-    ("GET", "/kiosk/{plaintext}"): "eigener Zugangsweg, eigener Principal",
-    # Die Kioskansicht der Svelte-Oberfläche: eigener Router, eigener Principal (Kiosk-Cookie),
-    # eigene CSRF-Prüfung; Rechte und Umfang prüft jeder Endpunkt über den Token-Principal.
-    ("GET", "/kiosk-api/state"): "eigener Zugangsweg, eigener Principal",
-    ("POST", "/kiosk-api/rooms/{zone_id}/setpoint-step"): "eigener Zugangsweg, eigener Principal",
-    ("POST", "/kiosk-api/rooms/{zone_id}/boost"): "eigener Zugangsweg, eigener Principal",
-    ("POST", "/kiosk-api/rooms/{zone_id}/override/cancel"): "eigener Zugangsweg, eigener Principal",
-    # Die Alltagsaktionen an einer Zone. Beide Oberflächen brauchen sie, und sie
-    # sind vollständig über zonenbezogene Rechte abgesichert; ein Profil-Wächter
-    # davor würde nichts absichern, was die Rechteprüfung nicht schon absichert.
-    # Personen, Zugänge (`ui_api_access`): Profilprüfung vor der Rechteprüfung im Endpunkt.
-    ("GET", "/ui-api/access/users"):
-        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
-    ("POST", "/ui-api/access/users"):
-        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
-    ("PUT", "/ui-api/access/users/{user_id}/active"):
-        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
-    ("PUT", "/ui-api/access/users/{user_id}/group"):
-        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
-    ("PUT", "/ui-api/access/users/{user_id}/password"):
-        "Profilprüfung im Endpunkt (Anlagensicht), user.manage",
-    ("GET", "/ui-api/access/groups"):
-        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
-    ("POST", "/ui-api/access/groups"):
-        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
-    ("PUT", "/ui-api/access/groups/{group_id}/ui-profile"):
-        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
-    ("DELETE", "/ui-api/access/groups/{group_id}"):
-        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
-    ("PUT", "/ui-api/access/groups/{group_id}/permissions"):
-        "Profilprüfung im Endpunkt (Anlagensicht), group.manage",
-    ("GET", "/ui-api/access/tokens"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
-    ("POST", "/ui-api/access/tokens"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
-    ("PUT", "/ui-api/access/tokens/{token_id}/permissions"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
-    ("POST", "/ui-api/access/tokens/{token_id}/revoke"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.self",
-    ("GET", "/ui-api/access/kiosk-tokens"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
-    ("POST", "/ui-api/access/kiosk-tokens"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
-    ("POST", "/ui-api/access/kiosk-tokens/{token_id}/revoke"):
-        "Profilprüfung im Endpunkt (Anlagensicht), token.manage",
-    # Konto: gehört beiden Oberflächen und braucht kein Recht, nur die eigene Sitzung.
-    ("GET", "/ui-api/account"):
-        "eigenes Konto, beide Profile",
-    ("PUT", "/ui-api/account/password"):
-        "eigenes Konto, beide Profile",
-    ("GET", "/ui-api/account/sessions"):
-        "eigenes Konto, beide Profile",
-    ("POST", "/ui-api/account/sessions/revoke-others"):
-        "eigenes Konto, beide Profile",
-    ("POST", "/ui-api/account/sessions/{session_id}/revoke"):
-        "eigenes Konto, beide Profile",
-    ("GET", "/ui-api/account/passkeys"):
-        "eigenes Konto, beide Profile",
-    ("DELETE", "/ui-api/account/passkeys/{passkey_id}"):
-        "eigenes Konto, beide Profile",
-}
+# -- Wächtertest über alle Routen ----------------------------------------------------
 
 
 def _dependency_names(dependant: object) -> list[str]:
@@ -443,52 +206,26 @@ def _dependency_names(dependant: object) -> list[str]:
     return found
 
 
-def test_every_admin_page_carries_the_profile_guard() -> None:
-    """Der eigentliche Riegel, über **alle** HTML-Routen auf einmal.
+def test_no_ui_api_endpoint_decides_by_the_profile() -> None:
+    """Der Riegel gegen den Rückfall: Zugriff entscheidet allein das Recht.
 
-    Eine ausgeblendete Verknüpfung ist keine Absicherung; der Wächter am Router ist
-    es. Ohne diesen Test fällt eine neu hinzugefügte Anlagenseite ohne Wächter
-    nirgends auf -- sie sieht in jedem anderen Test genauso aus wie eine mit.
+    Das Gruppenprofil bestimmt nur Darstellung (Startseite, Wortwahl). Wer wieder eine
+    Profilprüfung (`wrong_profile`) in einen Endpunkt setzt, scheitert hier.
     """
-    from tests.helpers import alle_api_routen
-    from thermoctl.app import create_app
+    import pathlib
 
-    unguarded: list[str] = []
-    for route in alle_api_routen(create_app()):
-        if route.include_in_schema:
-            continue  # REST -- dort gibt es bewusst kein UI-Profil.
-        if route.endpoint.__module__ == "thermoctl.web.legacy_redirects":
-            # Feste 303-Antworten auf die Svelte-Oberfläche: kein Inhalt, keine Daten, keine
-            # Entscheidung; Profil und Rechte prüft jede Anfrage der Oberfläche an `/ui-api`.
-            continue
-        for method in route.methods:
-            if method in {"HEAD", "OPTIONS"}:
-                continue
-            if any("guard" in name for name in _dependency_names(route.dependant)):
-                continue
-            if (method, route.path) in WITHOUT_PROFILE_GUARD:
-                continue
-            unguarded.append(f"{method} {route.path}")
-    assert not unguarded, (
-        "HTML-Routen ohne Profil-Wächter und ohne begründete Ausnahme:\n"
-        + "\n".join(sorted(unguarded))
-    )
+    import thermoctl.web as web_package
 
-
-def test_the_list_of_exceptions_has_no_leftovers() -> None:
-    """Die Gegenprobe: eine Ausnahme für eine Route, die es nicht mehr gibt, wäre
-    eine Erlaubnis, an die sich niemand mehr erinnert."""
-    from tests.helpers import alle_api_routen
-    from thermoctl.app import create_app
-
-    existing = {
-        (method, route.path)
-        for route in alle_api_routen(create_app())
-        for method in route.methods
-    }
-    assert set(WITHOUT_PROFILE_GUARD) <= existing, sorted(
-        set(WITHOUT_PROFILE_GUARD) - existing
-    )
+    root = pathlib.Path(web_package.__file__).parent
+    offenders = [
+        path.name
+        for path in sorted(root.glob("*.py"))
+        if any(
+            marker in path.read_text(encoding="utf-8")
+            for marker in ("wrong_profile", "_require_admin_ui", "_need_admin_ui", "_need_profile")
+        )
+    ]
+    assert not offenders, offenders
 
 
 def test_every_mutating_html_route_still_carries_the_csrf_protection() -> None:

@@ -54,7 +54,6 @@ from thermoctl.db.models.dashboard import (
 )
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.ui_api_rooms import RoomApiError, _RoomsRoute
 
 router = APIRouter(
@@ -66,11 +65,6 @@ router = APIRouter(
 
 #: Kachelarten, die eine Zone zeigen und ohne sie sinnlos sind.
 ZONE_KINDS = frozenset({"room", "chart", "schedule", "heating", "control"})
-#: Kachelarten und Ziele, die nur zur Anlagensicht gehören (wie die Seiten, auf die sie
-#: zeigen): ein Mieterprofil bekommt sie auch bei vorhandenem Recht nicht.
-ADMIN_KINDS = frozenset({"devices", "system"})
-ADMIN_DESTINATIONS = frozenset({"devices", "mapping", "solar", "operation"})
-
 #: Welches Recht ein Kachelziel braucht (`None`: keines, `"zone.read"`: irgendeine Zone).
 DESTINATION_PERMISSION: dict[str, str | None] = {
     "schedule": "zone.read",
@@ -136,10 +130,6 @@ class _Access:
     zone_order: tuple[int, ...]  # Reihenfolge der Anlage (`visible_zones`)
     zone_ids: frozenset[int]
 
-    @property
-    def admin_ui(self) -> bool:
-        return self.principal.ui_profile is WebUiProfile.ADMIN
-
     def permitted(self, code: str | None) -> bool:
         if code is None:
             return True
@@ -150,8 +140,6 @@ class _Access:
     def tile_allowed(self, tile: TileModel) -> bool:
         """Darf diese Kachel angezeigt werden? Die einzige Stelle für diese Frage."""
         kind = tile.kind
-        if kind in ADMIN_KINDS and not self.admin_ui:
-            return False
         if kind in ZONE_KINDS:
             return tile.zone_id in self.zone_ids
         if kind in {"metric", "agenda"}:
@@ -163,8 +151,6 @@ class _Access:
         if kind == "shortcut":
             destination = tile.destination
             if destination is None:
-                return False
-            if destination in ADMIN_DESTINATIONS and not self.admin_ui:
                 return False
             return self.permitted(DESTINATION_PERMISSION[destination])
         return True  # "note": gehört dem Benutzer, braucht kein Recht
