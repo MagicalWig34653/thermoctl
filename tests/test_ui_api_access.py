@@ -1116,3 +1116,14 @@ def test_sole_holder_exception_cannot_be_created_by_deactivating_the_other(clien
     assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False}).status_code == 200
     wanted = [{"code": "zone.read", "zone_id": None}, {"code": "audit.read", "zone_id": None}]
     _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted}), 403, "beyond_own_rights")
+
+
+def test_group_manager_status_of_another_account_is_protected_too(client_als: Als, session: Session) -> None:
+    """Wer nur user.manage hat, kann den letzten group.manage-Inhaber weder sperren noch umgruppieren."""
+    client = client_als([("user.manage", None)])
+    holder = user_with_permissions(session, "gruppenverwalter", [("group.manage", None)])
+    other = AccessGroup(name="ohne-rechte-2")
+    session.add(other)
+    session.flush()
+    _err(_call(client, "PUT", f"/ui-api/access/users/{holder.id}/active", {"active": False}), 409, "last_administrator")
+    _err(_call(client, "PUT", f"/ui-api/access/users/{holder.id}/group", {"group_id": other.id}), 409, "last_administrator")

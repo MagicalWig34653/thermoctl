@@ -915,6 +915,19 @@ def test_channel_writes_and_validates(client_als: Als, world: World, session: Se
     assert "Wert 21.50" in events[1].summary or "Wert 21.5" in events[1].summary
 
 
+def test_channel_text_names_a_fixed_text_value(session: Session) -> None:
+    from thermoctl.domain.controller_channels import _channel_text
+
+    kind = ChannelKind(code="fixed", label="Fester Wert")
+    session.add(kind)
+    session.flush()
+    channel = ControllerChannel(
+        device_id=create_device(session, "text-regler").id, property_name="modus",
+        direction="write", kind_id=kind.id, fixed_text="Auto",
+    )
+    assert _channel_text(session, channel).endswith("Wert Auto")
+
+
 def test_channel_cannot_target_a_zone_or_device_beyond_the_principals_rights(client_als: Als, world: World, session: Session) -> None:
     base = {"device_id": world.ctrl.id, "property_name": "external_temperature", "direction": "write"}
     url = "/ui-api/controllers/channel"

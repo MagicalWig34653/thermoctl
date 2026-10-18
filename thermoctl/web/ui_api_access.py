@@ -706,10 +706,7 @@ def set_ui_profile(
     _admin(principal, "group.manage")
     group = _group_or_404(session, group_id)
     profile = _profile(body.ui_profile)
-    try:
-        set_group_ui_profile(session, group, profile, actor_id=principal.user_id)
-    except AdministrationError as exc:
-        raise RoomApiError(409, str(exc), "last_administrator") from None
+    set_group_ui_profile(session, group, profile, actor_id=principal.user_id)
     return _one_group(session, group)
 
 

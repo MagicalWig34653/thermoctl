@@ -65,11 +65,6 @@ def _user_with_permission(
     )
 
 
-def _last_administrator(session: Session, user: User) -> bool:
-    administrator = _user_with_permission(session, ADMIN_PERMISSION)
-    return [b.id for b in administrator] == [user.id]
-
-
 def is_sole_holder(session: Session, user_id: int, code: str = ADMIN_PERMISSION) -> bool:
     """Ob dieser Benutzer der einzige Inhaber des anlagenweiten Rechts ist.
 
