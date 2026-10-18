@@ -316,10 +316,12 @@ def test_scoped_actions_and_sources_reveal_nothing_about_invisible_events(
     session.flush()
     everything = audit_query.scoped_actions(session, None)
     assert "user.test" in everything and "kiosk.geheim" in everything
-    assert audit_query.scoped_actions(session, [welt.own.id]) == [
+    # Reihenfolge ist Sache der Datenbankkollation (SQLite und MariaDB sortieren `.`/`_`
+    # verschieden); es zählt, welche Aktionen vorkommen.
+    assert set(audit_query.scoped_actions(session, [welt.own.id])) == {
         "schedule.test", "schedule_point.test", "zone.test", "zone_device.test",
         "zone_settings.test",
-    ]
+    }
     assert audit_query.scoped_source_codes(session, None) is None
     assert audit_query.scoped_source_codes(session, [welt.own.id]) == {"web"}
 
