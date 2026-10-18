@@ -370,11 +370,11 @@ def test_last_administrator_cannot_be_locked_out_by_any_path(client_als: Als, se
     session.add(other)
     session.flush()
     before = _actions(session)
-    # 1. sich selbst sperren
-    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/active", {"active": False}), 409, "last_administrator")
-    # 2. sich in eine Gruppe ohne user.manage verschieben oder gruppenlos machen
-    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/group", {"group_id": other.id}), 409, "last_administrator")
-    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/group", {"group_id": None}), 409, "last_administrator")
+    # 1. sich selbst sperren: am eigenen Konto verwaltet man nichts (own_account)
+    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/active", {"active": False}), 409, "own_account")
+    # 2. sich umgruppieren oder gruppenlos machen: ebenso
+    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/group", {"group_id": other.id}), 409, "own_account")
+    _err(_call(client, "PUT", f"/ui-api/access/users/{me_id}/group", {"group_id": None}), 409, "own_account")
     # 3. die Gruppe löschen
     _err(_call(client, "DELETE", f"/ui-api/access/groups/{group.id}"), 409, "last_administrator")
     # 4. user.manage aus der Gruppe nehmen
@@ -1000,3 +1000,33 @@ def test_password_change_throttles_wrong_attempts_and_success_resets(
     ok = _call(client, "PUT", url, {"current_password": "das-alte-passwort-1", "new_password": LONG_PASSWORD})
     assert ok.status_code == 200
     assert delays == [1, 2, 4, 5] and FEHLVERSUCHE[key] == 0
+
+
+def test_nobody_manages_their_own_account(client_als: Als, session: Session) -> None:
+    """Deaktivieren und Umgruppieren am eigenen Konto sind gesperrt, bei anderen nicht."""
+    client = client_als(ADMIN)
+    me_id = _me(client)
+    other = user_with_permissions(session, "kollege", [("zone.read", None)])
+    ok = _call(client, "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False})
+    assert ok.status_code == 200
+    # Aktivieren des eigenen Kontos ist kein Verwalten im Sinn der Sperre (nichts zu sperren).
+    assert _call(client, "PUT", f"/ui-api/access/users/{me_id}/active", {"active": True}).status_code == 200
+
+
+def test_group_permissions_of_own_group_cannot_grow_unless_sole_manager(
+    client_als: Als, session: Session
+) -> None:
+    client = client_als(ADMIN)
+    me_id = _me(client)
+    group = session.scalar(select(AccessGroup).join(UserAccessGroup).where(UserAccessGroup.user_id == me_id))
+    assert group is not None
+    current = [{"code": c, "zone_id": None} for c, _z in ADMIN]
+    wanted = [*current, {"code": "audit.read", "zone_id": None}]
+    # Einzige Person mit group.manage: Erweitern bleibt möglich (Ein-Personen-Anlage).
+    assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted}).status_code == 200
+    # Eine zweite Person mit group.manage: jetzt gilt die Sperre fuer das Hinzufuegen ...
+    user_with_permissions(session, "zweiter-verwalter", [("group.manage", None)])
+    wanted2 = [*wanted, {"code": "vacation.manage", "zone_id": None}]
+    _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted2}), 409, "own_group")
+    # ... Entziehen bleibt erlaubt.
+    assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": current}).status_code == 200

@@ -109,6 +109,19 @@ def _owner(session: Session, principal: Principal) -> User:
     return owner
 
 
+def _not_self(principal: Principal, user: User, was: str) -> None:
+    """Wer Benutzer verwaltet, verwaltet andere: am eigenen Konto ändert man das hier nicht.
+
+    Sonst ließe sich über die Verwaltung das eigene Konto umgruppieren (und so Rechte
+    verschaffen) oder sperren. Das eigene Passwort ändert `PUT /account/password`.
+    """
+    if user.id == principal.user_id:
+        raise RoomApiError(
+            409, f"Das eigene Konto lässt sich hier nicht {was}; das macht eine andere Person.",
+            "own_account",
+        )
+
+
 def _running_session_id(request: Request, session: Session) -> int | None:
     cookie = request.cookies.get(COOKIE_NAME)
     running = resolve_session(session, cookie) if cookie else None
@@ -442,6 +455,8 @@ def set_active(
 ) -> UserOut:
     _admin(principal, "user.manage")
     user = _user_or_404(session, user_id)
+    if not body.active:
+        _not_self(principal, user, "deaktivieren")
     try:
         set_user_active(session, user, body.active, actor_id=principal.user_id)
     except AdministrationError as exc:
@@ -458,6 +473,7 @@ def set_group_of_user(
 ) -> UserOut:
     _admin(principal, "user.manage")
     user = _user_or_404(session, user_id)
+    _not_self(principal, user, "umgruppieren")
     _known_group(session, body.group_id)
     try:
         set_user_group(session, user, body.group_id, actor_id=principal.user_id)
@@ -648,6 +664,56 @@ def remove_group(
     return {"ok": True}
 
 
+def _no_self_grant(
+    session: Session, principal: Principal, group: AccessGroup,
+    wanted: set[tuple[str, int | None]],
+) -> None:
+    """Rechte der eigenen Gruppe dürfen nicht über die Verwaltung wachsen.
+
+    Entziehen bleibt erlaubt. Ausnahme: Ist die handelnde Person die einzige aktive
+    mit `group.manage`, schützt die Regel niemanden -- und ohne die Ausnahme ließe sich
+    ein später hinzugekommenes Recht in einer Ein-Personen-Anlage nie vergeben.
+    """
+    mine = set(
+        session.scalars(
+            select(UserAccessGroup.access_group_id).where(
+                UserAccessGroup.user_id == principal.user_id
+            )
+        )
+    )
+    if group.id not in mine:
+        return
+    present = {
+        (code, zone_id)
+        for code, zone_id in session.execute(
+            select(Permission.code, GroupPermission.zone_id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .where(GroupPermission.access_group_id == group.id)
+        )
+    }
+    if not wanted - present:
+        return
+    holders = session.scalar(
+        select(func.count(func.distinct(User.id)))
+        .join(UserAccessGroup, UserAccessGroup.user_id == User.id)
+        .join(GroupPermission, GroupPermission.access_group_id == UserAccessGroup.access_group_id)
+        .join(Permission, Permission.id == GroupPermission.permission_id)
+        .where(
+            Permission.code == "group.manage",
+            GroupPermission.zone_id.is_(None),
+            User.is_active.is_(True),
+        )
+    )
+    if holders and holders <= 1:
+        return
+    raise RoomApiError(
+        409,
+        "Der eigenen Gruppe lassen sich hier keine Rechte hinzufügen; "
+        "das macht eine andere Person.",
+        "own_group",
+    )
+
+
 @router.put("/access/groups/{group_id}/permissions")
 def set_permissions(
     group_id: int,
@@ -672,6 +738,7 @@ def set_permissions(
                 "permissions", "Dieses Recht lässt sich so nicht einschränken.", "invalid_scope"
             )
         wanted.add((grant.code, grant.zone_id))
+    _no_self_grant(session, principal, group, wanted)
     try:
         set_group_permissions(session, group, wanted, actor_id=principal.user_id)
     except AdministrationError as exc:

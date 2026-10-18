@@ -37,6 +37,9 @@ class AdministrationError(Exception):
 
 
 ADMIN_PERMISSION = "user.manage"
+GROUP_PERMISSION = "group.manage"
+# Rechte, deren letzter Inhaber nicht verschwinden darf (sonst ließe sich nichts mehr verwalten).
+GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
 
 
 def _user_with_permission(session: Session, code: str) -> list[User]:
@@ -63,6 +66,14 @@ def _user_with_permission(session: Session, code: str) -> list[User]:
 def _last_administrator(session: Session, user: User) -> bool:
     administrator = _user_with_permission(session, ADMIN_PERMISSION)
     return [b.id for b in administrator] == [user.id]
+
+
+def _last_holder_of(session: Session, user: User) -> str | None:
+    """Das geschützte Recht, dessen letzter aktiver Inhaber dieser Benutzer ist (sonst None)."""
+    for code in GUARDED_PERMISSIONS:
+        if [b.id for b in _user_with_permission(session, code)] == [user.id]:
+            return code
+    return None
 
 
 def create_user(
@@ -104,11 +115,12 @@ def set_user_active(
     A deleted user would tear their audit entries down with them, or leave them
     without a name. Deactivated, it stays traceable who did what and when.
     """
-    if not active and _last_administrator(session, user):
+    held = _last_holder_of(session, user) if not active else None
+    if held is not None:
         raise AdministrationError(
             f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
-            f"{ADMIN_PERMISSION}. Wird er deaktiviert, kann niemand mehr Benutzer "
-            "verwalten — der Zugang wäre nur noch über die Datenbank zu retten."
+            f"{held}. Wird er deaktiviert, kann niemand mehr {_what_it_manages(held)} "
+            "— der Zugang wäre nur noch über die Datenbank zu retten."
         )
     user.is_active = active
     session.flush()
@@ -121,8 +133,14 @@ def set_user_active(
     )
 
 
-def _grants_admin_permission(session: Session, group_id: int | None) -> bool:
-    """Whether this group carries the plant-wide `user.manage` permission."""
+def _what_it_manages(code: str) -> str:
+    return "Benutzer verwalten" if code == ADMIN_PERMISSION else "Gruppen und Rechte verwalten"
+
+
+def _grants_admin_permission(
+    session: Session, group_id: int | None, code: str = ADMIN_PERMISSION
+) -> bool:
+    """Whether this group carries this plant-wide permission."""
     if group_id is None:
         return False
     return (
@@ -131,7 +149,7 @@ def _grants_admin_permission(session: Session, group_id: int | None) -> bool:
             .join(Permission, Permission.id == GroupPermission.permission_id)
             .where(
                 GroupPermission.access_group_id == group_id,
-                Permission.code == ADMIN_PERMISSION,
+                Permission.code == code,
                 GroupPermission.zone_id.is_(None),
             )
             .limit(1)
@@ -174,13 +192,12 @@ def set_user_group(
     # must not be moved into a group that no longer grants it -- otherwise nobody
     # would be left to hand out permissions at all, recoverable only through the
     # database.
-    if user.is_active and _last_administrator(session, user) and not _grants_admin_permission(
-        session, group_id
-    ):
+    held = _last_holder_of(session, user) if user.is_active else None
+    if held is not None and not _grants_admin_permission(session, group_id, held):
         raise AdministrationError(
             f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
-            f"{ADMIN_PERMISSION}. Diese Gruppe würde ihm das Recht nehmen, und "
-            "niemand könnte mehr Benutzer verwalten."
+            f"{held}. Diese Gruppe würde ihm das Recht nehmen, und "
+            f"niemand könnte mehr {_what_it_manages(held)}."
         )
 
     old_names = sorted(
@@ -308,32 +325,38 @@ def delete_group(
     )
 
 
-def _without_this_group_no_administrator(session: Session, group: AccessGroup) -> None:
-    """Prevents the last source of the administration permission from disappearing."""
-    administrator = _user_with_permission(session, ADMIN_PERMISSION)
-    if not administrator:
-        return
-    other_source = session.scalar(
-        select(GroupPermission.id)
-        .join(Permission, Permission.id == GroupPermission.permission_id)
-        .join(
-            UserAccessGroup,
-            UserAccessGroup.access_group_id == GroupPermission.access_group_id,
+def _without_this_group_no_administrator(
+    session: Session, group: AccessGroup, only: str | None = None
+) -> None:
+    """Prevents the last source of a guarded permission from disappearing.
+
+    Guarded are `user.manage` and `group.manage` (`GUARDED_PERMISSIONS`); `only` limits
+    the check to one of them (revoking a single permission).
+    """
+    for code in (only,) if only is not None else GUARDED_PERMISSIONS:
+        if not _user_with_permission(session, code):
+            continue
+        other_source = session.scalar(
+            select(GroupPermission.id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .join(
+                UserAccessGroup,
+                UserAccessGroup.access_group_id == GroupPermission.access_group_id,
+            )
+            .join(User, User.id == UserAccessGroup.user_id)
+            .where(
+                Permission.code == code,
+                GroupPermission.zone_id.is_(None),
+                GroupPermission.access_group_id != group.id,
+                User.is_active.is_(True),
+            )
+            .limit(1)
         )
-        .join(User, User.id == UserAccessGroup.user_id)
-        .where(
-            Permission.code == ADMIN_PERMISSION,
-            GroupPermission.zone_id.is_(None),
-            GroupPermission.access_group_id != group.id,
-            User.is_active.is_(True),
-        )
-        .limit(1)
-    )
-    if other_source is None:
-        raise AdministrationError(
-            f"Über '{group.name}' läuft das einzige verbliebene {ADMIN_PERMISSION}. "
-            "Ohne sie kann niemand mehr Benutzer verwalten."
-        )
+        if other_source is None:
+            raise AdministrationError(
+                f"Über '{group.name}' läuft das einzige verbliebene {code}. "
+                f"Ohne sie kann niemand mehr {_what_it_manages(code)}."
+            )
 
 
 def grant_permission(
@@ -384,8 +407,8 @@ def revoke_permission(
     group = session.get(AccessGroup, entry.access_group_id)
     permission = session.get(Permission, entry.permission_id)
     assert group is not None and permission is not None
-    if permission.code == ADMIN_PERMISSION and entry.zone_id is None:
-        _without_this_group_no_administrator(session, group)
+    if permission.code in GUARDED_PERMISSIONS and entry.zone_id is None:
+        _without_this_group_no_administrator(session, group, only=permission.code)
     session.delete(entry)
     session.flush()
     audit.record(

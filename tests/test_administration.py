@@ -492,3 +492,45 @@ def _group_with_permissions_helper(
         ensure_permission(session, code, zone_scoped=zone_id is not None)
         grant_permission(session, group, code, zone_id, actor_id=None)
     return group
+
+
+def test_the_last_holder_of_group_management_cannot_lose_it(session: Session) -> None:
+    """`group.manage` ist wie `user.manage` geschützt: ohne Inhaber wird nichts mehr vergeben."""
+
+
+    holder = user_with_permissions(session, "gruppenverwalter", [("group.manage", None)])
+    with pytest.raises(AdministrationError, match="group.manage"):
+        set_user_active(session, holder, False, actor_id=None)
+    other = AccessGroup(name="ohne-recht")
+    session.add(other)
+    session.flush()
+    with pytest.raises(AdministrationError, match="group.manage"):
+        set_user_group(session, holder, other.id, actor_id=None)
+    with pytest.raises(AdministrationError, match="group.manage"):
+        set_user_group(session, holder, None, actor_id=None)
+    assert holder.is_active is True
+
+
+def test_group_management_permission_keeps_its_last_source(session: Session) -> None:
+
+
+
+    holder = user_with_permissions(session, "inhaber", [("group.manage", None)])
+    group = session.scalar(
+        select(AccessGroup).join(UserAccessGroup).where(UserAccessGroup.user_id == holder.id)
+    )
+    assert group is not None
+    entry = session.scalar(
+        select(GroupPermission).join(Permission).where(
+            GroupPermission.access_group_id == group.id, Permission.code == "group.manage"
+        )
+    )
+    assert entry is not None
+    with pytest.raises(AdministrationError, match="group.manage"):
+        revoke_permission(session, entry, actor_id=None)
+    with pytest.raises(AdministrationError, match="group.manage"):
+        delete_group(session, group, actor_id=None)
+    second = user_with_permissions(session, "zweiter", [("group.manage", None)])
+    assert second.is_active
+    set_user_active(session, holder, False, actor_id=None)
+    assert holder.is_active is False
