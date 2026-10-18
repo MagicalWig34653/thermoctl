@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.db.models.device import (
     ControllerChannel,
     Device,
@@ -58,8 +59,13 @@ def configure_channel(
     session: Session, device: Device, property_name: str, direction: str, kind_code: str,
     *, zone_id: int | None = None, source_device_id: int | None = None,
     fixed_text: str | None = None, fixed_number: Decimal | None = None,
+    source: str | None = None, user_id: int | None = None, token_id: int | None = None,
 ) -> ControllerChannel:
-    """Validates and saves a channel; write targets must be controllers."""
+    """Validates and saves a channel; write targets must be controllers.
+
+    With `source`, the change is written to the audit log (old -> new channel). Every
+    adapter passes it; only internal callers and tests leave it out.
+    """
     property_model = session.scalar(select(DeviceProperty).where(
         DeviceProperty.device_id == device.id, DeviceProperty.name == property_name))
     if property_model is None:
@@ -108,6 +114,7 @@ def configure_channel(
         fixed_text, fixed_number = None, None
     channel = session.scalar(select(ControllerChannel).where(
         ControllerChannel.device_id == device.id, ControllerChannel.property_name == property_name))
+    before = "kein Kanal" if channel is None else _channel_text(session, channel)
     if channel is None:
         channel = ControllerChannel(device_id=device.id, property_name=property_name, direction=direction, kind_id=kind.id)
         session.add(channel)
@@ -115,7 +122,35 @@ def configure_channel(
     channel.zone_id, channel.source_device_id = zone_id, source_device_id
     channel.fixed_text, channel.fixed_number = fixed_text or None, fixed_number
     session.flush()
+    if source is not None:
+        audit.record(
+            session, source=source, action="controller.channel_configured",
+            object_type="controller_channel", object_id=str(channel.id),
+            summary=(
+                f"Kanal '{property_name}' von '{device.display_name}' konfiguriert: "
+                f"{before} -> {_channel_text(session, channel)}"
+            ),
+            user_id=user_id, token_id=token_id,
+        )
     return channel
+
+
+def _channel_text(session: Session, channel: ControllerChannel) -> str:
+    kind = session.get(ChannelKind, channel.kind_id)
+    parts = [f"{channel.direction} {kind.code if kind is not None else '?'}"]
+    if channel.zone_id is not None:
+        zone = session.get(Zone, channel.zone_id)
+        parts.append(f"Zone {zone.display_name if zone is not None else channel.zone_id}")
+    if channel.source_device_id is not None:
+        source_device = session.get(Device, channel.source_device_id)
+        parts.append(
+            f"Quelle {source_device.display_name if source_device is not None else channel.source_device_id}"
+        )
+    if channel.fixed_number is not None:
+        parts.append(f"Wert {channel.fixed_number}")
+    if channel.fixed_text:
+        parts.append(f"Wert {channel.fixed_text}")
+    return ", ".join(parts)
 
 
 def apply_read_channels(session: Session, device: Device, values: dict[str, object], now: datetime) -> None:

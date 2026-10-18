@@ -609,6 +609,11 @@ def test_issue_token_shows_plaintext_once_and_only_once(
     for event in session.scalars(select(AuditEvent)):
         assert secret not in f"{event.summary} {event.detail} {event.object_id}"
     assert secret not in caplog.text and plaintext not in caplog.text
+    issued = session.scalars(select(AuditEvent).where(AuditEvent.action == "token.issued")).one()
+    assert (issued.object_type, issued.object_id) == ("api_token", str(token.id))
+    assert issued.actor_user_id == _me(client) and "Skript" in issued.summary
+    assert "zone.read" in (issued.detail or "") and "Ablauf" in (issued.detail or "")
+    assert plaintext not in f"{issued.summary} {issued.detail}"
     # Nie wieder lesbar:
     for url in ("/ui-api/access/tokens", "/ui-api/access/kiosk-tokens"):
         assert secret not in client.get(url).text
@@ -805,6 +810,12 @@ def test_kiosk_issue_list_and_plaintext_once(
     assert secret not in caplog.text and plaintext not in caplog.text
     for event in session.scalars(select(AuditEvent)):
         assert secret not in f"{event.summary} {event.detail}"
+    issued = session.scalars(select(AuditEvent).where(AuditEvent.action == "kiosk_token.issued")).one()
+    assert (issued.object_type, issued.object_id) == ("api_token", str(token.id))
+    assert issued.actor_user_id == _me(client) and "Flur-Tablet" in issued.summary
+    assert "Wohnen" in (issued.detail or "") and "Bad" in (issued.detail or "")
+    assert "Bedienung: ja" in (issued.detail or "")
+    assert plaintext not in f"{issued.summary} {issued.detail}"
     listing = client.get("/ui-api/access/kiosk-tokens")
     assert secret not in listing.text and "token_hash" not in listing.text and plaintext not in listing.text
     names = {t["name"]: t for t in listing.json()["tokens"]}

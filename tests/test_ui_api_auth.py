@@ -16,7 +16,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import SetupToken
 from thermoctl.db.models.identity import User
-from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.domain.passkey import begin_registration, finish_registration
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token
 
@@ -59,6 +59,13 @@ def test_setup_creates_the_first_administrator_and_closes_itself(
     assert response.json() == {"ok": True}
     assert session.query(User).count() == 1
     assert session.get(Setting, 1).timezone == "Europe/Berlin"  # type: ignore[union-attr]
+    event = session.query(AuditEvent).filter_by(action="setup.completed").one()
+    admin = session.query(User).one()
+    assert (event.object_type, event.object_id) == ("user", str(admin.id))
+    assert event.actor_user_id == admin.id
+    assert "lino" in (event.detail or "")
+    shown = f"{event.summary} {event.detail}"
+    assert PASSWORD not in shown and token not in shown
     # Permanently closed: status and a second attempt, even with a fresh valid token.
     assert client.get("/ui-api/setup").status_code == 404
     second = create_setup_token(session)

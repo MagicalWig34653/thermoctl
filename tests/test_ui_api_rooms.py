@@ -786,6 +786,13 @@ def test_jump_next_creates_override_ending_at_next_switch(
     assert replaced.status_code == 200
     rows = session.scalars(select(ZoneOverride).order_by(ZoneOverride.id)).all()
     assert len(rows) == 2 and rows[0].cancelled_at is not None and rows[1].cancelled_at is None
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.action == "override.jump_next").order_by(AuditEvent.id)
+    ).all()
+    assert len(events) == 2  # der Konflikt (409) schreibt nichts
+    assert all((e.object_type, e.object_id) == ("zone", str(zone.id)) for e in events)
+    assert all(e.actor_user_id is not None for e in events)
+    assert "ersetzt" not in (events[0].detail or "") and "ersetzt" in (events[1].detail or "")
 
 
 def test_jump_next_without_schedule(client_als: Als, session: Session) -> None:

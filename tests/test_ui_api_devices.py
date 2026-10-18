@@ -735,6 +735,14 @@ def test_zone_button_binds_and_deletes_a_binding(client_als: Als, world: World, 
     assert stored.step_k == Decimal("0.5")
     cleared = _call(client, "POST", url, {"device_id": world.ctrl.id, "action_code": "single_plus"})
     assert cleared.status_code == 200 and session.scalars(select(ControllerBinding)).all() == []
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.action == "controller.binding_changed").order_by(AuditEvent.id)
+    ).all()
+    assert len(events) == 2
+    assert all(e.object_type == "controller_binding" and e.object_id == str(world.ctrl.id) for e in events)
+    assert all(e.actor_user_id is not None for e in events)
+    assert "keine Belegung -> setpoint_up (Schritt 0.5 K)" in events[0].summary
+    assert "setpoint_up (Schritt 0.5 K) -> keine Belegung" in events[1].summary
 
 
 def test_zone_button_is_stricter_than_the_html_view(client_als: Als, world: World, session: Session) -> None:
@@ -887,6 +895,14 @@ def test_channel_writes_and_validates(client_als: Als, world: World, session: Se
     assert bad["field"] == "fixed_number"
     _fehler(_call(client, "POST", url, {"device_id": 99999, "property_name": "p", "direction": "read", "kind": "fixed"}), 404, "not_found")
     assert session.query(ControllerChannel).count() == 1
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.action == "controller.channel_configured").order_by(AuditEvent.id)
+    ).all()
+    assert len(events) == 3  # die abgelehnten Aufrufe schreiben nichts
+    assert events[0].object_type == "controller_channel" and events[0].actor_user_id is not None
+    assert "kein Kanal -> write zone_temperature" in events[0].summary
+    assert "write zone_temperature" in events[1].summary and "-> write fixed" in events[1].summary
+    assert "Wert 21.50" in events[1].summary or "Wert 21.5" in events[1].summary
 
 
 def test_channel_cannot_target_a_zone_or_device_beyond_the_principals_rights(client_als: Als, world: World, session: Session) -> None:

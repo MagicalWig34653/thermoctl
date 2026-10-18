@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import OperatingMode, SensorStatus
@@ -898,7 +899,7 @@ def jump_room_to_next_switch(
     now = utcnow()
     _settings_or_error(session)
     try:
-        jump_to_next_switch(
+        override = jump_to_next_switch(
             session,
             zone,
             now=now,
@@ -911,4 +912,15 @@ def jump_room_to_next_switch(
         raise RoomApiError(409, exc.notice, "override_running", exc.field) from exc
     except ScheduleError as exc:
         raise RoomApiError(409, exc.notice, "no_schedule", exc.field) from exc
+    audit.record(
+        session, source="web", action="override.jump_next", object_type="zone",
+        object_id=str(zone.id),
+        summary=f"Nächste Phase in '{zone.display_name}' vorgezogen",
+        user_id=principal.user_id, token_id=principal.token_id,
+        detail=(
+            f"{override.temperature_c} °C bis "
+            f"{_iso(override.ends_at) or 'unbefristet'}"
+            + ("; laufende Übersteuerung ersetzt" if body.replace else "")
+        ),
+    )
     return _detail(session, principal, zone, now)

@@ -30,6 +30,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.db.models.device import ControllerBinding, Device, ZoneDevice
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.measurement import Measurement
@@ -123,18 +124,31 @@ def set_binding(
     action: str,
     command_code: str | None,
     step_k: Decimal | None = None,
+    *,
+    source: str | None = None,
+    user_id: int | None = None,
+    token_id: int | None = None,
 ) -> None:
-    """Binds a button -- or deletes the binding if `befehl_code` is None."""
+    """Binds a button -- or deletes the binding if `befehl_code` is None.
+
+    With `source`, the change is written to the audit log (old -> new command and step,
+    and the zones the binding fires in). Without it nothing is audited -- only internal
+    callers and tests leave it out; every adapter passes it.
+    """
     present = session.scalars(
         select(ControllerBinding).where(
             ControllerBinding.device_id == device.id,
             ControllerBinding.action_code == action,
         )
     ).first()
+    before = _binding_text(session, present)
     if command_code is None:
         if present is not None:
             session.delete(present)
             session.flush()
+            _audit_binding(
+                session, device, action, before, "keine Belegung", source, user_id, token_id
+            )
         return
 
     command = session.scalars(
@@ -166,6 +180,31 @@ def set_binding(
         present.command_id = command.id
         present.step_k = step_k
     session.flush()
+    after = f"{command.code}" + (f" (Schritt {step_k} K)" if step_k is not None else "")
+    _audit_binding(session, device, action, before, after, source, user_id, token_id)
+
+
+def _binding_text(session: Session, binding: ControllerBinding | None) -> str:
+    if binding is None:
+        return "keine Belegung"
+    command = session.get(ControllerCommand, binding.command_id)
+    code = command.code if command is not None else "?"
+    return code + (f" (Schritt {binding.step_k} K)" if binding.step_k is not None else "")
+
+
+def _audit_binding(
+    session: Session, device: Device, action: str, before: str, after: str,
+    source: str | None, user_id: int | None, token_id: int | None,
+) -> None:
+    if source is None:
+        return
+    zones = ", ".join(z.display_name for z in controller_zones(session, device)) or "-"
+    audit.record(
+        session, source=source, action="controller.binding_changed",
+        object_type="controller_binding", object_id=str(device.id),
+        summary=f"Taste '{action}' von '{device.display_name}' belegt: {before} -> {after}",
+        user_id=user_id, token_id=token_id, detail=f"Räume: {zones}",
+    )
 
 
 def controller_zones(session: Session, device: Device) -> list[Zone]:

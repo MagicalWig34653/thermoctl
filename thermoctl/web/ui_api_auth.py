@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, get_session
 from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.config import get_settings
@@ -111,7 +112,7 @@ def setup(
         if not value:
             return _field_error(field, "Bitte ausfüllen.", _UNPROCESSABLE)
     try:
-        run_setup(
+        admin = run_setup(
             session,
             username=values["username"],
             display_name=values["display_name"],
@@ -127,4 +128,11 @@ def setup(
         return _field_error("password", str(exc), _UNPROCESSABLE)
     except InvalidTimezone as exc:
         return _field_error("timezone", str(exc), _UNPROCESSABLE)
+    # Noch niemand angemeldet: der Akteur ist der Administrator, den die Einrichtung
+    # gerade anlegt. Weder Passwort noch Einrichtungs-Token stehen im Eintrag.
+    audit.record(
+        session, source="web", action="setup.completed", object_type="user",
+        object_id=str(admin.id), summary="Einrichtung abgeschlossen",
+        user_id=admin.id, detail=f"Administrator '{admin.username}', Zeitzone {values['timezone']}",
+    )
     return JSONResponse({"ok": True})
