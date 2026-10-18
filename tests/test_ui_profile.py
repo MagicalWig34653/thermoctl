@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import create_zone, user_with_permissions
 from thermoctl.db.models.identity import AccessGroup, UserAccessGroup
-from thermoctl.domain.administration import AdministrationError, set_group_ui_profile
-from thermoctl.domain.authz import principal_for_user
+from thermoctl.domain.administration import set_group_ui_profile
+from thermoctl.domain.authz import has_permission, principal_for_user
 from thermoctl.domain.ui_profile import (
     DEFAULT_PROFILE,
     WebUiProfile,
@@ -168,19 +168,17 @@ def test_a_tenant_profile_without_the_rights_sees_no_plant_navigation(session: S
 
 
 
-def test_the_last_administration_group_cannot_become_a_tenant_group(
+def test_the_last_administration_group_may_become_a_tenant_group(
     session: Session
 ) -> None:
-    """Sonst fiele die Verwaltung zu: die Rechte wären noch vergeben, aber die
-    Rechtematrix für niemanden mehr erreichbar."""
+    """Das Profil sperrt nichts: Die Verwaltungsrechte bleiben beim Wechsel erhalten."""
     user_record = user_with_permissions(session, "einzige", [("user.manage", None)])
     membership = session.query(UserAccessGroup).filter_by(user_id=user_record.id).one()
     only_group = session.get(AccessGroup, membership.access_group_id)
     assert only_group is not None
-    with pytest.raises(AdministrationError):
-        set_group_ui_profile(
-            session, only_group, WebUiProfile.TENANT, actor_id=user_record.id
-        )
+    set_group_ui_profile(session, only_group, WebUiProfile.TENANT, actor_id=user_record.id)
+    assert only_group.ui_profile == "tenant"
+    assert has_permission(principal_for_user(session, user_record), "user.manage")
 
 
 def test_setting_the_profile_a_group_already_has_changes_nothing(
