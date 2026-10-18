@@ -1565,7 +1565,7 @@ def test_test_notification_reports_success_and_failure_and_honours_the_cooldown(
     ]
     assert all((e.object_type, e.object_id) == ("setting", "1") for e in events)
     assert all(e.actor_user_id is not None for e in events)
-    assert events[1].detail == "HTTP 500"
+    assert events[1].detail == "HTTP-Status 500"
     for e in events:
         text = f"{e.summary} {e.detail}"
         assert "T0K3N" not in text and "geheimes-token" not in text and "hook.example" not in text
@@ -1574,6 +1574,21 @@ def test_test_notification_reports_success_and_failure_and_honours_the_cooldown(
     assert shown.json()["notifications"]["last_error"] == "HTTP 500"
     for text in (first.text, second.text, shown.text):
         assert "T0K3N" not in text and "geheimes-token" not in text and "hook.example" not in text
+    # Ein Fehlertext mit URL-Resten (ohne Status) gelangt nie ins Audit.
+    results.append(
+        notification.WebhookTestResult(
+            ok=False, status_code=None, duration_seconds=0.1,
+            error="unknown url type: 'hook.example.invalid/T0K3N/pfad'",
+        )
+    )
+    row.notify_last_attempt_at = utcnow() - timedelta(minutes=1)
+    session.flush()
+    assert _call(client, "POST", "/ui-api/settings/notifications/test").status_code == 200
+    last = session.scalars(
+        select(AuditEvent).where(AuditEvent.action == "notification.test_failed")
+        .order_by(AuditEvent.id.desc())
+    ).first()
+    assert last is not None and last.detail == "kein Status erhalten"
 
 
 # -- Schnittstellen -----------------------------------------------------------------------

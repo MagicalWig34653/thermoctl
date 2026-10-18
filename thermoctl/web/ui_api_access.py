@@ -66,7 +66,6 @@ from thermoctl.domain.authz import (
     Forbidden,
     has_permission,
     principal_for_token,
-    principal_for_user,
 )
 from thermoctl.domain.dashboard_templates import apply_template
 from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
@@ -151,6 +150,26 @@ def _within_own_rights(
             "Das geht über die eigenen Rechte hinaus (" + ", ".join(dict.fromkeys(missing)) + ").",
             "beyond_own_rights",
         )
+
+
+def _assigned_grants(session: Session, user: User) -> set[tuple[str, int | None]]:
+    """Die über Gruppen zugewiesenen Rechte, unabhängig davon, ob das Konto aktiv ist.
+
+    `principal_for_user` liefert für ein inaktives Konto nichts; wer ein Konto erst
+    deaktiviert, dürfte sonst dessen Passwort setzen und es wieder aktivieren.
+    """
+    return {
+        (code, zone_id)
+        for code, zone_id in session.execute(
+            select(Permission.code, GroupPermission.zone_id)
+            .join(GroupPermission, GroupPermission.permission_id == Permission.id)
+            .join(
+                UserAccessGroup,
+                UserAccessGroup.access_group_id == GroupPermission.access_group_id,
+            )
+            .where(UserAccessGroup.user_id == user.id)
+        )
+    }
 
 
 def _group_grants(session: Session, group_id: int) -> set[tuple[str, int | None]]:
@@ -547,7 +566,7 @@ def set_user_password(
             409, "Das eigene Passwort ändern Sie unter Konto (mit dem bisherigen Passwort).",
             "own_account",
         )
-    _within_own_rights(session, principal, principal_for_user(session, user).grants)
+    _within_own_rights(session, principal, _assigned_grants(session, user))
     try:
         set_password(session, user, body.password, actor_id=principal.user_id)
     except PasswordTooShort as exc:

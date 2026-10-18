@@ -42,8 +42,10 @@ GROUP_PERMISSION = "group.manage"
 GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
 
 
-def _user_with_permission(session: Session, code: str) -> list[User]:
-    """All active users who hold this permission plant-wide."""
+def _user_with_permission(
+    session: Session, code: str, *, only_active: bool = True
+) -> list[User]:
+    """All users who hold this permission plant-wide (by default only the active ones)."""
     return list(
         session.scalars(
             select(User)
@@ -56,7 +58,7 @@ def _user_with_permission(session: Session, code: str) -> list[User]:
             .where(
                 Permission.code == code,
                 GroupPermission.zone_id.is_(None),
-                User.is_active.is_(True),
+                User.is_active.is_(True) if only_active else User.id.is_not(None),
             )
             .distinct()
         )
@@ -69,8 +71,12 @@ def _last_administrator(session: Session, user: User) -> bool:
 
 
 def is_sole_holder(session: Session, user_id: int, code: str = ADMIN_PERMISSION) -> bool:
-    """Ob dieser Benutzer der einzige aktive Inhaber des anlagenweiten Rechts ist."""
-    return [b.id for b in _user_with_permission(session, code)] == [user_id]
+    """Ob dieser Benutzer der einzige Inhaber des anlagenweiten Rechts ist.
+
+    Inaktive Konten zählen mit: sonst ließe sich die Eigenschaft "einziger Inhaber" durch
+    kurzes Deaktivieren eines zweiten Kontos selbst herstellen.
+    """
+    return [b.id for b in _user_with_permission(session, code, only_active=False)] == [user_id]
 
 
 def _last_holder_of(session: Session, user: User) -> list[str]:

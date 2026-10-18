@@ -1094,3 +1094,25 @@ def test_the_only_user_manager_may_hand_out_new_rights(client_als: Als, session:
     group = _named_group(session, "neu", ["zone.read"])
     wanted = [{"code": "zone.read", "zone_id": None}, {"code": "audit.read", "zone_id": None}]
     assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted}).status_code == 200
+
+
+def test_deactivating_a_stronger_account_does_not_unlock_its_password(client_als: Als, session: Session) -> None:
+    """Die Rechte eines Kontos zählen auch, solange es inaktiv ist."""
+    client = client_als([("user.manage", None), ("zone.read", None)])
+    user_with_permissions(session, "zweiter-verwalter", [("user.manage", None)])
+    strong = _named_group(session, "stark", ["zone.read", "setting.manage"])
+    target = create_user(session, "stark-konto")
+    session.add(UserAccessGroup(user_id=target.id, access_group_id=strong.id))
+    session.flush()
+    assert _call(client, "PUT", f"/ui-api/access/users/{target.id}/active", {"active": False}).status_code == 200
+    _err(_call(client, "PUT", f"/ui-api/access/users/{target.id}/password", {"password": LONG_PASSWORD}), 403, "beyond_own_rights")
+
+
+def test_sole_holder_exception_cannot_be_created_by_deactivating_the_other(client_als: Als, session: Session) -> None:
+    """Ein deaktivierter zweiter Inhaber von user.manage zählt weiter: keine Ausnahme."""
+    client = client_als([("user.manage", None), ("group.manage", None)])
+    other = user_with_permissions(session, "zweiter-verwalter", [("user.manage", None)])
+    group = _named_group(session, "neu", ["zone.read"])
+    assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False}).status_code == 200
+    wanted = [{"code": "zone.read", "zone_id": None}, {"code": "audit.read", "zone_id": None}]
+    _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted}), 403, "beyond_own_rights")

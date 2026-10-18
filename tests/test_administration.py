@@ -550,3 +550,14 @@ def test_holder_of_both_guarded_rights_cannot_drop_either_via_group(session: Ses
     session.flush()
     with pytest.raises(AdministrationError, match="group.manage"):
         set_user_group(session, only, target.id, actor_id=None)
+
+
+def test_holder_of_both_cannot_leave_for_a_group_with_neither(session: Session) -> None:
+    only = user_with_permissions(
+        session, "beides-2", [("user.manage", None), ("group.manage", None)]
+    )
+    target = AccessGroup(name="ohne-beides")
+    session.add(target)
+    session.flush()
+    with pytest.raises(AdministrationError, match="user.manage"):
+        set_user_group(session, only, target.id, actor_id=None)
