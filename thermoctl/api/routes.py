@@ -54,7 +54,13 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain.authz import Forbidden, principal_for_token, require, visible_zones
+from thermoctl.domain.authz import (
+    Forbidden,
+    principal_for_token,
+    require,
+    require_scope,
+    visible_zones,
+)
 from thermoctl.domain.control import (
     LIMITS,
     ControlError,
@@ -567,12 +573,16 @@ def device_commands(
 ) -> list[DeviceCommandResponse]:
     """The record of every command sent -- or withheld -- towards an actuator.
 
-    Same permission as the web view (`audit.read`): both are protocol views over the
-    whole plant, not over a single zone. Read-only -- a log that could be changed
+    Same permission as the web view (`audit.read`). Held plant-wide it shows the whole
+    plant; held only for some zones, only the entries of those zones (rows without a
+    zone -- e.g. of a deleted zone -- only plant-wide). Read-only -- a log that could be changed
     through an interface would not be one. `limit` is capped in the domain: the table
     has no retention and grows without bound for as long as the plant runs.
     """
-    _permission(principal, "audit.read")
+    try:
+        scope = require_scope(principal, "audit.read")
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     try:
         entries = list_commands(
             session,
@@ -581,6 +591,7 @@ def device_commands(
             to_at=to_at,
             outcome=outcome,
             limit=limit,
+            zone_ids=scope.zone_ids,
         )
     except ValueError as exc:
         raise _domain_error("limit", str(exc)) from exc

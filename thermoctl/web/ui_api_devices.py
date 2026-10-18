@@ -34,7 +34,13 @@ from thermoctl.db.models.device import Device, DeviceCapabilityLink, DevicePrope
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome, DeviceCapability, DeviceRole
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import Forbidden, has_permission, visible_zones
+from thermoctl.domain.authz import (
+    Forbidden,
+    ZoneScope,
+    has_permission,
+    require_scope,
+    visible_zones,
+)
 from thermoctl.domain.controller import ControllerError, controller_zones, set_binding
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.data_flow import build_data_flow
@@ -984,6 +990,14 @@ def _command(entry: CommandLogEntry) -> Json:
     }
 
 
+def _audit(principal: Principal) -> ZoneScope:
+    """Der Bereich von `audit.read` (anlagenweit oder Räume); ohne das Recht 403."""
+    try:
+        return require_scope(principal, "audit.read")
+    except Forbidden:
+        raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden") from None
+
+
 @router.get("/device-commands")
 def show_device_commands(
     principal: Annotated[Principal, Depends(current_principal)],
@@ -994,8 +1008,9 @@ def show_device_commands(
     outcome: str = "",
     page: str = "1",
 ) -> Json:
-    """Jeder gesendete oder zurückgehaltene Befehl an einen Aktor (`audit.read`)."""
-    _need(principal, "audit.read")
+    """Jeder gesendete oder zurückgehaltene Befehl an einen Aktor (`audit.read`; auf Räume
+    beschränkt nur die Einträge dieser Räume, Einträge ohne Raum nur anlagenweit)."""
+    scope = _audit(principal)
     from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
     if from_day is not None and to_day is not None and to_day < from_day:
         raise _invalid("Das Bis-Datum darf nicht vor dem Von-Datum liegen.", "to_date")
@@ -1016,6 +1031,7 @@ def show_device_commands(
         outcome=outcome or None,
         limit=min(ENTRIES_PER_PAGE + 1, MAX_LIMIT),
         offset=(number - 1) * ENTRIES_PER_PAGE,
+        zone_ids=scope.zone_ids,
     )
     outcomes = session.execute(
         select(CommandOutcome.code, CommandOutcome.label).order_by(CommandOutcome.label)
@@ -1027,10 +1043,13 @@ def show_device_commands(
     }
     source_labels.setdefault("regelung", "Regelung (Notbetrieb)")
     source_labels.setdefault(SETBACK_SOURCE, "Regelung (Sonnenabsenkung)")
+    command_zone_names = select(DeviceCommand.zone_name).distinct()
+    if scope.zone_ids is not None:
+        command_zone_names = command_zone_names.where(DeviceCommand.zone_id.in_(scope.zone_ids))
     zone_names = sorted(
         {
-            *session.scalars(select(DeviceCommand.zone_name).distinct()),
-            *setback_zone_names(session),
+            *session.scalars(command_zone_names),
+            *setback_zone_names(session, scope.zone_ids),
         },
         key=lambda name: (name.casefold(), name),
     )

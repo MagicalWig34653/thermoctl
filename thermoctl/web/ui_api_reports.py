@@ -9,12 +9,14 @@ Rechte werden in jedem Endpunkt neu geprüft:
 
 * Verlauf, Heizzeit: `zone.read` je Zone. Eine unbekannte und eine nicht sichtbare Zone
   antworten mit demselben 404.
-* Relaisverschleiß, Ereignisse, Änderungsprotokoll: nur Anlagensicht (wie die HTML-Seiten
-  hinter `admin_ui_only`), dann `audit.read`; Verschleiß zusätzlich nur sichtbare Zonen.
-* Rücknahme: wie das Lesen (`audit.read`, Anlagensicht -- strenger als die HTML-Route, die
-  nur die Domäne fragt) **und** die Rechte der ursprünglichen Änderung (prüft die Domäne
-  gegen die Zone des Eintrags). Ein Konflikt antwortet mit 409 und einem Bestätigungswert;
-  nur damit lässt sich erzwingen.
+* Relaisverschleiß, Ereignisse, Änderungsprotokoll: `audit.read`, anlagenweit **oder auf
+  Räume beschränkt** (`ZoneScope`). Anlagenweit sieht alles; beschränkt nur die Einträge der
+  eigenen Räume -- der Filter steht in der Abfrage (Seiten, `has_more`, Auswahllisten).
+  Verschleiß zusätzlich nur Zonen mit `zone.read`.
+* Rücknahme: `audit.read` mit dem Eintrag im Bereich (sonst 404 wie ein unbekannter Eintrag)
+  **und** die Rechte der ursprünglichen Änderung (prüft die Domäne gegen die Zone des
+  Eintrags). Ein Konflikt antwortet mit 409 und einem Bestätigungswert; nur damit lässt sich
+  erzwingen.
 
 Fehler: `{"detail", "code"[, "field"]}` wie bei den Räumen.
 """
@@ -35,7 +37,7 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import ActorSource
-from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import history_report
 from thermoctl.domain.audit_query import (
@@ -44,8 +46,10 @@ from thermoctl.domain.audit_query import (
     MAX_TEXT_LENGTH,
     export_audit,
     list_audit,
+    scoped_actions,
+    scoped_source_codes,
 )
-from thermoctl.domain.authz import Forbidden, has_permission, visible_zones
+from thermoctl.domain.authz import Forbidden, ZoneScope, require_scope, visible_zones
 from thermoctl.domain.change_log import (
     CHANGE_TYPES,
     MAX_LIMIT,
@@ -96,10 +100,12 @@ _CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 # -- Hilfen -----------------------------------------------------------------------------
 
 
-def _need(principal: Principal, permission: str) -> None:
-    """Anlagenweites Recht (ohne Zone)."""
-    if not has_permission(principal, permission):
-        raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden")
+def _audit(principal: Principal) -> ZoneScope:
+    """Der Bereich von `audit.read` (anlagenweit oder Räume); ohne das Recht 403."""
+    try:
+        return require_scope(principal, "audit.read")
+    except Forbidden:
+        raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden") from None
 
 
 def _num(value: float | None) -> str | None:
@@ -465,10 +471,16 @@ def show_relay_wear(
     period: str = "7",
     zone_id: int | None = None,
 ) -> RelayWearOut:
-    """Bestätigte Schaltwechsel je Gerät und Tag samt Hochrechnung (Anlagensicht, `audit.read`)."""
-    _need(principal, "audit.read")
+    """Bestätigte Schaltwechsel je Gerät und Tag samt Hochrechnung (`audit.read`; beschränkt
+    auf Räume nur deren Geräte)."""
+    scope = _audit(principal)
     timezone_name, settings = _timezone(session)
     zones = _selected_zones(session, principal, zone_id)
+    if scope.zone_ids is not None:
+        # Auch eine ausdrücklich gewählte Zone außerhalb des Bereichs ist "nicht gefunden".
+        if zone_id is not None and zone_id not in scope.zone_ids:
+            raise RoomApiError(404, "Raum nicht gefunden.", "not_found")
+        zones = [zone for zone in zones if zone.id in scope.zone_ids]
     names = {zone.id: zone.display_name for zone in zones}
     now = utcnow()
     lifetime = (
@@ -572,7 +584,7 @@ def show_audit(
     page: str = "1",
 ) -> AuditOut:
     """Das Protokoll mit Filtern und Seiten (50 je Seite), neueste zuerst."""
-    _need(principal, "audit.read")
+    scope = _audit(principal)
     from_day, to_day, needle = _audit_filters(from_date, to_date, q)
     number = _page(page)
     timezone_name, _settings = _timezone(session)
@@ -587,6 +599,7 @@ def show_audit(
         text=needle,
         page=number,
         timezone_name=timezone_name,
+        zone_ids=scope.zone_ids,
     )
     return AuditOut(
         timezone=timezone_name,
@@ -613,13 +626,12 @@ def show_audit(
             )
             for event, origin, account, token in rows
         ],
-        sources=_sources(session),
-        actions=list(
-            session.scalars(select(AuditEvent.action).distinct().order_by(AuditEvent.action))
-        ),
+        sources=_audit_sources(session, scope),
+        actions=scoped_actions(session, scope.zone_ids),
         zones=[
             ZoneRefOut(id=z.id, name=z.name)
             for z in visible_zones(session, principal, "zone.read")
+            if scope.covers(z.id)
         ],
     )
 
@@ -637,7 +649,7 @@ def export_audit_csv(
     q: str = "",
 ) -> Response:
     """Die gefilterten Ereignisse als CSV (höchstens `MAX_EXPORT_ROWS`, sonst Hinweiszeile)."""
-    _need(principal, "audit.read")
+    scope = _audit(principal)
     from_day, to_day, needle = _audit_filters(from_date, to_date, q)
     timezone_name, _settings = _timezone(session)
     rows, truncated = export_audit(
@@ -650,6 +662,7 @@ def export_audit_csv(
         object=object,
         text=needle,
         timezone_name=timezone_name,
+        zone_ids=scope.zone_ids,
     )
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
@@ -690,6 +703,13 @@ def _sources(session: Session) -> list[NamedOut]:
             select(ActorSource.code, ActorSource.label).order_by(ActorSource.label)
         )
     ]
+
+
+def _audit_sources(session: Session, scope: ZoneScope) -> list[NamedOut]:
+    """Die Quellen für den Filter; auf Räume beschränkt nur die in den sichtbaren Ereignissen
+    vorkommenden (die Liste verrät sonst, welche Quellen unsichtbare Ereignisse hatten)."""
+    present = scoped_source_codes(session, scope.zone_ids)
+    return [entry for entry in _sources(session) if present is None or entry.code in present]
 
 
 # -- Änderungsprotokoll und Rücknahme ---------------------------------------------------
@@ -766,7 +786,7 @@ def show_changes(
     page: str = "1",
 ) -> ChangesOut:
     """Das Änderungsprotokoll (50 je Seite), neueste zuerst."""
-    _need(principal, "audit.read")
+    scope = _audit(principal)
     from_day, to_day = _day(from_date, "from_date"), _day(to_date, "to_date")
     if from_day is not None and to_day is not None and to_day < from_day:
         raise _invalid("Das Bis-Datum darf nicht vor dem Von-Datum liegen.", "to_date")
@@ -787,6 +807,7 @@ def show_changes(
         include_reverted=not hide_reverted,
         limit=min(ENTRIES_PER_PAGE + 1, MAX_LIMIT),
         offset=(number - 1) * ENTRIES_PER_PAGE,
+        zone_ids=scope.zone_ids,
     )
     return ChangesOut(
         timezone=timezone_name,
@@ -805,15 +826,19 @@ def show_change(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> ChangeOut:
-    _need(principal, "audit.read")
-    return _change(_existing_change(session, change_id))
+    scope = _audit(principal)
+    return _change(_existing_change(session, change_id, scope))
 
 
-def _existing_change(session: Session, change_id: int) -> ChangeView:
+def _existing_change(session: Session, change_id: int, scope: ZoneScope) -> ChangeView:
+    """Eine Änderung im Bereich; eine außerhalb ist ununterscheidbar von einer unbekannten."""
     try:
-        return get_change(session, change_id)
+        view = get_change(session, change_id)
     except ChangeNotFound:
         raise RoomApiError(404, "Änderung nicht gefunden.", "not_found") from None
+    if not scope.covers(view.zone_id):
+        raise RoomApiError(404, "Änderung nicht gefunden.", "not_found")
+    return view
 
 
 class RevertIn(BaseModel):
@@ -840,7 +865,12 @@ def revert(
 ) -> RevertOut:
     """Nimmt eine Änderung zurück. Ohne `force` bei Konflikt: 409 mit `conflicts` und
     `force_token`; mit `force` und genau diesem Token wird trotzdem zurückgesetzt."""
-    _need(principal, "audit.read")
+    scope = _audit(principal)
+    if scope.zone_ids is not None:
+        # Auf Räume beschränkt: der Eintrag muss im Bereich liegen, bevor irgendetwas über
+        # ihn verraten wird (Konflikt, Zustand) -- sonst 404. Anlagenweit gibt es nichts zu
+        # prüfen. Die schreibenden Rechte der Änderung prüft in beiden Fällen die Domäne.
+        _existing_change(session, change_id, scope)
     if body.force and not hmac.compare_digest(
         body.force_token or "", confirmation_token(request, change_id)
     ):

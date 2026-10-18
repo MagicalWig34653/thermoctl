@@ -56,7 +56,7 @@ schon lief, als neuer `beginn` erscheinen -- die Vorzeile, die das Gegenteil zei
 bereinigt.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -126,14 +126,19 @@ def setback_transitions(
     from_at: datetime | None,
     to_at: datetime | None,
     fetch: int,
+    zone_ids: Collection[int] | None = None,
 ) -> list[SetbackTransition]:
     """Die neuesten `fetch` Wechsel, neueste zuerst; Grenzen als naive UTC, einschließlich.
+
+    `zone_ids` beschränkt auf diese Zonen (raumbeschränktes `audit.read`); `None` = alle.
 
     Rechte prüft der Aufrufer (`audit.read`), wie bei den übrigen Quellen des
     Schaltprotokolls. `zone_name` trifft nur noch bestehende Zonen: `shadow_decision` hängt
     per CASCADE an der Zone und überlebt ihre Löschung nicht.
     """
     zone_query = select(Zone.id, Zone.name)
+    if zone_ids is not None:
+        zone_query = zone_query.where(Zone.id.in_(zone_ids))
     if zone_name:
         # Auch der Anzeigename trifft: `device_command.zone_name` und damit die Zonenauswahl
         # des Schaltprotokolls tragen ihn (`setback_zone_names`); wer dort eine Zone wählt,
@@ -171,7 +176,9 @@ def setback_transitions(
     return found[:fetch]
 
 
-def setback_zone_names(session: Session) -> list[str]:
+def setback_zone_names(
+    session: Session, zone_ids: Collection[int] | None = None
+) -> list[str]:
     """Anzeigenamen der bestehenden Zonen, die je eine Sonnenabsenkung hatten.
 
     Für die Zonenauswahl des Schaltprotokolls: Eine Zone, die nur Absenkungseinträge und
@@ -184,15 +191,16 @@ def setback_zone_names(session: Session) -> list[str]:
     # Planer dazu, den Index `ix_shadow_decision_solar_setback` (Bereich `k > NULL`, nur
     # die wenigen Zeilen mit Wert) zu lesen; die anderen Formen scannen in SQLite den
     # Zonenindex über alle Minutenzeilen.
-    return list(
-        session.scalars(
-            select(Zone.display_name)
-            .join(ShadowDecision, ShadowDecision.zone_id == Zone.id)
-            .where(ShadowDecision.solar_setback_k.is_not(None))
-            .group_by(Zone.id, Zone.display_name)
-            .order_by(Zone.display_name)
-        )
+    query = (
+        select(Zone.display_name)
+        .join(ShadowDecision, ShadowDecision.zone_id == Zone.id)
+        .where(ShadowDecision.solar_setback_k.is_not(None))
+        .group_by(Zone.id, Zone.display_name)
+        .order_by(Zone.display_name)
     )
+    if zone_ids is not None:
+        query = query.where(Zone.id.in_(zone_ids))
+    return list(session.scalars(query))
 
 
 def _zone_transitions(

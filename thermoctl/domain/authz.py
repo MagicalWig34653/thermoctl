@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -191,3 +193,48 @@ def visible_zones(session: Session, principal: Principal, code: str) -> list[Zon
             select(Zone).where(Zone.id.in_(allowed)).order_by(Zone.sort_order, Zone.name)
         )
     )
+
+
+@dataclass(frozen=True)
+class ZoneScope:
+    """Wie weit ein raumbezogenes Recht reicht: über die ganze Anlage oder nur über Räume.
+
+    `zone_ids is None` heißt anlagenweit (alles, auch Einträge ohne Raumbezug); sonst die
+    Räume, für die das Recht vergeben ist. Eine leere Menge kommt nicht vor:
+    `permission_scope` liefert dann `None`.
+    """
+
+    zone_ids: frozenset[int] | None
+
+    @property
+    def plant_wide(self) -> bool:
+        return self.zone_ids is None
+
+    def covers(self, zone_id: int | None) -> bool:
+        """Liegt ein Eintrag in diesem Bereich? Einträge ohne Raum (`None`) nur anlagenweit."""
+        if self.zone_ids is None:
+            return True
+        return zone_id is not None and zone_id in self.zone_ids
+
+
+def permission_scope(principal: Principal, code: str) -> ZoneScope | None:
+    """Der Bereich, in dem der Principal das Recht hält -- `None`, wenn gar nicht.
+
+    Anlagenweit hat Vorrang vor Raumvergaben (wie in `has_permission`).
+    """
+    if (code, None) in principal.grants:
+        return ZoneScope(None)
+    zone_ids = frozenset(
+        zone_id for assigned_code, zone_id in principal.grants
+        if assigned_code == code and zone_id is not None
+    )
+    return ZoneScope(zone_ids) if zone_ids else None
+
+
+def require_scope(principal: Principal, code: str) -> ZoneScope:
+    """Wie `require`, aber für Ansichten, die sich auf die erlaubten Räume beschränken."""
+    scope = permission_scope(principal, code)
+    if scope is None:
+        raise Forbidden(f"Recht {code} fehlt")
+    return scope
+

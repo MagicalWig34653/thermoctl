@@ -380,9 +380,11 @@ gemeldete Gesundheitswerte sind `null`, Zuordnungen und Fähigkeiten gegebenenfa
 ### `GET /api/v1/device-commands` — Schaltprotokoll lesen
 
 Recht: `audit.read` — dasselbe wie unter „Einstellungen → Schaltprotokoll" in der
-Oberfläche. Beide sind Protokolle über die ganze Anlage, nicht über eine einzelne
-Zone; ein auf eine Zone eingeschränktes Token sieht hier nichts zusätzlich und nichts
-weniger als über dieses eine Recht bereits erlaubt ist. **Nur lesend** — ein
+Oberfläche. Das Recht ist raumbezogen: anlagenweit vergeben zeigt es das Protokoll der
+ganzen Anlage (auch Einträge ohne Raum, etwa eines gelöschten Raums); nur für bestimmte
+Räume vergeben, zeigt es ausschließlich die Einträge dieser Räume (Befehle, Notbetriebs-
+entscheidungen, Sonnenabsenkungen). Der Filter wirkt vor der Begrenzung durch `limit`.
+Ein Token hat höchstens den Bereich seines Besitzers. **Nur lesend** — ein
 Protokoll, das sich über eine Schnittstelle ändern liesse, wäre keins.
 
 ```json

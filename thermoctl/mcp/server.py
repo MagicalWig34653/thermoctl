@@ -27,6 +27,7 @@ from thermoctl.domain.authz import (
     has_permission,
     principal_for_token,
     require,
+    require_scope,
     visible_zones,
 )
 from thermoctl.domain.change_log import Actor, ChangeAlreadyEffective, ChangeLogError, ChangeView
@@ -387,13 +388,14 @@ def device_commands(
 ) -> list[dict[str, object]]:
     """Reads the actuator command log -- the same protocol as `/device-commands`.
 
-    `audit.read`, not a zone permission: like the web view and the REST endpoint,
-    this is a protocol over the whole plant, not over a single zone.
+    `audit.read`: held plant-wide it covers the whole plant; held only for some zones,
+    the log shows only the entries of those zones (like the web view and REST).
     """
     _token, principal = _log_in(session, plaintext)
-    require(principal, "audit.read")
+    scope = require_scope(principal, "audit.read")
     entries = list_commands(
         session,
+        zone_ids=scope.zone_ids,
         zone_name=zone,
         from_at=naive_utc(from_at),
         to_at=naive_utc(to_at),
@@ -448,10 +450,16 @@ def temperature_history(
 
     switching_log: list[dict[str, object]] | None = None
     note: str | None = SWITCHING_LOG_NOTE
-    if has_permission(principal, "audit.read"):
+    if has_permission(principal, "audit.read", zone.id):
         # Das Schaltprotokoll führt die Zone unter ihrem Anzeigenamen (Momentaufnahme).
+        # Auf diese Zone eingeschränkt, auch bei anlagenweitem Recht (wie bisher: Name).
         entries = list_commands(
-            session, zone_name=zone.display_name, from_at=start, to_at=end, limit=log_limit
+            session,
+            zone_name=zone.display_name,
+            from_at=start,
+            to_at=end,
+            limit=log_limit,
+            zone_ids=None if has_permission(principal, "audit.read") else [zone.id],
         )
         switching_log = [_command_entry(entry) for entry in entries]
         note = None
@@ -960,12 +968,12 @@ def list_changes(
 ) -> list[dict[str, object]]:
     """Reads the change log -- the same protocol as the page "Änderungsprotokoll".
 
-    `audit.read`, plant-wide: like the command log, this is a protocol over the whole
-    plant. `zone` is the zone's name (as in `list_zones`); entries of a zone that has
-    been deleted since are still found with `zone=None`.
+    `audit.read`: plant-wide it covers the whole plant; held only for some zones, only
+    changes to those zones. `zone` is the zone's name (as in `list_zones`); entries of a
+    zone that has been deleted since are still found with `zone=None` (plant-wide only).
     """
     _token, principal = _log_in(session, plaintext)
-    require(principal, "audit.read")
+    scope = require_scope(principal, "audit.read")
     zone_id: int | None = None
     if zone is not None:
         found = next(
@@ -990,6 +998,7 @@ def list_changes(
         to_at=to_at,
         include_reverted=include_reverted,
         limit=limit,
+        zone_ids=scope.zone_ids,
     )
     return [_change_entry(view) for view in views]
 

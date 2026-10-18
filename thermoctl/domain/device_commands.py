@@ -37,12 +37,14 @@ hundred thousand rows. Like `"entscheidung"`, it has no `CommandOutcome`, so an
 setpoint that really is regulated against.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome
 from thermoctl.db.models.sensor_failure import ActuatorDecision
 from thermoctl.db.models.state import DeviceCommand
@@ -100,6 +102,7 @@ def list_commands(
     outcome: str | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
+    zone_ids: Collection[int] | None = None,
 ) -> list[CommandLogEntry]:
     """The actuator command log, newest first, capped at `limit` rows.
 
@@ -116,6 +119,13 @@ def list_commands(
     see the module docstring), so any `outcome` filter excludes every
     `"entscheidung"` row from the result rather than guessing which of them
     might match.
+
+    `zone_ids` is the scope of a `audit.read` grant restricted to zones: `None` means
+    plant-wide (everything, including rows without a zone), otherwise only rows of those
+    zones. It is part of the queries themselves, before `limit` -- a filter applied
+    after the fetch would leave short pages and a wrong `has_more`. Rows whose zone is
+    gone (`device_command.zone_id` NULL, `ActuatorDecision.zone_device_id` NULL) belong
+    to nobody in particular and are therefore plant-wide only.
 
     `offset` (the HTML view's pagination, REST/MCP never pass it) is applied
     **after** the two sources are merged and re-sorted, not pushed down into
@@ -134,6 +144,8 @@ def list_commands(
         .join(ActorSource, ActorSource.id == DeviceCommand.source_id)
         .join(CommandOutcome, CommandOutcome.id == DeviceCommand.outcome_id)
     )
+    if zone_ids is not None:
+        query = query.where(DeviceCommand.zone_id.in_(zone_ids))
     if zone_name:
         query = query.where(DeviceCommand.zone_name == zone_name)
     if from_at is not None:
@@ -166,6 +178,12 @@ def list_commands(
 
     if not outcome:
         decision_query = select(ActuatorDecision).where(ActuatorDecision.action != "normal")
+        if zone_ids is not None:
+            decision_query = decision_query.where(
+                ActuatorDecision.zone_device_id.in_(
+                    select(ZoneDevice.id).where(ZoneDevice.zone_id.in_(zone_ids))
+                )
+            )
         if zone_name:
             decision_query = decision_query.where(ActuatorDecision.zone_name == zone_name)
         if from_at is not None:
@@ -225,6 +243,7 @@ def list_commands(
                 from_at=naive_utc(from_at),
                 to_at=naive_utc(to_at),
                 fetch=fetch,
+                zone_ids=zone_ids,
             )
         )
 

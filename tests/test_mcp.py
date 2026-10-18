@@ -1154,14 +1154,32 @@ def test_temperature_history_without_audit_read_has_no_log_but_a_note(session: S
     assert "geheim-relais" not in str(result)
 
 
-def test_temperature_history_zone_scoped_audit_read_is_not_enough_for_the_log(
+def test_temperature_history_zone_scoped_audit_read_shows_the_log_of_exactly_that_zone(
     session: Session,
 ) -> None:
-    """`device_commands` verlangt das anlagenweite Recht; ein zonengebundenes genügt nicht."""
+    """`audit.read` ist raumbezogen: für diese Zone vergeben zeigt es deren Schaltprotokoll."""
     zone = create_zone(session, "zonenprotokoll")
+    other = create_zone(session, "andere-zone")
     _logged_command(session, zone, "zonen-relais", 12)
+    _logged_command(session, other, "andere-relais", 13)
     plaintext = _token(
         session, "verlauf-zonenaudit", [("zone.read", zone.id), ("audit.read", zone.id)]
+    )
+
+    result = _history(session, plaintext, zone)
+
+    assert result["switching_log_note"] is None
+    log = result["switching_log"]
+    assert isinstance(log, list) and [row["device"] for row in log] == ["zonen-relais"]
+
+
+def test_temperature_history_audit_read_for_another_zone_gives_no_log(session: Session) -> None:
+    """Nur eine andere Zone im `audit.read`: die Messreihe kommt, das Protokoll nicht."""
+    zone = create_zone(session, "lesezone")
+    other = create_zone(session, "protokollzone")
+    _logged_command(session, zone, "lese-relais", 12)
+    plaintext = _token(
+        session, "verlauf-fremdaudit", [("zone.read", zone.id), ("audit.read", other.id)]
     )
 
     result = _history(session, plaintext, zone)

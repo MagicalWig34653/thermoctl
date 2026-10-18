@@ -86,6 +86,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "Relaisverschleiß",
         "audit.read",
         "thermoctl.web.ui_api_reports.show_relay_wear",
+        scope="any_zone",
         section="analysis",
     ),
     NavigationItem(
@@ -93,6 +94,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "Protokoll",
         "audit.read",
         "thermoctl.web.ui_api_reports.show_audit",
+        scope="any_zone",
         section="analysis",
     ),
     NavigationItem(
@@ -100,6 +102,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "Schaltprotokoll",
         "audit.read",
         "thermoctl.web.ui_api_devices.show_device_commands",
+        scope="any_zone",
         section="analysis",
     ),
     NavigationItem(
@@ -107,6 +110,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "Änderungsprotokoll",
         "audit.read",
         "thermoctl.web.ui_api_reports.show_changes",
+        scope="any_zone",
         section="analysis",
     ),
     # -- System ------------------------------------------------------------------
@@ -227,7 +231,8 @@ def visible_navigation(principal: Principal) -> tuple[NavigationItem, ...]:
 
     A listing which filters itself by zone is useful as soon as one matching zone is
     available.  A plant-wide endpoint stays hidden for a merely zone-scoped grant,
-    matching ``has_permission(principal, code)`` at that endpoint.
+    matching ``has_permission(principal, code)`` at that endpoint.  ``audit.read`` is
+    zone-scoped (``any_zone``): the protocols filter themselves to the granted zones.
 
     Allein die Rechte entscheiden (Entscheidung des Projektinhabers): das Gruppenprofil
     (Mieter/Admin) filtert hier nichts. Ob eine Adresse geöffnet werden kann, entscheidet

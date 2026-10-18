@@ -191,7 +191,8 @@ Folgen einer falschen Parametrierung verstanden sind. Ohne ihn wird das Formular
 Meldung abgewiesen.
 
 **Danach die Seite „Relaisverschleiß" ansehen.** Sie zeigt Schaltspiele je Gerät und Tag
-mit Jahreshochrechnung und braucht das Recht `audit.read`. Sie ist auch ohne PI nützlich —
+mit Jahreshochrechnung und braucht das Recht `audit.read` (anlagenweit oder für einzelne
+Räume; dann nur deren Geräte). Sie ist auch ohne PI nützlich —
 Verschleiß entsteht auch durch die Hysterese, nur langsamer. Wird die Jahreshochrechnung
 einer Zone auffällig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei
 vollständig neutralisiert, ein späteres Wiedereinschalten faengt sauber an.

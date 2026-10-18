@@ -575,12 +575,11 @@ def test_relay_wear_access(client_als: Als, tenant_client: Als, session: Session
         tenant_client([("audit.read", None), ("zone.read", zone.id)]).get("/ui-api/relay-wear")
     ).status_code == 200
     _fehler(client_als([("zone.read", zone.id)]).get("/ui-api/relay-wear"), 403, "forbidden")
-    # audit.read nur zonenbezogen reicht nicht (anlagenweites Protokoll)
-    _fehler(
-        client_als([("audit.read", zone.id), ("zone.read", zone.id)]).get("/ui-api/relay-wear"),
-        403,
-        "forbidden",
-    )
+    # audit.read ist raumbezogen: für einen Raum vergeben genügt es (nur dessen Geräte)
+    scoped = client_als([("audit.read", zone.id), ("zone.read", zone.id)])
+    assert scoped.get("/ui-api/relay-wear").status_code == 200
+    # ... aber nur für diesen Raum; ein anderer ist "nicht gefunden"
+    _fehler(scoped.get("/ui-api/relay-wear", params={"zone_id": foreign.id}), 404, "not_found")
     client = client_als([("audit.read", None), ("zone.read", zone.id)])
     _fehler(client.get("/ui-api/relay-wear", params={"zone_id": foreign.id}), 404, "not_found")
     _fehler(client.get("/ui-api/relay-wear", params={"period": "x"}), 422, "validation")

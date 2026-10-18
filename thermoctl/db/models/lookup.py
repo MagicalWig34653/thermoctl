@@ -188,7 +188,9 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     ("group.manage", "Gruppen und Rechte verwalten", False),
     ("token.self", "Eigene Tokens ausstellen und widerrufen", False),
     ("token.manage", "Fremde Tokens verwalten", False),
-    ("audit.read", "Audit-Protokoll einsehen", False),
+    # Raumbezogen seit 0.20.4: anlagenweit vergeben sieht das Recht alles, auf Räume
+    # beschränkt nur die Einträge dieser Räume (`domain.authz.audit_scope`).
+    ("audit.read", "Audit-Protokoll einsehen", True),
     # A dedicated permission instead of `setting.manage`: arming is the only setting
     # whose flip immediately moves a valve. Whoever is allowed to maintain time zone and
     # retention period should not incidentally be able to arm the heating with it.

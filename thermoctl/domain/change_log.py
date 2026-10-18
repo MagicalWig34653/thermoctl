@@ -18,7 +18,7 @@ Werte stehen als kanonische Zeichenketten im Protokoll (`canonical`): Decimal oh
 die Sekunde. Es werden nur die Felder gespeichert, die sich tatsächlich geändert haben.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -817,8 +817,13 @@ def list_changes(
     include_reverted: bool = True,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
+    zone_ids: Collection[int] | None = None,
 ) -> list[ChangeView]:
     """Die Einträge, neueste zuerst.
+
+    `zone_ids` ist der Bereich eines auf Räume beschränkten `audit.read` (`None` =
+    anlagenweit): dann nur Änderungen an diesen Räumen, in der Abfrage selbst. Einträge
+    ohne Raum (anlagenweite Vorgaben, Einträge gelöschter Räume) sehen nur Anlagenweite.
 
     `include_reverted=False` blendet die Einträge aus, die zurückgenommen wurden (auch
     die als gegenstandslos markierten); die Rücknahme-Einträge selbst bleiben stehen.
@@ -829,6 +834,8 @@ def list_changes(
     if offset < 0:
         raise ValueError("offset darf nicht negativ sein")
     query = select(ChangeLog)
+    if zone_ids is not None:
+        query = query.where(ChangeLog.zone_id.in_(zone_ids))
     if zone_id is not None:
         query = query.where(ChangeLog.zone_id == zone_id)
     if change_type is not None:

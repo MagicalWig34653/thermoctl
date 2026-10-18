@@ -363,8 +363,8 @@ def test_list_changes_needs_audit_read(session: Session) -> None:
 
     with pytest.raises(Forbidden, match="audit.read"):
         server.list_changes(session, no_audit)
-    with pytest.raises(Forbidden, match="audit.read"):
-        server.list_changes(session, zone_only)  # nur anlagenweit, wie das Schaltprotokoll
+    # audit.read ist raumbezogen: für einen Raum vergeben genügt es (nur dessen Änderungen)
+    assert server.list_changes(session, zone_only) == []
 
 
 @pytest.mark.parametrize("limit", [0, -1, 501])

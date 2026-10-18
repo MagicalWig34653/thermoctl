@@ -1069,11 +1069,11 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (Dashboard-Layout), then `c5e1a9d3b072` (Anordnung der Gerätekarte), then
     # `d4b8f2a60c19` (Kachelart `control`), then
     # `e7a3c15b9d28` (Vorlagen), then `a8d4f12c6e53` (Aufbewahrung des
-    # Schaltprotokolls) -- every time the
+    # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["a8d4f12c6e53"]
+    assert scripts.get_heads() == ["b3f5d7a92c61"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

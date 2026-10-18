@@ -250,9 +250,9 @@ Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort ver
 dass es sie gibt.
 
 **`device_commands` prüft `audit.read`, nicht `zone.read`.** Wie die gleichnamige Ansicht
-in der Oberfläche und der REST-Endpunkt ist das Schaltprotokoll ein Protokoll über die
-ganze Anlage, nicht über eine einzelne Zone — ein auf eine Zone eingeschränktes Recht
-genügt hier nicht. `zone` filtert gegen die Namens-Momentaufnahme der Zeile, nicht gegen
+in der Oberfläche und der REST-Endpunkt gilt das Recht anlagenweit oder für bestimmte
+Räume: anlagenweit zeigt das Protokoll die ganze Anlage, für Räume vergeben nur deren
+Einträge (Einträge ohne Raum, etwa einer gelöschten Zone, nur anlagenweit). `zone` filtert gegen die Namens-Momentaufnahme der Zeile, nicht gegen
 die aktuelle Zone, und findet deshalb auch Einträge einer inzwischen gelöschten Zone.
 `limit` ist wie überall dort, wo eine Tabelle keiner Aufbewahrungsfrist unterliegt, auf
 höchstens 500 begrenzt (Vorgabe 100) — ein Wert außerhalb löst einen Fehler aus. Jeder
@@ -272,8 +272,8 @@ wird weder interpoliert noch mit 0 gefüllt; `summary.buckets_without_data` zäh
 heißt belegt „keine Absenkung". `heat_share` ist der Anteil der Messungen, bei denen die
 Regelung eine Heizanforderung ausgab (`would_heat`); das ist eine Aussage über die
 Entscheidung der Regelung, nicht über den Raum — was ein Gerät daraufhin tat, steht im
-Schaltprotokoll. Dieses gehört nur dazu, wenn das Token `audit.read` hat (aus demselben
-Grund wie bei `device_commands`); sonst ist `switching_log` `null`, `switching_log_note`
+Schaltprotokoll. Dieses gehört nur dazu, wenn das Token `audit.read` anlagenweit oder für genau diese
+Zone hat (aus demselben Grund wie bei `device_commands`); sonst ist `switching_log` `null`, `switching_log_note`
 nennt das fehlende Recht, und die Messreihe kommt trotzdem. Das Protokoll wird über den
 Anzeigenamen der Zone gefiltert, unter dem es sie führt; wurde die Zone umbenannt, tragen
 ältere Einträge den früheren Namen. Werte außerhalb der Grenzen (`hours`, Fensterlänge,
@@ -358,7 +358,9 @@ entstand (derselbe Wert, nichts zu beenden). Eine abgewiesene Änderung hinterl�
 Eintrag. Das Audit-Log bleibt daneben bestehen; das Änderungsprotokoll ist die strukturierte
 Fassung, aus der sich etwas zurücknehmen lässt.
 
-**Lesen:** `list_changes` verlangt `audit.read` anlagenweit, wie `device_commands`. `zone`
+**Lesen:** `list_changes` verlangt `audit.read`, wie `device_commands`: anlagenweit zeigt es alle
+Änderungen, für Räume vergeben nur die Änderungen an diesen Räumen (anlagenweite Vorgaben
+und Einträge gelöschter Räume nur anlagenweit). `zone`
 nennt die Zone mit ihrem Namen (wie in `list_zones`); ein unbekannter Name ist ein Fehler,
 keine leere Liste. Einträge einer inzwischen gelöschten Zone findet man ohne `zone`. `from_at`
 gilt einschließlich, `to_at` ausschließlich, ohne Zeitzone gilt UTC. `limit` liegt zwischen 1
@@ -399,7 +401,8 @@ revert_change(change_id=41)
 
 Die Rechte prüft die Domäne, und zwar **vor** jeder Auskunft über den Zustand: Wer das Recht
 nicht hat, erfährt weder den aktuellen Wert noch, ob der Eintrag schon zurückgenommen ist.
-`audit.read` braucht eine Rücknahme nicht, nur die Rechte der Art:
+`audit.read` braucht eine Rücknahme über MCP nicht, nur die Rechte der Art (in der Weboberfläche
+dagegen liegt der Eintrag zusätzlich im `audit.read`-Bereich des Aufrufers):
 
 | Art (`change_type`) | geschrieben von | Rücknahme | Recht für die Rücknahme |
 |---|---|---|---|
