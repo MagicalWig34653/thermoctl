@@ -383,12 +383,9 @@ def test_last_administrator_cannot_be_locked_out_by_any_path(client_als: Als, se
     # 4. user.manage aus der Gruppe nehmen
     kept = [{"code": c, "zone_id": None} for c, _z in ADMIN if c != "user.manage"]
     _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": kept}), 409, "last_administrator")
-    # 5. die Gruppe auf Wohnungssicht stellen
-    _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/ui-profile", {"ui_profile": "tenant"}), 409, "last_administrator")
     session.expire_all()
     assert me.is_active is True
     assert session.get(AccessGroup, group.id) is not None
-    assert group.ui_profile == "admin"
     assert session.scalar(
         select(GroupPermission.id).join(Permission).where(
             GroupPermission.access_group_id == group.id, Permission.code == "user.manage"
@@ -1044,3 +1041,56 @@ def test_group_permissions_of_own_group_cannot_grow_unless_sole_manager(
     _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted2}), 409, "own_group")
     # ... Entziehen bleibt erlaubt.
     assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": current}).status_code == 200
+
+
+def test_profile_switch_of_the_only_admin_group_is_allowed(client_als: Als, session: Session) -> None:
+    """Das Profil sperrt nichts mehr: Die Verwaltungsrechte bleiben beim Wechsel erhalten."""
+    client = client_als(ADMIN)
+    me_id = _me(client)
+    group = session.scalar(select(AccessGroup).join(UserAccessGroup).where(UserAccessGroup.user_id == me_id))
+    assert group is not None
+    assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/ui-profile", {"ui_profile": "tenant"}).status_code == 200
+
+
+def _named_group(session: Session, name: str, codes: list[str]) -> AccessGroup:
+    group = AccessGroup(name=name)
+    session.add(group)
+    session.flush()
+    for code in codes:
+        permission = session.scalar(select(Permission).where(Permission.code == code))
+        assert permission is not None
+        session.add(GroupPermission(access_group_id=group.id, permission_id=permission.id))
+    session.flush()
+    return group
+
+
+def test_nobody_hands_out_or_takes_over_more_rights_than_their_own(client_als: Als, session: Session) -> None:
+    """user.manage ist kein Weg zur Identitätsübernahme; group.manage keiner, fremde Gruppen aufzurüsten."""
+    client = client_als([("user.manage", None), ("group.manage", None), ("zone.read", None)])
+    # Eine zweite Person mit user.manage, damit die Ein-Personen-Ausnahme nicht greift.
+    user_with_permissions(session, "zweiter-verwalter", [("user.manage", None)])
+    strong = _named_group(session, "stark", ["zone.read", "setting.manage"])
+    weak = _named_group(session, "schwach", ["zone.read"])
+    target = create_user(session, "stark-konto")
+    session.add(UserAccessGroup(user_id=target.id, access_group_id=strong.id))
+    session.flush()
+    # 1. Passwort eines stärkeren Kontos
+    _err(_call(client, "PUT", f"/ui-api/access/users/{target.id}/password", {"password": LONG_PASSWORD}), 403, "beyond_own_rights")
+    # 2. Gruppenwechsel in eine stärkere Gruppe, Konto in stärkerer Gruppe anlegen
+    other = create_user(session, "schwach-konto")
+    _err(_call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": strong.id}), 403, "beyond_own_rights")
+    _err(_call(client, "POST", "/ui-api/access/users", {"username": "neu", "display_name": "N", "password": LONG_PASSWORD, "group_id": strong.id}), 403, "beyond_own_rights")
+    # 3. einer fremden Gruppe ein Recht geben, das man nicht hat
+    wanted = [{"code": "zone.read", "zone_id": None}, {"code": "setting.manage", "zone_id": None}, {"code": "device.manage", "zone_id": None}]
+    _err(_call(client, "PUT", f"/ui-api/access/groups/{weak.id}/permissions", {"permissions": wanted}), 403, "beyond_own_rights")
+    # Innerhalb der eigenen Rechte geht alles.
+    assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": weak.id}).status_code == 200
+    assert _call(client, "PUT", f"/ui-api/access/groups/{weak.id}/permissions", {"permissions": [{"code": "zone.read", "zone_id": None}]}).status_code == 200
+    assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/password", {"password": LONG_PASSWORD}).status_code == 200
+
+
+def test_the_only_user_manager_may_hand_out_new_rights(client_als: Als, session: Session) -> None:
+    client = client_als([("user.manage", None), ("group.manage", None)])
+    group = _named_group(session, "neu", ["zone.read"])
+    wanted = [{"code": "zone.read", "zone_id": None}, {"code": "audit.read", "zone_id": None}]
+    assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": wanted}).status_code == 200

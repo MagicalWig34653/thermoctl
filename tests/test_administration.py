@@ -534,3 +534,19 @@ def test_group_management_permission_keeps_its_last_source(session: Session) -> 
     assert second.is_active
     set_user_active(session, holder, False, actor_id=None)
     assert holder.is_active is False
+
+
+def test_holder_of_both_guarded_rights_cannot_drop_either_via_group(session: Session) -> None:
+    """Hält jemand als Einziger beide Rechte, darf die Zielgruppe keines davon verlieren."""
+    only = user_with_permissions(
+        session, "beides", [("user.manage", None), ("group.manage", None)]
+    )
+    target = AccessGroup(name="nur-user-manage")
+    session.add(target)
+    session.flush()
+    permission = session.scalar(select(Permission).where(Permission.code == "user.manage"))
+    assert permission is not None
+    session.add(GroupPermission(access_group_id=target.id, permission_id=permission.id))
+    session.flush()
+    with pytest.raises(AdministrationError, match="group.manage"):
+        set_user_group(session, only, target.id, actor_id=None)

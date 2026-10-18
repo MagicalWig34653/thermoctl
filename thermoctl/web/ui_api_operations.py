@@ -1352,7 +1352,11 @@ async def send_test_notification(principal: Prin, session: Sess) -> Notification
             "Testmeldung versendet" if result.ok else "Testmeldung konnte nicht versendet werden"
         ),
         user_id=principal.user_id, token_id=principal.token_id,
-        detail=None if result.ok else result.error,
+        # Nur die Art des Fehlers: der Fehlertext kann Teile der Webhook-URL (Pfad, Query)
+        # enthalten, und das Audit ist für `audit.read` lesbar.
+        detail=None if result.ok else (
+            f"HTTP-Status {result.status_code}" if result.status_code else "kein Status erhalten"
+        ),
     )
     return NotificationTestOut(
         ok=result.ok,

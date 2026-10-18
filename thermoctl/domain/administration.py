@@ -68,12 +68,18 @@ def _last_administrator(session: Session, user: User) -> bool:
     return [b.id for b in administrator] == [user.id]
 
 
-def _last_holder_of(session: Session, user: User) -> str | None:
-    """Das geschützte Recht, dessen letzter aktiver Inhaber dieser Benutzer ist (sonst None)."""
-    for code in GUARDED_PERMISSIONS:
-        if [b.id for b in _user_with_permission(session, code)] == [user.id]:
-            return code
-    return None
+def is_sole_holder(session: Session, user_id: int, code: str = ADMIN_PERMISSION) -> bool:
+    """Ob dieser Benutzer der einzige aktive Inhaber des anlagenweiten Rechts ist."""
+    return [b.id for b in _user_with_permission(session, code)] == [user_id]
+
+
+def _last_holder_of(session: Session, user: User) -> list[str]:
+    """Alle geschützten Rechte, deren letzter aktiver Inhaber dieser Benutzer ist."""
+    return [
+        code
+        for code in GUARDED_PERMISSIONS
+        if [b.id for b in _user_with_permission(session, code)] == [user.id]
+    ]
 
 
 def create_user(
@@ -115,11 +121,11 @@ def set_user_active(
     A deleted user would tear their audit entries down with them, or leave them
     without a name. Deactivated, it stays traceable who did what and when.
     """
-    held = _last_holder_of(session, user) if not active else None
-    if held is not None:
+    held = _last_holder_of(session, user) if not active else []
+    if held:
         raise AdministrationError(
             f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
-            f"{held}. Wird er deaktiviert, kann niemand mehr {_what_it_manages(held)} "
+            f"{held[0]}. Wird er deaktiviert, kann niemand mehr {_what_it_manages(held[0])} "
             "— der Zugang wäre nur noch über die Datenbank zu retten."
         )
     user.is_active = active
@@ -192,13 +198,13 @@ def set_user_group(
     # must not be moved into a group that no longer grants it -- otherwise nobody
     # would be left to hand out permissions at all, recoverable only through the
     # database.
-    held = _last_holder_of(session, user) if user.is_active else None
-    if held is not None and not _grants_admin_permission(session, group_id, held):
-        raise AdministrationError(
-            f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
-            f"{held}. Diese Gruppe würde ihm das Recht nehmen, und "
-            f"niemand könnte mehr {_what_it_manages(held)}."
-        )
+    for held in _last_holder_of(session, user) if user.is_active else []:
+        if not _grants_admin_permission(session, group_id, held):
+            raise AdministrationError(
+                f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
+                f"{held}. Diese Gruppe würde ihm das Recht nehmen, und "
+                f"niemand könnte mehr {_what_it_manages(held)}."
+            )
 
     old_names = sorted(
         name
@@ -284,19 +290,11 @@ def set_group_ui_profile(
     """Stellt die Oberfläche einer Gruppe um -- Anlagensicht oder Wohnungssicht.
 
     Ausdrücklich keine Rechteänderung: die Mitglieder behalten jedes Recht, das sie
-    hatten. Was sich ändert, ist allein, welche Seiten ihnen die Weboberfläche zeigt
-    und öffnet (`domain.ui_profile`, `web.guards`).
-
-    Der letzte Weg in die Verwaltung darf dabei nicht zufallen: eine Gruppe, ohne die
-    kein Benutzer mit `group.manage` mehr eine Admin-Oberfläche hätte, lässt sich
-    nicht auf Mieter umstellen. Sonst wäre die Rechtematrix zwar noch vergeben, aber
-    für niemanden mehr erreichbar -- derselbe Grund, aus dem `delete_group` die
-    letzte Verwaltungsgruppe nicht löschen lässt.
+    hatten. Das Profil steuert nur noch die Darstellung (Wortwahl, Wohnungsstart); Sichtbarkeit
+    und Zugriff folgen allein den Rechten, deshalb gibt es hier keine Sperre.
     """
     if parse_profile(group.ui_profile) is ui_profile:
         return
-    if ui_profile is WebUiProfile.TENANT:
-        _without_this_group_no_administrator(session, group)
     group.ui_profile = ui_profile.value
     session.flush()
     audit.record(

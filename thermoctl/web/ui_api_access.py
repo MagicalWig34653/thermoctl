@@ -53,6 +53,7 @@ from thermoctl.domain.administration import (
     create_group,
     create_user,
     delete_group,
+    is_sole_holder,
     revoke_token,
     set_group_permissions,
     set_group_ui_profile,
@@ -60,7 +61,13 @@ from thermoctl.domain.administration import (
     set_user_active,
     set_user_group,
 )
-from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, has_permission, principal_for_token
+from thermoctl.domain.authz import (
+    PERMISSION_AREAS,
+    Forbidden,
+    has_permission,
+    principal_for_token,
+    principal_for_user,
+)
 from thermoctl.domain.dashboard_templates import apply_template
 from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.oauth import revoke_access_token as revoke_oauth_access_token
@@ -120,6 +127,41 @@ def _not_self(principal: Principal, user: User, was: str) -> None:
             409, f"Das eigene Konto lässt sich hier nicht {was}; das macht eine andere Person.",
             "own_account",
         )
+
+
+def _within_own_rights(
+    session: Session, principal: Principal, wanted: AbstractSet[tuple[str, int | None]]
+) -> None:
+    """Niemand vergibt oder übernimmt mehr Rechte, als er selbst hat.
+
+    Sonst wäre `user.manage` ein Weg zur Identitätsübernahme (Passwort eines stärkeren
+    Kontos setzen, in eine stärkere Gruppe wechseln) oder `group.manage` ein Weg, einer
+    Gruppe Rechte zu geben, die man selbst nicht hat. Ausnahme: Wer als einzige aktive
+    Person `user.manage` hält, hat niemanden, vor dem die Regel schützt -- und könnte
+    sonst ein später hinzugekommenes Recht nie vergeben.
+    """
+    if principal.user_id is not None and is_sole_holder(session, principal.user_id):
+        return
+    missing = sorted(
+        code for code, zone_id in wanted if not has_permission(principal, code, zone_id)
+    )
+    if missing:
+        raise RoomApiError(
+            403,
+            "Das geht über die eigenen Rechte hinaus (" + ", ".join(dict.fromkeys(missing)) + ").",
+            "beyond_own_rights",
+        )
+
+
+def _group_grants(session: Session, group_id: int) -> set[tuple[str, int | None]]:
+    return {
+        (code, zone_id)
+        for code, zone_id in session.execute(
+            select(Permission.code, GroupPermission.zone_id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .where(GroupPermission.access_group_id == group_id)
+        )
+    }
 
 
 def _running_session_id(request: Request, session: Session) -> int | None:
@@ -423,6 +465,8 @@ def create_account(
     if not body.username.strip():
         raise _validation("username", "Der Benutzername darf nicht leer sein.", "invalid_username")
     _known_group(session, body.group_id)
+    if body.group_id is not None:
+        _within_own_rights(session, principal, _group_grants(session, body.group_id))
     if body.template_id is not None and session.get(DashboardTemplate, body.template_id) is None:
         raise _validation("template_id", "Diese Vorlage gibt es nicht.", "unknown_template")
     try:
@@ -475,6 +519,8 @@ def set_group_of_user(
     user = _user_or_404(session, user_id)
     _not_self(principal, user, "umgruppieren")
     _known_group(session, body.group_id)
+    if body.group_id is not None:
+        _within_own_rights(session, principal, _group_grants(session, body.group_id))
     try:
         set_user_group(session, user, body.group_id, actor_id=principal.user_id)
     except AdministrationError as exc:
@@ -501,6 +547,7 @@ def set_user_password(
             409, "Das eigene Passwort ändern Sie unter Konto (mit dem bisherigen Passwort).",
             "own_account",
         )
+    _within_own_rights(session, principal, principal_for_user(session, user).grants)
     try:
         set_password(session, user, body.password, actor_id=principal.user_id)
     except PasswordTooShort as exc:
@@ -738,6 +785,7 @@ def set_permissions(
                 "permissions", "Dieses Recht lässt sich so nicht einschränken.", "invalid_scope"
             )
         wanted.add((grant.code, grant.zone_id))
+    _within_own_rights(session, principal, wanted - _group_grants(session, group.id))
     _no_self_grant(session, principal, group, wanted)
     try:
         set_group_permissions(session, group, wanted, actor_id=principal.user_id)
