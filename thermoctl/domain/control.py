@@ -70,6 +70,12 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "stuck_reading_hours": (Decimal(1), Decimal(168)),
     "measurement_retention_days": (Decimal(1), Decimal(3650)),
     "shadow_decision_retention_days": (Decimal(1), Decimal(3650)),
+    # Schaltprotokoll (`device_command`): the project owner's decision is at most
+    # three years (1095 days, the factory default) and at most 2 GiB (2048 MB).
+    # Ten years and 1 TiB are typo guards, the 10 MB floor keeps the log from being
+    # emptied by a stray digit while still allowing a deliberately tiny one.
+    "command_log_retention_days": (Decimal(1), Decimal(3650)),
+    "command_log_max_mb": (Decimal(10), Decimal(1048576)),
     "session_lifetime_seconds": (Decimal(300), Decimal(31536000)),
     "default_solar_setback_max_k": (Decimal("0.0"), Decimal("10.0")),
     # A window of a day or more would predict "sun" far past the point where the
@@ -184,6 +190,8 @@ LABELS: dict[str, str] = {
     "stuck_reading_hours": "Messwert gilt als festhängend nach (Stunden)",
     "measurement_retention_days": "Messwerte aufbewahren (Tage)",
     "shadow_decision_retention_days": "Schattenentscheidungen aufbewahren (Tage)",
+    "command_log_retention_days": "Schaltprotokoll aufbewahren (Tage)",
+    "command_log_max_mb": "Schaltprotokoll, höchstens (MB)",
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",
     "default_solar_setback_max_k": "Sonnenabsenkung, Obergrenze (K)",
     "solar_setback_lookahead_hours": "Sonnenabsenkung, Vorschau (Stunden)",

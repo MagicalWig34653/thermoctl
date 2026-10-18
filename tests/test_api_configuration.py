@@ -353,6 +353,8 @@ def _defaults(**abweichungen: object) -> dict[str, object]:
         "stuck_reading_hours": 12,
         "measurement_retention_days": 30,
         "shadow_decision_retention_days": 365,
+        "command_log_retention_days": 1095,
+        "command_log_max_mb": 2048,
         "session_lifetime_seconds": 1209600,
         "default_solar_setback_max_k": "2.0",
         "solar_setback_lookahead_hours": 3,
@@ -684,3 +686,28 @@ def test_a_zone_carries_its_solar_profile_through_rest(
         },
     )
     assert beyond_one.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "low", "high", "ok_value"),
+    [
+        ("command_log_retention_days", 0, 3651, 730),
+        ("command_log_max_mb", 9, 1_048_577, 512),
+    ],
+)
+def test_command_log_limits_are_writable_and_bounded(
+    client: TestClient, session: Session, api_token, field: str, low: int, high: int, ok_value: int
+) -> None:
+    create_settings(session)
+    head = api_token([("zone.read", None), ("setting.manage", None)])
+
+    ok = client.put("/api/v1/control/defaults", json=_defaults(**{field: ok_value}), headers=head)
+    assert ok.status_code == 200
+    assert ok.json()[field] == ok_value
+    for bad in (low, high):
+        response = client.put(
+            "/api/v1/control/defaults", json=_defaults(**{field: bad}), headers=head
+        )
+        assert response.status_code == 422
+    stored = client.get("/api/v1/control", headers=head).json()
+    assert stored[field] == ok_value

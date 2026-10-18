@@ -86,6 +86,14 @@ class Setting(Base):
     shadow_decision_retention_days: Mapped[int] = mapped_column(
         Integer, default=365, server_default=text("365"), nullable=False
     )
+    # Schaltprotokoll (`device_command`): upper bounds for age and (estimated) size,
+    # enforced by `services/retention.py`. Bounds in `domain.control.LIMITS`.
+    command_log_retention_days: Mapped[int] = mapped_column(
+        Integer, default=1095, server_default=text("1095"), nullable=False
+    )
+    command_log_max_mb: Mapped[int] = mapped_column(
+        Integer, default=2048, server_default=text("2048"), nullable=False
+    )
     shadow_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
     )

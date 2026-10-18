@@ -1,14 +1,14 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import ColumnElement, delete, func, literal, select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.change_log import ChangeLog
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
-from thermoctl.db.models.state import ShadowDecision
+from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.domain.oauth import purge_expired
 
 log = logging.getLogger(__name__)
@@ -85,6 +85,102 @@ def delete_old_shadow_decisions(
         session.execute(delete(ShadowDecision).where(ShadowDecision.id.in_(ids)))
         count += len(ids)
     log.info("Alte Schattenentscheidungen gelöscht", extra={"anzahl": count})
+    return count
+
+
+# Schätzung der Zeilengröße im Schaltprotokoll. Datenbankagnostisch: keine
+# Systemtabellen (`information_schema`, `dbstat`), nur `LENGTH` über die
+# Spalten. Geschätzt wird je Zeile
+#     Summe LENGTH(Textspalten) + COMMAND_LOG_ROW_OVERHEAD_BYTES.
+# Die Konstante deckt die festen Spalten (Ids, Zeitstempel), Zeilenkopf und
+# Indexeinträge pauschal ab. `LENGTH` zählt unter SQLite Zeichen, unter MariaDB
+# Bytes -- bei Umlauten weicht die Schätzung also leicht ab; sie soll die
+# Größenordnung der Platte treffen, nicht auf das Byte stimmen. Lieber etwas zu
+# hoch als zu niedrig geschätzt: die Grenze ist eine Obergrenze.
+COMMAND_LOG_ROW_OVERHEAD_BYTES = 160
+
+
+def _device_command_row_bytes() -> ColumnElement[int]:
+    text_columns = (
+        DeviceCommand.zone_name,
+        DeviceCommand.device_name,
+        DeviceCommand.command,
+        DeviceCommand.payload,
+        DeviceCommand.error,
+        DeviceCommand.reason,
+        DeviceCommand.reason_code,
+    )
+    total: ColumnElement[int] = literal(COMMAND_LOG_ROW_OVERHEAD_BYTES)
+    for column in text_columns:
+        total = total + func.coalesce(func.length(column), 0)
+    return total
+
+
+def estimate_device_command_bytes(session: Session) -> int:
+    """Geschätzte Gesamtgröße des Schaltprotokolls in Bytes (siehe oben)."""
+    total = session.scalar(select(func.coalesce(func.sum(_device_command_row_bytes()), 0)))
+    return int(total or 0)
+
+
+def delete_old_device_commands(session: Session, now: datetime, *, batch_size: int = 5000) -> int:
+    """Löscht Schaltprotokoll-Einträge, die älter sind als `command_log_retention_days`."""
+    if batch_size <= 0:
+        raise ValueError("Blockgröße muss größer als null sein")
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
+
+    limit = now - timedelta(days=settings.command_log_retention_days)
+    count = 0
+    while True:
+        ids = list(
+            session.scalars(
+                select(DeviceCommand.id)
+                .where(DeviceCommand.sent_at < limit)
+                .order_by(DeviceCommand.sent_at, DeviceCommand.id)
+                .limit(batch_size)
+            )
+        )
+        if not ids:
+            break
+        session.execute(delete(DeviceCommand).where(DeviceCommand.id.in_(ids)))
+        count += len(ids)
+    log.info("Altes Schaltprotokoll gelöscht", extra={"anzahl": count})
+    return count
+
+
+def trim_device_commands_to_size(session: Session, *, batch_size: int = 5000) -> int:
+    """Hält das Schaltprotokoll unter `command_log_max_mb` (geschätzt, 1 MB = 1024²).
+
+    Ist die geschätzte Größe über der Grenze, fallen die ältesten Einträge
+    (`sent_at`, `id`) in Blöcken weg, bis der Überhang gedeckt ist -- nie ein
+    jüngerer vor einem älteren.
+    """
+    if batch_size <= 0:
+        raise ValueError("Blockgröße muss größer als null sein")
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
+
+    limit_bytes = settings.command_log_max_mb * 1024 * 1024
+    excess = estimate_device_command_bytes(session) - limit_bytes
+    count = 0
+    row_bytes = _device_command_row_bytes()
+    while excess > 0:
+        rows = session.execute(
+            select(DeviceCommand.id, row_bytes)
+            .order_by(DeviceCommand.sent_at, DeviceCommand.id)
+            .limit(batch_size)
+        ).all()
+        if not rows:  # pragma: no cover - Überhang ohne Zeilen ist nicht erreichbar
+            break
+        ids: list[int] = []
+        for row_id, size in rows:
+            ids.append(row_id)
+            excess -= int(size)
+            if excess <= 0:
+                break
+        session.execute(delete(DeviceCommand).where(DeviceCommand.id.in_(ids)))
+        count += len(ids)
+    log.info("Schaltprotokoll auf Größengrenze gekürzt", extra={"anzahl": count})
     return count
 
 
