@@ -34,6 +34,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.kiosk import kiosk_csrf_protection, kiosk_token_from_cookie
 from thermoctl.db.base import utcnow
@@ -309,9 +310,16 @@ async def kiosk_boost(zone_id: int, session: Sess, principal: Prin) -> RoomOut:
     _need(principal, "override.create", zone)
     now = utcnow()
     try:
-        domain_boost(session, zone, now, token_id=principal.token_id, source="kiosk")
+        result = domain_boost(session, zone, now, token_id=principal.token_id, source="kiosk")
     except RemoteControlError as exc:
         raise KioskApiError(422, str(exc), "rejected") from exc
+    audit.record(
+        session, source="kiosk", action="override.boost", object_type="zone",
+        object_id=str(zone.id),
+        summary=f"Nächste Schaltung in '{zone.display_name}' vorgezogen",
+        token_id=principal.token_id,
+        detail=f"Modus {result.mode_code}, {result.temperature} °C bis {result.bis.isoformat()}",
+    )
     return _room(session, principal, zone, now)
 
 

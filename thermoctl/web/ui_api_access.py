@@ -21,6 +21,7 @@ Sicherheitsregeln, die in jedem Endpunkt gelten:
   der ein Fehler gemeldet wird, ist zurückgerollt (Ausnahme läuft durch `get_session`).
 """
 
+from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime, timedelta
 from typing import Annotated
@@ -784,6 +785,13 @@ def list_tokens(
     )
 
 
+def _grants_text(grants: Iterable[tuple[str, int | None]]) -> str:
+    return ", ".join(
+        code if zone_id is None else f"{code}@{zone_id}"
+        for code, zone_id in sorted(grants, key=lambda g: (g[0], g[1] or 0))
+    ) or "-"
+
+
 @router.post("/access/tokens", status_code=201)
 def issue_own_token(
     body: TokenIssueIn,
@@ -814,6 +822,15 @@ def issue_own_token(
         token, plaintext = issue_token(session, owner, body.name, grants, _expiry(body.valid_days))
     except Forbidden:  # pragma: no cover - `token_grants` hat dieselbe Prüfung schon bestanden
         raise _not_held() from None
+    audit.record(
+        session, source="web", action="token.issued", object_type="api_token",
+        object_id=str(token.id), summary=f"Token '{token.name}' ausgestellt",
+        user_id=principal.user_id, token_id=principal.token_id,
+        detail=(
+            f"Rechte: {_grants_text(grants)}; "
+            f"Ablauf: {_iso(token.expires_at) or 'unbefristet'}"
+        ),
+    )
     # Der Klartext steht genau einmal hier: gespeichert wird nur sein Hash.
     result = IssuedTokenOut(
         token=_token_out(session, token, set(grants), _clients(session)), plaintext=plaintext,
@@ -931,6 +948,17 @@ def issue_kiosk_access(
         )
     except KioskError as exc:
         raise _validation("zone_ids", str(exc), "kiosk_scope") from None
+    audit.record(
+        session, source="web", action="kiosk_token.issued", object_type="api_token",
+        object_id=str(token.id), summary=f"Kiosk-Token '{token.name}' ausgestellt",
+        user_id=principal.user_id, token_id=principal.token_id,
+        detail=(
+            "Räume: "
+            + (", ".join(names[z] for z in zone_ids) or "-")
+            + f"; Bedienung: {'ja' if body.control_allowed else 'nein'}"
+            + f"; Ablauf: {_iso(token.expires_at) or 'unbefristet'}"
+        ),
+    )
     result = IssuedKioskTokenOut(token=_kiosk_out(session, token, names), plaintext=plaintext)
     return JSONResponse(
         result.model_dump(), status_code=201,

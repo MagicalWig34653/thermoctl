@@ -324,6 +324,11 @@ def test_boost_creates_a_kiosk_override_and_cancel_ends_it(
     assert entry.created_by_token_id == token.id
     assert entry.source_id == source(session, "kiosk").id
     assert entry.cancelled_at is None
+    audited = session.query(AuditEvent).filter_by(action="override.boost").one()
+    assert (audited.object_type, audited.object_id) == ("zone", str(zone.id))
+    assert audited.actor_token_id == token.id and audited.actor_user_id is None
+    assert audited.source_id == source(session, "kiosk").id
+    assert plaintext not in f"{audited.summary} {audited.detail}"
 
     cancelled = client.post(f"/kiosk-api/rooms/{zone.id}/override/cancel", headers=_csrf(plaintext))
     assert cancelled.status_code == 200

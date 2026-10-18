@@ -768,7 +768,10 @@ def _bind(session: Session, principal: Principal, device: Device, body: ButtonIn
         raise _invalid("Keine Aktion angegeben.", "action_code")
     step = _decimal(body.step_k, "step_k")
     try:
-        set_binding(session, device, action, (body.command or "").strip() or None, step)
+        set_binding(
+            session, device, action, (body.command or "").strip() or None, step,
+            source="web", user_id=principal.user_id, token_id=principal.token_id,
+        )
     except ControllerError as exc:
         raise RoomApiError(422, str(exc), "binding_invalid") from None
 
@@ -951,6 +954,9 @@ def set_channel(
             source_device_id=body.source_device_id,
             fixed_text=(body.fixed_text or "").strip() or None,
             fixed_number=number,
+            source="web",
+            user_id=principal.user_id,
+            token_id=principal.token_id,
         )
     except ControllerChannelError as exc:
         raise RoomApiError(422, str(exc), "channel_invalid") from None

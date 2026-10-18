@@ -1537,6 +1537,18 @@ def test_test_notification_reports_success_and_failure_and_honours_the_cooldown(
     assert second.status_code == 200
     assert second.json()["ok"] is False and second.json()["error"] == "HTTP 500"
     assert row.notify_last_ok is False and row.notify_last_error == "HTTP 500"
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.action.like("notification.test_%")).order_by(AuditEvent.id)
+    ).all()
+    assert [e.action for e in events] == [
+        "notification.test_sent", "notification.test_failed",
+    ]
+    assert all((e.object_type, e.object_id) == ("setting", "1") for e in events)
+    assert all(e.actor_user_id is not None for e in events)
+    assert events[1].detail == "HTTP 500"
+    for e in events:
+        text = f"{e.summary} {e.detail}"
+        assert "T0K3N" not in text and "geheimes-token" not in text and "hook.example" not in text
     shown = client.get("/ui-api/settings")
     assert shown.json()["notifications"]["webhook_configured"] is True
     assert shown.json()["notifications"]["last_error"] == "HTTP 500"

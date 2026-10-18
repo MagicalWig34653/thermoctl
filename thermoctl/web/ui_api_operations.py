@@ -1353,6 +1353,16 @@ async def send_test_notification(principal: Prin, session: Sess) -> Notification
     row.notify_last_attempt_at = now
     row.notify_last_ok = result.ok
     row.notify_last_error = None if result.ok else result.error
+    audit.record(
+        session, source="web",
+        action="notification.test_sent" if result.ok else "notification.test_failed",
+        object_type="setting", object_id="1",
+        summary=(
+            "Testmeldung versendet" if result.ok else "Testmeldung konnte nicht versendet werden"
+        ),
+        user_id=principal.user_id, token_id=principal.token_id,
+        detail=None if result.ok else result.error,
+    )
     return NotificationTestOut(
         ok=result.ok,
         status_code=result.status_code,
