@@ -18,11 +18,16 @@ from thermoctl.domain.solar_setback import HourlyForecast, apply, sun_expected
 NOW = datetime(2026, 8, 30, 8, 0)
 
 
-def _point(hour: int, radiation: Decimal | None) -> HourlyForecast:
+def _point(
+    hour: int, radiation: Decimal | None, shortwave: Decimal | None = None
+) -> HourlyForecast:
+    """`radiation` ist die Direktstrahlung (`direct_radiation`), die allein zaehlt;
+    `shortwave` die Globalstrahlung inkl. diffus, die nur als Gegenprobe dient."""
     return HourlyForecast(
         time=datetime(2026, 8, 30, hour, 0),
         cloud_cover_percent=None,
-        shortwave_radiation_w_m2=radiation,
+        shortwave_radiation_w_m2=shortwave,
+        direct_radiation_w_m2=radiation,
     )
 
 
@@ -31,6 +36,18 @@ def _point(hour: int, radiation: Decimal | None) -> HourlyForecast:
 
 def test_sun_expected_is_true_when_a_bright_hour_falls_inside_the_window() -> None:
     forecast = [_point(9, Decimal(200))]
+    assert sun_expected(forecast, NOW, lookahead_hours=3) is True
+
+
+def test_fog_with_bright_diffuse_light_is_not_sun() -> None:
+    """Regression (30.10.2026, dichter Nebel): hohe Globalstrahlung, aber kaum
+    Direktstrahlung -- diffuses Licht ist keine Sonne, also keine Absenkung."""
+    forecast = [_point(9, Decimal(20), shortwave=Decimal(300))]
+    assert sun_expected(forecast, NOW, lookahead_hours=3) is False
+
+
+def test_high_direct_radiation_counts_even_if_shortwave_is_missing() -> None:
+    forecast = [_point(9, Decimal(200), shortwave=None)]
     assert sun_expected(forecast, NOW, lookahead_hours=3) is True
 
 

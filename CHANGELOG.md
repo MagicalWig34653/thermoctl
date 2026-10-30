@@ -9,6 +9,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.21.1 — 2026-10-30
+
+### Beim Upgrade zu wissen
+
+- Keine Migration, keine neuen Einstellungen. Die Sonnenabsenkung greift ab jetzt seltener: nur noch bei **direkter** Sonne, nicht mehr bei hellem diffusem Licht.
+
+### Behoben
+
+- **Sonnenabsenkung bei Nebel:** Die Absenkung wurde ausgelöst, obwohl dichter Nebel herrschte und keine Sonne schien (30.10.2026, Wohnzimmer: Sollwert 20,5 °C auf 19,5 °C abgesenkt, Ist 19,14 °C). Ursache war die Prüfung der Globalstrahlung, die diffuses Licht mitzählt und die Schwelle von 120 W/m² auch bei Nebel überschreitet. Die Prognose fragt jetzt zusätzlich `direct_radiation` ab, und nur diese entscheidet; fehlt der Wert, gilt das als keine Sonne. Die Schwelle bleibt bei 120 W/m². Eine manuelle Übersteuerung wird weiterhin abgesenkt (bewusst so belassen).
+
+---
+
 ## 0.21.0 — 2026-10-18
 
 ### Beim Upgrade zu wissen

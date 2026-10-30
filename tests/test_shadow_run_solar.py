@@ -22,11 +22,11 @@ NOW = datetime(2026, 8, 30, 8, 0)
 
 
 def _sunny_forecast(radiation: Decimal = Decimal(300)) -> list[HourlyForecast]:
-    return [HourlyForecast(NOW + timedelta(hours=1), Decimal(20), radiation)]
+    return [HourlyForecast(NOW + timedelta(hours=1), Decimal(20), radiation, radiation)]
 
 
 def _cloudy_forecast() -> list[HourlyForecast]:
-    return [HourlyForecast(NOW + timedelta(hours=1), Decimal(90), Decimal(30))]
+    return [HourlyForecast(NOW + timedelta(hours=1), Decimal(90), Decimal(30), Decimal(30))]
 
 
 def _fixed_setpoint(session: Session, zone: Zone, temperature_c: Decimal) -> None:

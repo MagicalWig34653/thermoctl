@@ -43,7 +43,7 @@ def _fake_app(cache: object | None) -> object:
 @pytest.mark.anyio
 async def test_disabled_by_default_never_touches_the_cache(session: Session) -> None:
     create_settings(session)  # solar_forecast_enabled defaults to False
-    cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300))])
+    cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300), Decimal(300))])
 
     result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
 
@@ -58,7 +58,7 @@ async def test_enabled_but_without_a_location_stays_off(session: Session) -> Non
     settings = create_settings(session)
     settings.solar_forecast_enabled = True
     session.flush()
-    cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300))])
+    cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300), Decimal(300))])
 
     result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
 
@@ -73,7 +73,7 @@ async def test_enabled_and_configured_fetches_through_the_cache(session: Session
     settings.solar_forecast_latitude = Decimal("52.520")
     settings.solar_forecast_longitude = Decimal("13.405")
     session.flush()
-    forecast = [HourlyForecast(NOW, None, Decimal(300))]
+    forecast = [HourlyForecast(NOW, None, Decimal(300), Decimal(300))]
     cache = _FakeCache(forecast)
 
     result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
@@ -129,7 +129,7 @@ async def test_network_fetch_does_not_hold_a_sqlite_transaction(tmp_path: Path) 
                 writer.execute(
                     update(Setting).where(Setting.id == 1).values(timezone="Europe/Berlin")
                 )
-            return [HourlyForecast(NOW, None, Decimal(300))]
+            return [HourlyForecast(NOW, None, Decimal(300), Decimal(300))]
 
     try:
         result = await app_modul._solar_forecast(
@@ -138,7 +138,7 @@ async def test_network_fetch_does_not_hold_a_sqlite_transaction(tmp_path: Path) 
     finally:
         engine.dispose()
 
-    assert result == [HourlyForecast(NOW, None, Decimal(300))]
+    assert result == [HourlyForecast(NOW, None, Decimal(300), Decimal(300))]
 
 
 @pytest.fixture

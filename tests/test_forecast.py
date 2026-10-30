@@ -40,6 +40,7 @@ _SAMPLE_RESPONSE = {
         "time": ["2026-08-30T08:00", "2026-08-30T09:00", "2026-08-30T10:00"],
         "cloud_cover": [80, 40, None],
         "shortwave_radiation": [50, 220, None],
+        "direct_radiation": [10, 180, None],
     }
 }
 
@@ -52,9 +53,9 @@ async def test_the_client_parses_the_hourly_fields_it_was_told_are_there() -> No
     forecast = await client.fetch_hourly(Decimal("52.5"), Decimal("13.4"))
 
     assert forecast == [
-        HourlyForecast(datetime(2026, 8, 30, 8, 0), Decimal("80"), Decimal("50")),
-        HourlyForecast(datetime(2026, 8, 30, 9, 0), Decimal("40"), Decimal("220")),
-        HourlyForecast(datetime(2026, 8, 30, 10, 0), None, None),
+        HourlyForecast(datetime(2026, 8, 30, 8, 0), Decimal("80"), Decimal("50"), Decimal("10")),
+        HourlyForecast(datetime(2026, 8, 30, 9, 0), Decimal("40"), Decimal("220"), Decimal("180")),
+        HourlyForecast(datetime(2026, 8, 30, 10, 0), None, None, None),
     ]
 
 
@@ -70,6 +71,7 @@ async def test_the_request_names_latitude_longitude_and_the_two_fields() -> None
     assert "longitude=13.405" in url
     assert "cloud_cover" in url
     assert "shortwave_radiation" in url
+    assert "direct_radiation" in url
 
 
 @pytest.mark.anyio
@@ -143,7 +145,7 @@ class _FakeSolarForecastTransport:
         self.calls += 1
         if self.fail:
             raise RuntimeError("Simulated network failure")
-        return [HourlyForecast(NOW, Decimal("10"), Decimal("300"))]
+        return [HourlyForecast(NOW, Decimal("10"), Decimal("300"), Decimal("250"))]
 
 
 @pytest.mark.anyio
@@ -226,3 +228,21 @@ async def test_a_failure_does_not_poison_a_previously_cached_result() -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_a_response_without_direct_radiation_yields_none() -> None:
+    """Fehlt `direct_radiation` im Block, wird es None -- wie bei den anderen Feldern."""
+    payload = {
+        "hourly": {
+            "time": ["2026-08-30T08:00"],
+            "cloud_cover": [10],
+            "shortwave_radiation": [300],
+        }
+    }
+    client = OpenMeteoForecastClient(_FakeWeatherHttpTransport(payload))
+
+    (point,) = await client.fetch_hourly(Decimal("0"), Decimal("0"))
+
+    assert point.shortwave_radiation_w_m2 == Decimal("300")
+    assert point.direct_radiation_w_m2 is None

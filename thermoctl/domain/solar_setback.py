@@ -23,23 +23,27 @@ from decimal import ROUND_DOWN, Decimal
 class HourlyForecast:
     """One hourly point of an already-fetched forecast, in naive UTC.
 
-    Both fields are optional because Open-Meteo may omit either one; a point with
-    neither is still useful as "no data for this hour", not a reason to discard the
-    whole forecast.
+    All three values are optional because Open-Meteo may omit any of them; a point
+    with none is still useful as "no data for this hour", not a reason to discard the
+    whole forecast. `shortwave_radiation_w_m2` is the global radiation including
+    diffuse light; `direct_radiation_w_m2` is the direct beam only (on the horizontal
+    plane) -- the one `sun_expected` decides on.
     """
 
     time: datetime
     cloud_cover_percent: Decimal | None
     shortwave_radiation_w_m2: Decimal | None
+    direct_radiation_w_m2: Decimal | None
 
 
 # A commonly used rule of thumb for "the sun meaningfully contributes to heating a
-# room" -- low enough that an overcast-but-bright transitional-season morning still
-# counts (that is exactly the case this feature targets), high enough that it is not
-# satisfied by every daylight hour regardless of weather. This is a physical judgment
-# about solar irradiance, not a site-specific value -- unlike a device id, room name,
-# or broker address (CLAUDE.md principle 1), a threshold like this stays meaningful
-# across installations and does not belong in configuration.
+# room", applied to the *direct* radiation -- low enough that a thin-cloud
+# transitional-season morning with real sun still counts (the case this feature
+# targets), high enough that it is not satisfied by every daylight hour regardless of
+# weather, and in particular not by diffuse light under fog or heavy overcast. This is
+# a physical judgment about solar irradiance, not a site-specific value -- unlike a
+# device id, room name, or broker address (CLAUDE.md principle 1), a threshold like
+# this stays meaningful across installations and does not belong in configuration.
 SUNSHINE_THRESHOLD_W_M2 = Decimal(120)
 
 
@@ -48,17 +52,18 @@ def sun_expected(
 ) -> bool:
     """Whether the forecast promises meaningful sunshine within the lookahead window.
 
-    Looks only at `shortwave_radiation_w_m2`: it is the direct physical quantity, and
-    Open-Meteo does not guarantee `cloud_cover` is any more reliably present than it
-    is -- both are "may be missing", and radiation is the more informative of the two
-    when it is there. An hour with no radiation value cannot promise sunshine, so it
-    counts as "no" rather than as unknown-therefore-yes; the safe direction here is to
-    under- rather than over-predict sun.
+    Looks only at `direct_radiation_w_m2`, deliberately **not** at the global
+    radiation (`shortwave_radiation_w_m2`): that includes diffuse light, which dense
+    fog or a bright overcast sky delivers in plenty without any sun reaching the
+    room (30.10.2026: setback triggered in thick fog). Diffuse is not sun. An hour
+    with no direct-radiation value cannot promise sunshine, so it counts as "no"
+    rather than as unknown-therefore-yes; the safe direction here is to under- rather
+    than over-predict sun.
     """
     horizon = now + timedelta(hours=lookahead_hours)
     return any(
-        point.shortwave_radiation_w_m2 is not None
-        and point.shortwave_radiation_w_m2 >= SUNSHINE_THRESHOLD_W_M2
+        point.direct_radiation_w_m2 is not None
+        and point.direct_radiation_w_m2 >= SUNSHINE_THRESHOLD_W_M2
         and now <= point.time < horizon
         for point in forecast
     )

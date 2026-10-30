@@ -532,7 +532,7 @@ Siehe auch: [Zeitplan](#zeitplan), [Sollwert](#sollwert), [Frostschutz](#frostsc
 
 *Regelung* — Kann den Sollwert absenken, wenn bald Sonne zu erwarten ist.
 
-Grundlage ist die Wettervorhersage: Bei einer vorhergesagten Einstrahlung von mindestens 120 W/m² in den nächsten Stunden (einstellbar, ab Werk 3) kann der Sollwert einer Zone um bis zu ihre Obergrenze (ab Werk 2 K) sinken, gewichtet mit dem Sonnenprofil der Zone von 0 bis 1. Der Frostschutz-Sollwert soll dabei nicht unterschritten werden. Die Funktion braucht einen Standort und eine erreichbare Vorhersage.
+Grundlage ist die Wettervorhersage: Bei einer vorhergesagten direkten Sonneneinstrahlung von mindestens 120 W/m² (diffuses Licht, etwa bei Nebel, zählt nicht) in den nächsten Stunden (einstellbar, ab Werk 3) kann der Sollwert einer Zone um bis zu ihre Obergrenze (ab Werk 2 K) sinken, gewichtet mit dem Sonnenprofil der Zone von 0 bis 1. Der Frostschutz-Sollwert soll dabei nicht unterschritten werden. Die Funktion braucht einen Standort und eine erreichbare Vorhersage.
 
 Auch: Sonnenprofil, Sonnenabsenkung, Obergrenze, Solarabsenkung, Sonnenvorhersage
 

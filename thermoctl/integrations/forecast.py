@@ -65,20 +65,25 @@ def _parse_hourly(response: object) -> list[HourlyForecast]:
         raise ValueError("Open-Meteo-Antwort ohne Zeitstempel")
     clouds = hourly.get("cloud_cover")
     radiation = hourly.get("shortwave_radiation")
+    direct = hourly.get("direct_radiation")
     clouds = clouds if isinstance(clouds, list) else [None] * len(times)
     radiation = radiation if isinstance(radiation, list) else [None] * len(times)
+    direct = direct if isinstance(direct, list) else [None] * len(times)
     return [
         HourlyForecast(
             time=datetime.fromisoformat(str(time_text)),
             cloud_cover_percent=None if cloud is None else Decimal(str(cloud)),
             shortwave_radiation_w_m2=None if sun is None else Decimal(str(sun)),
+            direct_radiation_w_m2=None if beam is None else Decimal(str(beam)),
         )
-        for time_text, cloud, sun in zip(times, clouds, radiation, strict=True)
+        for time_text, cloud, sun, beam in zip(
+            times, clouds, radiation, direct, strict=True
+        )
     ]
 
 
 class OpenMeteoForecastClient:
-    """Fetches `cloud_cover` and `shortwave_radiation` for one location.
+    """Fetches `cloud_cover`, `shortwave_radiation` and `direct_radiation` for one location.
 
     Requested in `timezone=UTC` deliberately: `now` throughout the control loop is
     naive UTC (`thermoctl.db.base.utcnow`), and matching the forecast's own naive
@@ -96,7 +101,7 @@ class OpenMeteoForecastClient:
             {
                 "latitude": str(latitude),
                 "longitude": str(longitude),
-                "hourly": "cloud_cover,shortwave_radiation",
+                "hourly": "cloud_cover,shortwave_radiation,direct_radiation",
                 "timezone": "UTC",
                 "forecast_days": str(_FORECAST_DAYS),
             }

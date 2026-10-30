@@ -1,9 +1,8 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-18. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-10-30. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **In Freigabe:** 0.21.0 (Rechte allein entscheiden, Vorschau für Administratoren, `audit.read` raumbezogen, Audit nachgezogen, Schaltprotokoll mit Obergrenze, Sperren für letzten Inhaber und eigenes Konto): Version und Changelog stehen, Tag, Abbild und Add-on-Repository folgen.
-- **Letzte Freigabe:** 0.20.3 (Glow „Intensiv“ ohne Kasten hinter dem Seitenkopf): Tag `v0.20.3`, GitHub-Release, Abbild auf ghcr.io (amd64 und arm64, `latest`), Add-on-Repository nachgezogen.
+- **Letzte Freigabe:** 0.21.1 (Sonnenabsenkung entscheidet nach Direktstrahlung statt Globalstrahlung, nicht mehr bei Nebel): Tag `v0.21.1`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.21.0.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
