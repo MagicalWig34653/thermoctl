@@ -33,8 +33,10 @@ export function createDevicesClient(api: Api) {
       api.post<ZoneDevices>(`${zone(id)}/detach`, { assignment_id: assignmentId }),
     regulation: (id: number, assignmentId: number, mode: string) =>
       api.post<ZoneDevices>(`${zone(id)}/regulation`, { assignment_id: assignmentId, thermostat_mode: mode }),
-    source: (id: number, deviceId: number | null) =>
-      api.post<ZoneDevices>(`${zone(id)}/source`, { device_id: deviceId }),
+    addSource: (id: number, deviceId: number) =>
+      api.post<ZoneDevices>(`${zone(id)}/sources`, { device_id: deviceId }),
+    removeSource: (id: number, deviceId: number) =>
+      api.delete<ZoneDevices>(`${zone(id)}/sources/${deviceId}`),
     swap: (id: number, oldId: number, newId: number) =>
       api.post<ZoneDevices>(`${zone(id)}/swap`, { old_device_id: oldId, new_device_id: newId }),
     plant: () => api.get<Plant>('/ui-api/plant'),

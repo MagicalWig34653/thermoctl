@@ -83,10 +83,12 @@ export function plantDiagram(zone: PlantZone): Diagram {
     column,
     dashed: !d.active || Boolean(d.unsuitable),
   });
-  if (zone.temperature_source) {
-    const n = device(zone.temperature_source, 'source', 0);
-    nodes.push(n);
-    edges.push({ source: n.id, target: zoneId, label: 'Messwert', dashed: n.dashed });
+  if (zone.temperature_sources.length) {
+    for (const d of zone.temperature_sources) {
+      const n = device(d, 'source', 0);
+      nodes.push(n);
+      edges.push({ source: n.id, target: zoneId, label: 'Messwert', dashed: n.dashed });
+    }
   } else {
     nodes.push({ id: 'source:none', label: 'keine Messquelle', detail: null, tone: 'missing', column: 0, dashed: true });
     edges.push({ source: 'source:none', target: zoneId, label: 'Messwert fehlt', dashed: true });

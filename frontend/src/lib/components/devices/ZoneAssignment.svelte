@@ -7,6 +7,7 @@
   import { deviceFailure, failureText } from '$lib/devices/errors';
   import { bindableControllers, buttonBody, draftChanged, draftKey, draftOf, type ButtonDraft } from '$lib/devices/buttons';
   import type { ZoneDevices } from '$lib/devices/types';
+  import { addableSources, NO_SOURCE_TEXT, removeStep, SOURCES_HINT, sourcesTitle } from '$lib/devices/sources';
 
   let { zoneId }: { zoneId: number } = $props();
   const { api } = useApp();
@@ -18,6 +19,7 @@
   let notice = $state<{ tone: 'error' | 'success' | 'warn'; text: string } | null>(null);
   let generation = 0;
   let sourceDevice = $state('');
+  let confirmRemove = $state<number | null>(null);
 
   async function load() {
     const mine = ++generation;
@@ -25,7 +27,6 @@
       const value = await client.zoneDevices(zoneId);
       if (mine !== generation) return;
       data = value;
-      sourceDevice = value.temperature_source ? String(value.temperature_source.id) : '';
       loadError = null;
     } catch (error) {
       if (mine !== generation) return;
@@ -47,7 +48,7 @@
     try {
       generation += 1;
       data = await action();
-      sourceDevice = data.temperature_source ? String(data.temperature_source.id) : '';
+      sourceDevice = '';
       notice = { tone: 'success', text: ok };
       return true;
     } catch (error) {
@@ -88,9 +89,18 @@
       addDevice = '';
     }
   }
-  async function setSource(e: SubmitEvent) {
+  async function addSource(e: SubmitEvent) {
     e.preventDefault();
-    await run(() => client.source(zoneId, sourceDevice ? Number(sourceDevice) : null), sourceDevice ? 'Messquelle gesetzt.' : 'Messquelle gelöst.');
+    if (!sourceDevice) return;
+    await run(() => client.addSource(zoneId, Number(sourceDevice)), 'Messquelle hinzugefügt.');
+  }
+  async function removeSource(id: number) {
+    if (removeStep(confirmRemove, id) === 'confirm') {
+      confirmRemove = id;
+      return;
+    }
+    confirmRemove = null;
+    await run(() => client.removeSource(zoneId, id), 'Messquelle gelöst.');
   }
   async function detach(id: number) {
     if (confirmDetach !== id) {
@@ -151,17 +161,32 @@
     {/if}
 
     <div class="rounded-xl border bg-card p-4">
-      <h3 class="m-0 text-base">Temperaturquelle</h3>
-      <p class="m-0 text-sm text-muted-foreground">Der Fühler, dessen Wert die Regelung des Raums verwendet.</p>
-      <p class="mt-2" data-testid="source">{data.temperature_source ? data.temperature_source.name : 'Keine Messquelle gesetzt.'}</p>
+      <h3 class="m-0 text-base">{sourcesTitle(data.temperature_sources.length)}</h3>
+      <p class="m-0 text-sm text-muted-foreground">{SOURCES_HINT}</p>
+      {#if data.temperature_sources.length}
+        <ul class="mt-2 grid list-none gap-2 p-0" data-testid="sources">
+          {#each data.temperature_sources as s (s.id)}
+            <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3" data-testid="source">
+              <span class="min-w-0 break-words font-medium">{s.name}</span>
+              {#if data.may_edit}
+                <Button variant={confirmRemove === s.id ? 'destructive' : 'outline'} size="sm" disabled={busy} onclick={() => removeSource(s.id)}>
+                  {confirmRemove === s.id ? 'Wirklich lösen' : 'Lösen'}
+                </Button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mt-2" data-testid="source">{NO_SOURCE_TEXT}</p>
+      {/if}
       {#if data.may_edit}
-        <form class="flex flex-wrap items-end gap-2" onsubmit={setSource}>
-          <label class="grid gap-1 text-sm"><span>Gerät</span>
+        <form class="mt-3 flex flex-wrap items-end gap-2" onsubmit={addSource}>
+          <label class="grid gap-1 text-sm"><span>Fühler hinzufügen</span>
             <select class="h-11 min-w-48 rounded-lg border bg-background px-3" bind:value={sourceDevice}>
-              <option value="">Keine Messquelle</option>
-              {#each data.devices as d (d.id)}<option value={String(d.id)}>{d.name}</option>{/each}
+              <option value="">Bitte wählen</option>
+              {#each addableSources(data) as d (d.id)}<option value={String(d.id)}>{d.name}</option>{/each}
             </select></label>
-          <Button type="submit" variant="outline" disabled={busy}>Messquelle übernehmen</Button>
+          <Button type="submit" variant="outline" disabled={busy || !sourceDevice}>Hinzufügen</Button>
         </form>
       {/if}
     </div>

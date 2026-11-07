@@ -9,7 +9,7 @@ const dev = (id: number, name: string, over: Partial<PlantDevice> = {}): PlantDe
 });
 
 const full: PlantZone = {
-  zone_id: 7, name: 'Wohnzimmer', temperature_source: dev(1, 'Fühler'),
+  zone_id: 7, name: 'Wohnzimmer', temperature_sources: [dev(1, 'Fühler')],
   window_contacts: [dev(2, 'Fenster', { capabilities: ['contact'] })],
   actuators: [dev(3, 'Ventil'), dev(4, 'Ventil 2', { active: false })],
   controllers: [dev(5, 'Taster')], defects: [],
@@ -64,7 +64,7 @@ test('Anlagenbild: Messquelle und Fenster links, Raum Mitte, Aktoren rechts; Bed
 });
 
 test('Anlagenbild: fehlende Messquelle und fehlender Aktor stehen als Lücke da', () => {
-  const d = plantDiagram({ ...full, temperature_source: null, actuators: [], window_contacts: [], controllers: [] });
+  const d = plantDiagram({ ...full, temperature_sources: [], actuators: [], window_contacts: [], controllers: [] });
   assert.deepEqual(d.nodes.filter((n) => n.tone === 'missing').map((n) => n.id), ['source:none', 'actuator:none']);
   assert.ok(d.edges.every((e) => e.source === 'zone:7' || e.dashed));
   assert.match(summary(d, 'Küche'), /2 fehlend/);

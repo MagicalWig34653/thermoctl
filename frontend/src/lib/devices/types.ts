@@ -148,13 +148,13 @@ export interface ThermostatModeInfo {
 export interface ZoneDevices {
   zone: { id: number; name: string };
   may_edit: boolean;
-  temperature_source: { id: number; name: string } | null;
+  temperature_sources: { id: number; name: string }[];
   assignments: ZoneAssignment[];
   devices: { id: number; name: string; capabilities: string[] }[];
   roles: Named[];
   required_capabilities: Record<string, string[]>;
   thermostat_modes: ThermostatModeInfo[];
-  picture: { defects: string[] };
+  picture: { defects: string[]; temperature_sources: PlantDevice[] };
   /** Bediengeräte dieses Raums mit gesehenen Tasten (nur Lesen; Schreiben über `zone_button`). */
   controllers: { device: { id: number; name: string }; bindings: Binding[] }[];
   commands: Named[];
@@ -175,7 +175,7 @@ export interface PlantDevice {
 export interface PlantZone {
   zone_id: number;
   name: string;
-  temperature_source: PlantDevice | null;
+  temperature_sources: PlantDevice[];
   window_contacts: PlantDevice[];
   actuators: PlantDevice[];
   controllers: PlantDevice[];
