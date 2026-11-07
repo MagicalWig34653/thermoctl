@@ -14,9 +14,10 @@ from thermoctl.domain.device_assignment import (
     AssignmentAlreadyExists,
     CapabilityMissing,
     actuator_elsewhere_notice,
+    add_temperature_source,
     assign_device,
     detach_device,
-    set_temperature_source,
+    remove_temperature_source,
     set_thermostat_mode,
 )
 from thermoctl.domain.mapping_map import (
@@ -154,7 +155,7 @@ def connect_ports(
         return no_outcome("Gerät nicht gefunden.", "not_found", 404)
     try:
         if zone_port.slot == TEMPERATURE_SOURCE:
-            set_temperature_source(session, zone, device, actor_id=principal.user_id)
+            add_temperature_source(session, zone, device, actor_id=principal.user_id)
         else:
             role = session.scalar(
                 select(DeviceRole).where(DeviceRole.code == role_for_slot(zone_port.slot))
@@ -226,7 +227,10 @@ def disconnect_connection(
         return no_outcome("Verbindung nicht gefunden.", "not_found", 404)
     zone = zones[connection.zone_id]
     if connection.slot == TEMPERATURE_SOURCE:
-        set_temperature_source(session, zone, None, actor_id=principal.user_id)
+        device = session.get(Device, connection.device_id)
+        if device is None:  # pragma: no cover - die Verbindung stammt aus derselben Sitzung
+            return no_outcome("Gerät nicht gefunden.", "not_found", 404)
+        remove_temperature_source(session, zone, device, actor_id=principal.user_id)
     else:
         assignment = session.scalar(
             select(ZoneDevice)

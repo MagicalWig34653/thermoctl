@@ -8,7 +8,7 @@ that.
 
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_zone, role
+from tests.helpers import capability, create_device, create_zone, role, zone_mit_fuehler
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.domain.plant_diagram import plant_diagram
 
@@ -17,7 +17,7 @@ def test_a_fully_wired_zone_has_no_deficiencies(session: Session) -> None:
     zone = create_zone(session, "vollstaendig")
     sensor = create_device(session, "thermometer")
     valve = create_device(session, "ventil")
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.add(
         ZoneDevice(
             zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id
@@ -26,8 +26,7 @@ def test_a_fully_wired_zone_has_no_deficiencies(session: Session) -> None:
     session.flush()
 
     picture = plant_diagram(session, [zone]).zones[0]
-    assert picture.temperature_source is not None
-    assert picture.temperature_source.name == sensor.display_name
+    assert [s.name for s in picture.temperature_sources] == [sensor.display_name]
     assert [a.name for a in picture.actuators] == [valve.display_name]
     assert picture.defects == []
 
@@ -42,14 +41,14 @@ def test_a_zone_without_a_temperature_source_reports_the_deficiency(session: Ses
     )
     session.flush()
     picture = plant_diagram(session, [zone]).zones[0]
-    assert picture.temperature_source is None
+    assert picture.temperature_sources == []
     assert any("Messquelle" in m for m in picture.defects)
 
 
 def test_a_zone_without_an_actuator_reports_the_deficiency(session: Session) -> None:
     zone = create_zone(session, "ohnmaechtig")
     sensor = create_device(session, "thermometer-ohnmaechtig")
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.flush()
     picture = plant_diagram(session, [zone]).zones[0]
     assert any("Aktor" in m for m in picture.defects)
@@ -77,7 +76,7 @@ def test_devices_without_a_zone_are_listed_separately(session: Session) -> None:
     zone = create_zone(session, "eine-zone")
     used = create_device(session, "benutzt")
     unused = create_device(session, "herrenlos")
-    zone.temperature_source_device_id = used.id
+    zone_mit_fuehler(session, zone, used)
     session.flush()
 
     picture = plant_diagram(session, [zone])
@@ -94,11 +93,10 @@ def test_capabilities_appear_on_the_device(session: Session) -> None:
             device_id=sensor.id, capability_id=capability(session, "temperature").id
         )
     )
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.flush()
     picture = plant_diagram(session, [zone]).zones[0]
-    assert picture.temperature_source is not None
-    assert picture.temperature_source.capabilities
+    assert picture.temperature_sources[0].capabilities
 
 
 def test_an_old_misassignment_is_reported_as_a_deficiency(session: Session) -> None:
@@ -181,3 +179,19 @@ def test_an_assignment_in_a_role_the_diagram_does_not_show_is_skipped(
         )
     ]
     assert device.display_name not in shown
+
+
+def test_several_temperature_sources_appear_in_order(session: Session) -> None:
+    zone = create_zone(session, "zwei-fuehler")
+    first = create_device(session, "fuehler-a")
+    second = create_device(session, "fuehler-b")
+    zone_mit_fuehler(session, zone, first)
+    zone_mit_fuehler(session, zone, second)
+
+    diagram = plant_diagram(session, [zone])
+
+    assert [s.name for s in diagram.zones[0].temperature_sources] == [
+        first.display_name,
+        second.display_name,
+    ]
+    assert diagram.without_zone == []

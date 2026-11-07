@@ -52,7 +52,7 @@ def test_a_zone_name_taken_concurrently_when_creating(
     kind = operating_mode(session, "auto")
     create_zone(
         session, _principal(), name="besetzt", display_name="Besetzt",
-        operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
+        operating_mode_id=kind.id, sort_order=0,
     )
     # The pre-check says 'free' — as it would for a second request that claims
     # the same name at the same moment.
@@ -60,7 +60,7 @@ def test_a_zone_name_taken_concurrently_when_creating(
     with pytest.raises(ZoneNameTaken):
         create_zone(
             session, _principal(), name="besetzt", display_name="Zweiter",
-            operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
+            operating_mode_id=kind.id, sort_order=0,
         )
 
 
@@ -70,17 +70,17 @@ def test_a_zone_name_taken_concurrently_when_updating(
     kind = operating_mode(session, "auto")
     create_zone(
         session, _principal(), name="schon-da", display_name="Schon da",
-        operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
+        operating_mode_id=kind.id, sort_order=0,
     )
     other = create_zone(
         session, _principal(), name="andere", display_name="Andere",
-        operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
+        operating_mode_id=kind.id, sort_order=0,
     )
     monkeypatch.setattr(zone_modul, "_name_taken", lambda *a, **k: False)
     with pytest.raises(ZoneNameTaken):
         update_zone(
             session, other, _principal(), name="schon-da", display_name="Andere",
-            operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
+            operating_mode_id=kind.id, sort_order=0,
         )
     assert other.name == "andere"
 

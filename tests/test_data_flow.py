@@ -18,6 +18,7 @@ from tests.helpers import (
     create_zone,
     integration,
     role,
+    zone_mit_fuehler,
 )
 from thermoctl.db.models.device import DeviceCapabilityLink, DeviceProperty, ZoneDevice
 from thermoctl.domain.data_flow import (
@@ -79,7 +80,7 @@ def _valve(
 
 def _sensor_and_window(session: Session, zone) -> None:
     sensor = create_device(session, "sensor-wohnen")
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     window = create_device(session, "fenster-wohnen")
     session.add(
         ZoneDevice(
@@ -127,7 +128,8 @@ def test_self_regulating_valve_gets_setpoint_actual_and_frost_with_a_window(
     assert set(kinds) == {EDGE_SETPOINT, EDGE_ACTUAL, EDGE_FROST}
     assert kinds[EDGE_SETPOINT].property_name == "occupied_heating_setpoint"
     assert kinds[EDGE_FROST].property_name == "occupied_heating_setpoint"
-    assert graph.node(kinds[EDGE_ACTUAL].source).label == "sensor-wohnen"
+    # Der Istwert ist das Mittel der Fühler der Zone: er kommt von der Zone, nicht von einem Fühler.
+    assert kinds[EDGE_ACTUAL].source == "zone"
     assert graph.node(kinds[EDGE_FROST].source).kind == "zone"
 
 
@@ -420,7 +422,7 @@ def test_page_escapes_a_hostile_name_in_html(client_als, session: Session) -> No
     zone = create_zone(session, "htmlboese")
     sensor = create_device(session, "s")
     sensor.display_name = '<script>alert("x")</script>'
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.flush()
     page = client_als([("zone.manage", zone.id)]).get("/zones/data-flow")
 
@@ -438,3 +440,48 @@ def test_page_escapes_a_hostile_name_in_html(client_als, session: Session) -> No
 
 
 
+
+
+def test_every_temperature_source_is_a_node_with_an_actual_edge_to_the_zone(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "zwei-quellen")
+    first = create_device(session, "quelle-eins")
+    second = create_device(session, "quelle-zwei")
+    zone_mit_fuehler(session, zone, first)
+    zone_mit_fuehler(session, zone, second)
+
+    graph = build_data_flow(session, zone, NOW)
+
+    sensors = [n for n in graph.nodes if n.kind == "sensor"]
+    assert [n.label for n in sensors] == ["quelle-eins", "quelle-zwei"]
+    to_zone = [e for e in graph.edges if e.target == "zone" and e.kind == EDGE_ACTUAL]
+    assert sorted(e.source for e in to_zone) == sorted(n.id for n in sensors)
+    assert not graph.without_devices
+
+
+def test_a_zone_without_any_source_shows_one_missing_node(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "keine-quelle")
+
+    graph = build_data_flow(session, zone, NOW)
+
+    assert [n.label for n in graph.nodes if n.id == "sensor"] == ["Keine Messquelle"]
+    assert [e.kind for e in graph.edges if e.source == "sensor"] == [EDGE_MISSING]
+
+
+def test_a_self_regulating_valve_gets_the_actual_value_from_every_source(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "quellen-ventil")
+    _sensor_and_window(session, zone)
+    zone_mit_fuehler(session, zone, create_device(session, "zweite-quelle"))
+    _valve(session, zone, "kopf-zwei-quellen", "reading_only")
+
+    graph = build_data_flow(session, zone, NOW)
+
+    actual = [e for e in _edges_to(graph, "kopf-zwei-quellen") if e.kind == EDGE_ACTUAL]
+    assert len(actual) == 1
+    assert actual[0].source == "zone"

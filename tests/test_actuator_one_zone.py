@@ -31,10 +31,11 @@ from thermoctl.domain import device_assignment
 from thermoctl.domain.device_assignment import (
     ActuatorInAnotherZone,
     AssignmentAlreadyExists,
+    add_temperature_source,
     assign_device,
     detach_device,
-    set_temperature_source,
     set_thermostat_mode,
+    source_device_ids,
     swap_device,
 )
 from thermoctl.domain.mapping_map import Port, build_mapping_map, can_connect, zone_port_id
@@ -145,14 +146,14 @@ def test_only_the_actuator_role_is_limited(session: Session) -> None:
     sensor = _device(session, "fuehler", "temperature")
     contact = _device(session, "kontakt", "contact")
     knob = create_device(session, "regler")
-    set_temperature_source(session, a, sensor, actor_id=None)
-    set_temperature_source(session, b, sensor, actor_id=None)
+    add_temperature_source(session, a, sensor, actor_id=None)
+    add_temperature_source(session, b, sensor, actor_id=None)
     for zone in (a, b):
         assign_device(session, zone, contact, role(session, "window_contact"), actor_id=None)
         assign_device(session, zone, knob, role(session, "controller"), actor_id=None)
     assert _zones_of(session, contact, "window_contact") == sorted([a.id, b.id])
     assert _zones_of(session, knob, "controller") == sorted([a.id, b.id])
-    assert a.temperature_source_device_id == b.temperature_source_device_id == sensor.id
+    assert source_device_ids(session, a) == source_device_ids(session, b) == [sensor.id]
 
 
 def test_a_device_that_is_only_a_sensor_elsewhere_may_become_an_actuator(session: Session) -> None:
@@ -160,7 +161,7 @@ def test_a_device_that_is_only_a_sensor_elsewhere_may_become_an_actuator(session
     source(session)
     a, b = create_zone(session, "misch-a"), create_zone(session, "misch-b")
     combo = _device(session, "kombi", "temperature", "switch")
-    set_temperature_source(session, a, combo, actor_id=None)
+    add_temperature_source(session, a, combo, actor_id=None)
     _put(session, a, combo, "window_contact")
     assign_device(session, b, combo, role(session, "actuator"), actor_id=None)
     assert _zones_of(session, combo) == [b.id]

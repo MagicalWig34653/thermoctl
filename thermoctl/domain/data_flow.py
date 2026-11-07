@@ -7,7 +7,9 @@ JavaScript lesbar und testbar ist.
 
 Quellen, die der Code tatsächlich benutzt:
 
-* die **Messquelle** der Zone (`zone.temperature_source_device_id`) -- der Istwert,
+* die **Messquellen** der Zone (Tabelle `zone_temperature_source`, beliebig viele Fühler) --
+  der Istwert (Mittel der brauchbaren Fühler, `domain/room_temperature.py`); ohne Fühler
+  fehlt die Quelle,
 * die **Fensterkontakte** (Rolle `window_contact`),
 * der **aufgelöste Sollwert** (`schedule.resolved_setpoint`: Zeitplan, Übersteuerung,
   Boost, Urlaub, Frostschutz).
@@ -28,7 +30,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    DeviceProperty,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
@@ -198,22 +206,26 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
     nodes, edges = graph.nodes, graph.edges
 
     # -- Quellen --------------------------------------------------------------------
-    source_device = (
-        session.get(Device, zone.temperature_source_device_id)
-        if zone.temperature_source_device_id is not None
-        else None
-    )
-    if source_device is not None:
+    source_devices = [
+        device
+        for device in session.scalars(
+            select(Device)
+            .join(ZoneTemperatureSource, ZoneTemperatureSource.device_id == Device.id)
+            .where(ZoneTemperatureSource.zone_id == zone.id)
+            .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+        )
+    ]
+    for index, source_device in enumerate(source_devices):
         nodes.append(
             FlowNode(
-                "sensor",
+                f"sensor{index}",
                 NODE_SENSOR,
                 _device_label(source_device),
                 "Messquelle (Raumtemperatur)",
                 source_device.id,
             )
         )
-    else:
+    if not source_devices:
         nodes.append(FlowNode("sensor", NODE_MISSING, "Keine Messquelle"))
 
     detail = None
@@ -253,12 +265,12 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
             )
         ]
 
-    graph.without_devices = source_device is None and not windows and not actuators
+    graph.without_devices = not source_devices and not windows and not actuators
 
     nodes.append(FlowNode("zone", NODE_ZONE, f"Zone {zone.display_name}", "Regelentscheidung"))
-    if source_device is not None:
-        edges.append(FlowEdge("sensor", "zone", EDGE_ACTUAL, "Istwert (Raumtemperatur)"))
-    else:
+    for index in range(len(source_devices)):
+        edges.append(FlowEdge(f"sensor{index}", "zone", EDGE_ACTUAL, "Istwert (Raumtemperatur)"))
+    if not source_devices:
         edges.append(
             FlowEdge("sensor", "zone", EDGE_MISSING, "ohne Messquelle kein Istwert", dashed=True)
         )
@@ -343,7 +355,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
 
         if writes_actual(mode):
             temperature_property = temperature_property_name(writable)
-            if source_device is None:
+            if not source_devices:
                 edges.append(
                     FlowEdge(
                         "sensor",
@@ -359,7 +371,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
                 # Die Regelkette überspringt dieses Ventil ganz: kein Istwert ohne Sollwert-Eingang.
                 edges.append(
                     FlowEdge(
-                        "sensor",
+                        "zone",
                         node_id,
                         EDGE_MISSING,
                         "ohne beschreibbaren Sollwert schreibt thermoctl auch keinen Istwert",
@@ -369,7 +381,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
             elif temperature_property is not None:
                 edges.append(
                     FlowEdge(
-                        "sensor",
+                        "zone",
                         node_id,
                         EDGE_ACTUAL,
                         "Istwert",
@@ -379,7 +391,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
             else:
                 edges.append(
                     FlowEdge(
-                        "sensor",
+                        "zone",
                         node_id,
                         EDGE_MISSING,
                         "keine beschreibbare Temperatur-Eigenschaft",

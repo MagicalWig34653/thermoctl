@@ -12,6 +12,7 @@ from tests.helpers import (
     create_zone,
     role,
     source,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -23,10 +24,13 @@ from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.device_assignment import (
+    AssignmentAlreadyExists,
     CapabilityMissing,
+    add_temperature_source,
     detach_device,
-    set_temperature_source,
+    remove_temperature_source,
     set_thermostat_mode,
+    source_device_ids,
     swap_device,
 )
 
@@ -158,7 +162,7 @@ def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Sess
     zone = create_zone(session, "bad")
     old = create_device(session, "sensor-alt")
     new_link = create_device(session, "sensor-neu")
-    zone.temperature_source_device_id = old.id
+    zone_mit_fuehler(session, zone, old)
     capability = DeviceCapability(code="temperature", label="Temperatur")
     session.add(capability)
     session.flush()
@@ -174,7 +178,7 @@ def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Sess
 
     swap_device(session, zone, old, new_link, actor_id=None)
 
-    assert zone.temperature_source_device_id == new_link.id
+    assert source_device_ids(session, zone) == [new_link.id]
     assert session.get(Measurement, measurement.id).device_id == old.id
     assert session.scalar(
         select(Measurement).where(Measurement.device_id == new_link.id)
@@ -374,12 +378,10 @@ def test_a_device_without_known_capabilities_is_let_through(session: Session) ->
 
 
 def test_a_temperature_source_must_measure_temperature(session: Session) -> None:
-    from thermoctl.domain.device_assignment import CapabilityMissing, set_temperature_source
-
     zone = create_zone(session, "temperature-source-zone")
     ventil = _with_capability(session, "valve-as-temperature-source", "switch")
     with pytest.raises(CapabilityMissing, match="Temperatur"):
-        set_temperature_source(session, zone, ventil, actor_id=None)
+        add_temperature_source(session, zone, ventil, actor_id=None)
 
 
 def test_temperature_source_audit_distinguishes_assignment_from_removal(
@@ -389,8 +391,8 @@ def test_temperature_source_audit_distinguishes_assignment_from_removal(
     zone = create_zone(session, "temperature-source-audit")
     sensor = _with_capability(session, "temperature-source-sensor", "temperature")
 
-    set_temperature_source(session, zone, sensor, actor_id=None)
-    set_temperature_source(session, zone, None, actor_id=None)
+    add_temperature_source(session, zone, sensor, actor_id=None)
+    remove_temperature_source(session, zone, sensor, actor_id=None)
 
     entries = list(
         session.scalars(
@@ -402,9 +404,12 @@ def test_temperature_source_audit_distinguishes_assignment_from_removal(
     assert [(entry.action, entry.summary) for entry in entries] == [
         (
             "assign",
-            f"Messquelle von '{zone.display_name}' auf '{sensor.display_name}' gesetzt",
+            f"Messquelle '{sensor.display_name}' zu '{zone.display_name}' hinzugefügt",
         ),
-        ("unassign", f"Messquelle von '{zone.display_name}' gelöst"),
+        (
+            "unassign",
+            f"Messquelle '{sensor.display_name}' von '{zone.display_name}' gelöst",
+        ),
     ]
 
 
@@ -442,12 +447,12 @@ def test_a_swap_checks_the_temperature_source_before_writing(session: Session) -
     zone = create_zone(session, "swap-temperature-source")
     sensor = _with_capability(session, "swap-old-sensor", "temperature")
     switch = _with_capability(session, "swap-new-switch", "switch")
-    set_temperature_source(session, zone, sensor, actor_id=None)
+    add_temperature_source(session, zone, sensor, actor_id=None)
 
     with pytest.raises(CapabilityMissing, match="Temperatur"):
         swap_device(session, zone, sensor, switch, actor_id=None)
 
-    assert zone.temperature_source_device_id == sensor.id
+    assert source_device_ids(session, zone) == [sensor.id]
 
 
 def test_a_swap_merges_a_role_the_new_device_already_has(session: Session) -> None:
@@ -483,20 +488,19 @@ def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
     from thermoctl.domain.device_assignment import (
         CapabilityMissing,
         assign_device,
-        set_temperature_source,
         swap_device,
     )
 
     zone = create_zone(session, "halbzone")
     kombi = _with_capability(session, "kann-beides", "temperature", "switch")
     nur_sensor = _with_capability(session, "kann-nur-messen", "temperature")
-    set_temperature_source(session, zone, kombi, actor_id=None)
+    zone_mit_fuehler(session, zone, kombi)
     assign_device(session, zone, kombi, role(session, "actuator"), actor_id=None)
 
     with pytest.raises(CapabilityMissing):
         swap_device(session, zone, kombi, nur_sensor, actor_id=None)
     session.expire_all()
-    assert zone.temperature_source_device_id == kombi.id
+    assert source_device_ids(session, zone) == [kombi.id]
 
 
 
@@ -686,3 +690,133 @@ def test_an_assignment_of_another_zone_is_refused_in_the_domain(session: Session
 
 
 
+
+
+def test_a_zone_takes_several_temperature_sources_in_order(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "mehrere-fuehler")
+    first = _with_capability(session, "fuehler-eins", "temperature")
+    second = _with_capability(session, "fuehler-zwei", "temperature")
+
+    add_temperature_source(session, zone, first, actor_id=None)
+    add_temperature_source(session, zone, second, actor_id=None)
+
+    assert source_device_ids(session, zone) == [first.id, second.id]
+
+
+def test_the_same_sensor_is_not_added_twice(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "fuehler-doppelt")
+    sensor = _with_capability(session, "fuehler-doppelt-s", "temperature")
+    add_temperature_source(session, zone, sensor, actor_id=None)
+
+    with pytest.raises(AssignmentAlreadyExists):
+        add_temperature_source(session, zone, sensor, actor_id=None)
+
+    assert source_device_ids(session, zone) == [sensor.id]
+
+
+def test_one_sensor_may_serve_two_zones(session: Session) -> None:
+    source(session)
+    a = create_zone(session, "offen-a")
+    b = create_zone(session, "offen-b")
+    sensor = _with_capability(session, "offener-fuehler", "temperature")
+
+    add_temperature_source(session, a, sensor, actor_id=None)
+    add_temperature_source(session, b, sensor, actor_id=None)
+
+    assert source_device_ids(session, a) == source_device_ids(session, b) == [sensor.id]
+
+
+def test_a_thermostat_is_not_accepted_as_temperature_source(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "echo-zone")
+    trv = _with_capability(session, "bth-ra-echo", "temperature", "thermostat")
+
+    with pytest.raises(CapabilityMissing, match="Thermostat"):
+        add_temperature_source(session, zone, trv, actor_id=None)
+
+    assert source_device_ids(session, zone) == []
+
+
+def test_removing_a_sensor_keeps_the_others(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "fuehler-weg")
+    first = _with_capability(session, "weg-eins", "temperature")
+    second = _with_capability(session, "weg-zwei", "temperature")
+    add_temperature_source(session, zone, first, actor_id=None)
+    add_temperature_source(session, zone, second, actor_id=None)
+
+    remove_temperature_source(session, zone, first, actor_id=None)
+
+    assert source_device_ids(session, zone) == [second.id]
+
+
+def test_removing_a_device_that_is_no_source_is_refused(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "weg-nichts")
+    stranger = _with_capability(session, "kein-fuehler", "temperature")
+
+    with pytest.raises(ValueError, match="keine Messquelle"):
+        remove_temperature_source(session, zone, stranger, actor_id=None)
+
+
+def test_a_swap_replaces_one_of_several_sources_in_place(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "tausch-mehrere")
+    first = _with_capability(session, "tausch-eins", "temperature")
+    second = _with_capability(session, "tausch-zwei", "temperature")
+    new_link = _with_capability(session, "tausch-neu", "temperature")
+    add_temperature_source(session, zone, first, actor_id=None)
+    add_temperature_source(session, zone, second, actor_id=None)
+
+    swap_device(session, zone, first, new_link, actor_id=None)
+
+    assert source_device_ids(session, zone) == [new_link.id, second.id]
+
+
+def test_a_swap_onto_an_existing_source_is_refused_and_changes_nothing(
+    session: Session,
+) -> None:
+    source(session)
+    zone = create_zone(session, "tausch-doppelt")
+    first = _with_capability(session, "tausch-d-eins", "temperature")
+    second = _with_capability(session, "tausch-d-zwei", "temperature")
+    add_temperature_source(session, zone, first, actor_id=None)
+    add_temperature_source(session, zone, second, actor_id=None)
+
+    with pytest.raises(ValueError, match="schon Messquelle"):
+        swap_device(session, zone, first, second, actor_id=None)
+
+    assert source_device_ids(session, zone) == [first.id, second.id]
+
+
+def test_a_swap_onto_a_thermostat_is_refused_for_a_temperature_source(
+    session: Session,
+) -> None:
+    source(session)
+    zone = create_zone(session, "tausch-echo")
+    sensor = _with_capability(session, "tausch-echo-s", "temperature")
+    trv = _with_capability(session, "tausch-echo-trv", "temperature", "thermostat")
+    add_temperature_source(session, zone, sensor, actor_id=None)
+
+    with pytest.raises(CapabilityMissing, match="Thermostat"):
+        swap_device(session, zone, sensor, trv, actor_id=None)
+
+    assert source_device_ids(session, zone) == [sensor.id]
+
+
+def test_deleting_a_device_removes_it_from_the_source_list(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "geraet-geloescht")
+    sensor = _with_capability(session, "geloeschter-fuehler", "temperature")
+    keeper = _with_capability(session, "bleibender-fuehler", "temperature")
+    add_temperature_source(session, zone, sensor, actor_id=None)
+    add_temperature_source(session, zone, keeper, actor_id=None)
+    session.flush()
+
+    session.delete(sensor)
+    session.flush()
+    session.expire_all()
+
+    assert source_device_ids(session, zone) == [keeper.id]

@@ -18,6 +18,7 @@ from tests.helpers import (
     create_device,
     create_zone,
     role,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -158,7 +159,7 @@ def test_every_line_is_named_in_the_direction_of_the_data_flow(session: Session)
     role(session, "actuator")
     zone = create_zone(session, "titel")
     sensor, valve = _sensor(session, "titelfuehler"), _valve(session, "titelventil")
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.add(ZoneDevice(zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id))
     session.flush()
     connections = _graph(session, zone).connections

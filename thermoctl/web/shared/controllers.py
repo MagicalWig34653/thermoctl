@@ -10,6 +10,7 @@ from thermoctl.db.models.device import (
     DeviceProperty,
     DevicePropertyValue,
     ZoneDevice,
+    ZoneTemperatureSource,
 )
 from thermoctl.db.models.lookup import ChannelKind, ControllerCommand, DeviceRole
 from thermoctl.db.models.zone import Zone
@@ -42,8 +43,8 @@ def devices_in_zones(session: Session, zone_ids: list[int]) -> list[Device]:
     A plain room-temperature sensor never gets a `ZoneDevice` row: there is no
     `sensor` role for it (`DEVICE_ROLES` only holds `actuator`, `window_contact`,
     `controller`), and it hangs off a zone solely through
-    `zone.temperature_source_device_id` (see `domain/device_assignment.py`'s
-    `TEMPERATURE_SOURCE` and `set_temperature_source`). A join over `ZoneDevice`
+    `zone_temperature_source` (see `domain/device_assignment.py`'s
+    `TEMPERATURE_SOURCE` and `add_temperature_source`). A join over `ZoneDevice`
     alone would show actuators and controllers here but never the sensor the
     'Temperaturquellen' pool exists for -- adding this second source instead of a
     new role, since the zone already names its temperature source unambiguously.
@@ -51,8 +52,8 @@ def devices_in_zones(session: Session, zone_ids: list[int]) -> list[Device]:
     if not zone_ids:
         return []
     via_role = select(Device.id).join(ZoneDevice).where(ZoneDevice.zone_id.in_(zone_ids))
-    via_temperature_source = select(Zone.temperature_source_device_id).where(
-        Zone.id.in_(zone_ids), Zone.temperature_source_device_id.is_not(None)
+    via_temperature_source = select(ZoneTemperatureSource.device_id).where(
+        ZoneTemperatureSource.zone_id.in_(zone_ids)
     )
     device_ids = via_role.union(via_temperature_source)
     return list(session.scalars(select(Device).where(

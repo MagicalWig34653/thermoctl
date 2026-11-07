@@ -32,7 +32,7 @@ Endpunkt prüft vor dem Speichern erneut mit derselben Funktion.
 Was gespeichert werden kann, entscheidet weiterhin `domain/device_assignment.py` -- auch die Regel
 „ein Aktor, eine Zone" (`check_actuator_exclusive`); `can_connect` bezieht nur deren Wortlaut
 (`actuator_elsewhere_notice`) und zeigt die Ablehnung vorab an.
-Gespeichert wird über `assign_device`, `set_temperature_source`, `REQUIRED_CAPABILITY`; diese Datei ergänzt nur die
+Gespeichert wird über `assign_device`, `add_temperature_source`/`remove_temperature_source`, `REQUIRED_CAPABILITY`; diese Datei ergänzt nur die
 feinere, anschlussgenaue Vorprüfung. Dieses Modul schreibt selbst nichts.
 """
 
@@ -44,7 +44,13 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    DeviceProperty,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.controller_channels import may_be_written
@@ -178,11 +184,10 @@ def mode_for_lines(lines: frozenset[str] | set[str], *, has_actual_port: bool) -
         if lines_for_mode(mode, has_actual_port=has_actual_port) == wanted:
             return mode
     return None
-# Nur die Messquelle *einer Zone* nimmt genau eine Verbindung an (`Zone.temperature_source_device_id`
-# ist eine Spalte). Das Gerät dagegen darf Messquelle beliebig vieler Zonen sein (offener Grundriss),
-# ein Kontakt Fensterkontakt beliebig vieler Zonen; mehrere Fensterkontakte und mehrere Aktoren
-# je Zone sind ebenfalls vorgesehen. Die Gegenrichtung gilt beim Heizbefehl NICHT: siehe `can_connect`.
-SINGLE_SLOTS = frozenset({"temperature_source"})
+# Eine Zone darf beliebig viele Fühler als Messquelle haben (Tabelle `zone_temperature_source`), und
+# ein Fühler Messquelle beliebig vieler Zonen sein (offener Grundriss); ein Kontakt Fensterkontakt
+# beliebig vieler Zonen, mehrere Fensterkontakte und mehrere Aktoren je Zone sind ebenfalls vorgesehen.
+# Die Gegenrichtung gilt beim Heizbefehl NICHT: siehe `can_connect`.
 
 SAME_SIDE = {
     "out": "Beides sind Ausgänge. Ein Ausgang liefert einen Wert und gehört an einen Eingang.",
@@ -211,7 +216,8 @@ class Port:
     device_id: int | None = None
     property_name: str | None = None
     technical: bool = False
-    single: bool = False
+    single: bool = False  # nur Geräte-Eingänge für beschreibbare Eigenschaften: nimmt eine Quelle an
+    thermostat_device: bool = False  # nur Geräteanschlüsse: das Gerät ist ein Thermostat (kein reiner Fühler)
     blocked_reason: str | None = None
     editable: bool = False
     # Nur Geräte-Eingänge, die thermoctl über die Zone beschreibt (Eigenschaften eines
@@ -288,7 +294,9 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
        ein Sollwert ist keine Messquelle, obwohl beides Temperatur ist.
     6. **Sperre des Eingangs** (zum Beispiel ein Gerät, das irgendwo Aktor ist, als Schreibkanal).
     7. **Doppelzuordnung**: dieselbe Zone-Gerät-Verbindung gibt es schon.
-    8. **Einzelverbindung**: die Messquelle einer Zone nimmt genau ein Gerät.
+    8. **Nur reine Fühler als Messquelle**: ein Thermostat (Fähigkeit `thermostat`, zum Beispiel
+       Bosch BTH-RA) meldet die Raumtemperatur, die thermoctl ihm selbst schreibt -- als Messquelle
+       gäbe das eine Echo-Rückkopplung.
     9. **Ein Aktor, eine Zone**: Ein Gerät, das schon Aktor einer *anderen* Zone ist, nimmt keinen
        zweiten Heizbefehl an. Die Regelkette (`services/publishing.py`, `services/shadow_run.py`)
        entscheidet je Zone und schreibt je Zone an das Gerät; zwei Zonen mit gegensätzlichem Bedarf
@@ -340,11 +348,12 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
         same = [c for c in existing if c.zone_port_id == zone_port.id]
         if any(c.device_id == device_port.device_id for c in same):
             return Verdict(False, f"'{device_port.node_name}' ist mit '{zone_port.label}' der Zone '{zone_port.node_name}' bereits verbunden.")
-        if zone_port.single and same:
+        if zone_port.slot == TEMPERATURE_SOURCE and device_port.thermostat_device:
             return Verdict(
                 False,
-                f"'{zone_port.label}' der Zone '{zone_port.node_name}' nimmt nur eine Verbindung an und "
-                f"ist schon mit '{same[0].device_name}' verbunden. Lösen Sie diese zuerst.",
+                f"'{device_port.node_name}' ist ein Thermostat -- dessen Raumtemperatur ist keine "
+                "Messquelle (Echo-Rückkopplung: thermoctl schreibt sie ja selbst ans Ventil). "
+                "Als Messquelle dient nur ein reiner Fühler.",
             )
         if zone_port.slot in VALVE_SLOTS:
             lines = {
@@ -503,6 +512,7 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     capability=code,
                     device_id=device.id,
                     technical=technical,
+                    thermostat_device="thermostat" in codes_by_device.get(device.id, ()),
                     actuator_zones=tuple(actuator_zones.get(device.id, ())) if code in actuator_codes else (),
                 )
             )
@@ -544,6 +554,13 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
         nodes.append(Node(id=f"dev-{device.id}", kind="device", name=device.display_name, ports=tuple(ports)))
 
     slot_labels = _slot_labels(session)
+    zones_with_source = set(
+        session.scalars(
+            select(ZoneTemperatureSource.zone_id).where(
+                ZoneTemperatureSource.zone_id.in_([zone.id for zone in zones])
+            )
+        )
+    )
     for zone in zones:
         zone_ports: list[Port] = []
         for slot in SLOT_ORDER:
@@ -567,11 +584,10 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     accepts_text=" oder ".join(sorted(capability_labels.get(c, c) for c in codes)),
                     zone_id=zone.id,
                     slot=slot,
-                    single=slot in SINGLE_SLOTS,
                     editable=zone.id in editable_zone_ids,
                     blocked_reason=(
                         NO_SOURCE_REASON
-                        if slot == "room_temperature" and zone.temperature_source_device_id is None
+                        if slot == "room_temperature" and zone.id not in zones_with_source
                         else None
                     ),
                 )
@@ -641,9 +657,16 @@ def _connections(
         )
 
     result: list[Connection] = []
+    sources_by_zone: dict[int, list[int]] = defaultdict(list)
+    for source_zone_id, source_device_id in session.execute(
+        select(ZoneTemperatureSource.zone_id, ZoneTemperatureSource.device_id)
+        .where(ZoneTemperatureSource.zone_id.in_([zone.id for zone in zones]))
+        .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+    ):
+        sources_by_zone[source_zone_id].append(source_device_id)
     for zone in zones:
-        if zone.temperature_source_device_id is not None:
-            result.append(make(zone, TEMPERATURE_SOURCE, zone.temperature_source_device_id))
+        for source_device_id in sources_by_zone.get(zone.id, []):
+            result.append(make(zone, TEMPERATURE_SOURCE, source_device_id))
     for assignment, role_code, mode in session.execute(
         select(ZoneDevice, DeviceRole.code, ZoneDevice.thermostat_mode)
         .join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
@@ -682,7 +705,7 @@ def _connections(
         for slot in VALVE_SLOTS:
             if slot not in lines:
                 continue
-            if slot == "room_temperature" and zone.temperature_source_device_id is None:
+            if slot == "room_temperature" and zone.id not in sources_by_zone:
                 result.append(
                     make(
                         zone,

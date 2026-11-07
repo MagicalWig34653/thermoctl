@@ -8,7 +8,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_zone, role
+from tests.helpers import capability, create_device, create_zone, role, zone_mit_fuehler
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
@@ -54,7 +54,7 @@ def _stored(zone_port: Port, device_id: int, name: str = "Altgerät") -> Connect
     )
 
 
-TEMP_SOURCE = _zone("in", "temperature", "temperature_source", {"temperature"}, single=True)
+TEMP_SOURCE = _zone("in", "temperature", "temperature_source", {"temperature"})
 WINDOW = _zone("in", "contact", "window_contact", {"contact"})
 HEAT = _zone("out", "command", "actuator", {"switch", "thermostat"})
 
@@ -153,11 +153,16 @@ def test_the_same_connection_cannot_be_made_twice() -> None:
     assert not can_connect(HEAT, valve, [_stored(HEAT, 6)]).ok
 
 
-def test_the_temperature_source_takes_exactly_one_connection() -> None:
+def test_the_temperature_source_takes_several_sensors() -> None:
     other = _dev("out", "temperature", "temperature", device_id=7)
-    verdict = can_connect(other, TEMP_SOURCE, [_stored(TEMP_SOURCE, 5, "Fühler Alt")])
+    assert can_connect(other, TEMP_SOURCE, [_stored(TEMP_SOURCE, 5, "Fühler Alt")]).ok
+
+
+def test_a_thermostat_is_no_temperature_source() -> None:
+    trv = _dev("out", "temperature", "temperature", device_id=7, thermostat_device=True)
+    verdict = can_connect(trv, TEMP_SOURCE)
     assert not verdict.ok and verdict.reason is not None
-    assert "nur eine Verbindung" in verdict.reason and "Fühler Alt" in verdict.reason
+    assert "Thermostat" in verdict.reason and "reiner Fühler" in verdict.reason
 
 
 def test_actuators_and_window_contacts_take_several_devices() -> None:
@@ -166,7 +171,7 @@ def test_actuators_and_window_contacts_take_several_devices() -> None:
 
 
 def test_a_connection_in_another_zone_does_not_block() -> None:
-    other_zone = _zone("in", "temperature", "temperature_source", {"temperature"}, zone_id=2, single=True)
+    other_zone = _zone("in", "temperature", "temperature_source", {"temperature"}, zone_id=2)
     sensor = _dev("out", "temperature", "temperature", device_id=5)
     assert can_connect(sensor, TEMP_SOURCE, [_stored(other_zone, 5)]).ok
 
@@ -253,7 +258,7 @@ def test_graph_orients_stored_connections_from_output_to_input(session: Session)
     zone = create_zone(session, "karte2")
     sensor = _sensor(session, "fuehler2")
     valve = _thermostat(session, "ventil2")
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.add(ZoneDevice(zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id))
     session.flush()
     graph = build_mapping_map(session, [zone], set())
@@ -265,22 +270,20 @@ def test_graph_orients_stored_connections_from_output_to_input(session: Session)
     assert not temp.editable and not heat.editable
 
 
-def test_a_stored_connection_blocks_a_second_source_and_a_duplicate(session: Session) -> None:
+def test_a_stored_connection_blocks_a_duplicate_but_not_a_second_sensor(session: Session) -> None:
     zone = create_zone(session, "belegt")
     first, second = _sensor(session, "erster"), _sensor(session, "zweiter")
-    zone.temperature_source_device_id = first.id
-    session.flush()
+    zone_mit_fuehler(session, zone, first)
     graph = build_mapping_map(session, [zone], {zone.id})
     target = zone_port_id(zone.id, "temperature_source")
-    assert graph.reasons[graph.rejections[f"dev-{second.id}-temperature"][target]].count("nur eine Verbindung") == 1
+    assert target not in graph.rejections[f"dev-{second.id}-temperature"]
     assert "bereits verbunden" in graph.reasons[graph.rejections[f"dev-{first.id}-temperature"][target]]
 
 
 def test_a_connection_without_a_matching_port_is_listed_without_a_line(session: Session) -> None:
     zone = create_zone(session, "ohne")
     device = _caps(session, create_device(session, "ohne-faehigkeit"), "battery")
-    zone.temperature_source_device_id = device.id
-    session.flush()
+    zone_mit_fuehler(session, zone, device)
     (connection,) = build_mapping_map(session, [zone], {zone.id}).connections
     assert connection.out_port_id is None and connection.in_port_id == zone_port_id(zone.id, "temperature_source")
 
