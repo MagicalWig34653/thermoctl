@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     root_path: str = ""
     log_level: str = "INFO"
     log_format: str = "json"
+    # Connection pool for server databases (MariaDB). SQLite keeps SQLAlchemy's own
+    # pool choice and ignores these.
+    db_pool_size: int = Field(default=10, ge=1)
+    db_max_overflow: int = Field(default=20, ge=0)
+    db_pool_timeout: int = Field(default=30, ge=1)
+    db_pool_recycle: int = Field(default=1800, ge=-1)
+    # Background task that warns when the event loop was blocked (> 500 ms).
+    loop_monitor_enabled: bool = True
     secure_cookies: bool = False
     mqtt_enabled: bool = False
     mqtt_host: str | None = None

@@ -8,7 +8,15 @@ from thermoctl.config import Settings
 
 
 def create_engine_from_settings(settings: Settings) -> Engine:
-    engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+    pool_options: dict[str, int] = {}
+    if make_url(settings.database_url).get_backend_name() != "sqlite":
+        pool_options = {
+            "pool_size": settings.db_pool_size,
+            "max_overflow": settings.db_max_overflow,
+            "pool_timeout": settings.db_pool_timeout,
+            "pool_recycle": settings.db_pool_recycle,
+        }
+    engine = create_engine(settings.database_url, pool_pre_ping=True, future=True, **pool_options)
     if engine.dialect.name == "sqlite":
         url = make_url(settings.database_url)
         # WAL needs a real file to put its `-wal`/`-shm` companions next to; an

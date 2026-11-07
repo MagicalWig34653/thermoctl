@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -87,6 +88,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 )
 from thermoctl.integrations.notification import deliver
 from thermoctl.logging import configure_logging, request_id_var
+from thermoctl.observability import log_request, loggable_path, monitor_loop_lag
 from thermoctl.services import cluster
 from thermoctl.services.emergency_state import entered_notice_text, zone_emergency_view
 from thermoctl.services.ingest import advance_zone_state, process_message
@@ -1063,6 +1065,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(client.run()))
     if _shadow_loop_needed(settings):
         background_tasks.append(asyncio.create_task(_shadow_loop(app)))
+    if settings.loop_monitor_enabled:
+        background_tasks.append(asyncio.create_task(monitor_loop_lag(app.state.engine)))
 
     try:
         async with contextlib.AsyncExitStack() as stack:
@@ -1422,6 +1426,26 @@ def create_app() -> FastAPI:
         # not do this itself (and forgets to in the future) should still not respond
         # with 500. Requirement from the final review of subproject 1.
         return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.middleware("http")
+    async def request_timing(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Misst jede Anfrage (Feld `dauer_ms`); Pfad nur als Routenvorlage, ohne Token."""
+        started = time.perf_counter()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            log_request(
+                method=request.method,
+                path=loggable_path(request),
+                status=status,
+                started=started,
+                engine=getattr(request.app.state, "engine", None),
+            )
 
     @app.middleware("http")
     async def request_id(
