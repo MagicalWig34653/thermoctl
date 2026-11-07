@@ -1,0 +1,33 @@
+# Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
+# Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
+# cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher eine Umgebung/einen .venv-Symlink anlegen und hinterher
+# prüfen, dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
+# Mutationstest für thermoctl/domain/room_temperature.py (Mittelwert mehrerer Fühler).
+# Wiederholbarer Lauf aus dem Repository-Wurzelverzeichnis, IM HINTERGRUND:
+#
+#   .venv/bin/cosmic-ray init --force mutation/cosmic-ray-room-temperature.toml /tmp/thermoctl-room-temperature.sqlite
+#   .venv/bin/cr-filter-operators /tmp/thermoctl-room-temperature.sqlite mutation/cosmic-ray-room-temperature.toml
+#   .venv/bin/cosmic-ray exec mutation/cosmic-ray-room-temperature.toml /tmp/thermoctl-room-temperature.sqlite
+[cosmic-ray]
+module-path = "thermoctl/domain/room_temperature.py"
+timeout = 10.0
+excluded-modules = []
+test-command = ".venv/bin/python -m pytest --no-cov -x tests/test_room_temperature.py"
+
+[cosmic-ray.distributor]
+name = "local"
+
+[cosmic-ray.distributor.local]
+max-workers = 8
+
+[cosmic-ray.filters.operators-filter]
+exclude-operators = [
+    "core/ReplaceBinaryOperator_BitOr_.*",
+    "core/ReplaceComparisonOperator_Eq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_NotEq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Lt_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_LtE_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Gt_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_GtE_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+]
