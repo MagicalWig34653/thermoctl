@@ -172,3 +172,24 @@ test('403 ohne stale behält code', async () => {
   );
   assert.equal(unauthorized(), 0);
 });
+
+test('Zeitüberschreitung: hängender Server führt zu klarer Fehlermeldung', async () => {
+  const hangingFetch = ((_url: string, init: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })) as unknown as typeof fetch;
+  const api = createApi({ fetch: hangingFetch, prefix: '', cookies: () => '', timeoutMs: 20 });
+  await assert.rejects(
+    () => api.get('/ui-api/x'),
+    (e: unknown) =>
+      e instanceof ApiError && e.kind === 'network' && e.message === 'Der Server antwortet nicht',
+  );
+});
+
+test('ohne Zeitüberschreitung bleibt der Netzwerkfehler unverändert', async () => {
+  const failing = (async () => {
+    throw new Error('offline');
+  }) as unknown as typeof fetch;
+  const api = createApi({ fetch: failing, prefix: '', cookies: () => '', timeoutMs: 1000 });
+  await assert.rejects(() => api.get('/x'), (e: unknown) => e instanceof ApiError && e.message === 'offline');
+});

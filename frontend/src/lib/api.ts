@@ -38,7 +38,12 @@ export interface ApiDeps {
   cookies: () => string;
   /** Wird bei 401 und bei 403 mit `stale: true` aufgerufen, um zur Anmeldung zu wechseln. */
   onUnauthorized?: (reason: 'unauthorized' | 'stale') => void;
+  /** Höchstdauer je Aufruf in ms (Vorgabe 30 s); danach Abbruch mit klarer Fehlermeldung. */
+  timeoutMs?: number;
 }
+
+export const DEFAULT_TIMEOUT_MS = 30_000;
+export const TIMEOUT_MESSAGE = 'Der Server antwortet nicht';
 
 /** Wert eines Cookies aus einem `document.cookie`-Rohstring, sonst null.
  *  Wirft `URIError` bei ungültiger Prozentkodierung; `createApi` fängt das ab. */
@@ -93,6 +98,26 @@ function fallbackDetail(response: Response): string {
 
 export function createApi(deps: ApiDeps) {
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, deps.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    try {
+      return await perform<T>(method, path, body, controller.signal, () => timedOut);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function perform<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    signal: AbortSignal,
+    timedOut: () => boolean,
+  ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (!SAFE.has(method)) {
       let token: string | null;
@@ -112,9 +137,11 @@ export function createApi(deps: ApiDeps) {
         method,
         headers,
         credentials: 'same-origin',
+        signal,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
+      if (timedOut()) throw new ApiError('network', 0, TIMEOUT_MESSAGE);
       throw new ApiError('network', 0, error instanceof Error ? error.message : 'Netzwerkfehler');
     }
 
@@ -135,6 +162,7 @@ export function createApi(deps: ApiDeps) {
     try {
       return (await response.json()) as T;
     } catch {
+      if (timedOut()) throw new ApiError('network', 0, TIMEOUT_MESSAGE);
       throw new ApiError('http', response.status, 'Die Antwort des Servers ist kein gültiges JSON.');
     }
   }

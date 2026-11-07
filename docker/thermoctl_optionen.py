@@ -123,6 +123,12 @@ ABGEBILDETE_FELDER: dict[str, str] = {
 #: option below, or through a real environment variable, both of which win over
 #: whatever this script would otherwise fill in.
 BEWUSST_AUSGELASSEN: dict[str, str] = {
+    "db_pool_size": "Feintuning des Verbindungspools; über das freie `env`-Feld erreichbar.",
+    "db_max_overflow": "Feintuning des Verbindungspools; über das freie `env`-Feld erreichbar.",
+    "db_pool_timeout": "Feintuning des Verbindungspools; über das freie `env`-Feld erreichbar.",
+    "db_pool_recycle": "Feintuning des Verbindungspools; über das freie `env`-Feld erreichbar.",
+    "loop_monitor_enabled": "Diagnosehilfe, standardmäßig an; über das freie `env`-Feld "
+    "abschaltbar.",
     "bind_host": "Container-intern; die Supervisor-Ingress-Anbindung legt das fest.",
     "bind_port": "Container-intern; die Supervisor-Ingress-Anbindung legt das fest.",
     "secure_cookies": "Container-intern; das Add-on terminiert TLS nicht selbst, das "

@@ -434,6 +434,22 @@ Das Log ist strukturiert (`THERMOCTL_LOG_FORMAT=json`, für Menschen `text`) und
 Geheimnisse. Jede Antwort trägt eine `X-Request-ID`, die in jeder zugehörigen Logzeile
 wieder auftaucht — damit lässt sich ein einzelner Aufruf durch das ganze Log verfolgen.
 
+**Wenn die Oberfläche zeitweise zäh ist:** Jede Anfrage schreibt eine Zeile `Anfrage` mit
+`dauer_ms`, `status`, `path` (die Routenvorlage, ohne Query und ohne Token) und
+`pool_checked_out` (gerade ausgeliehene Datenbankverbindungen); ab 1000 ms als WARNING
+`Langsame Anfrage`. Zusätzlich meldet `Ereignisschleife blockiert` (mit `verzoegerung_ms`),
+wenn der Dienst länger als 500 ms nichts anderes tun konnte. Einstellungen:
+
+| Variable | Vorgabe | Bedeutung |
+|---|---|---|
+| `THERMOCTL_DB_POOL_SIZE` | 10 | Dauerhaft gehaltene Verbindungen (nur MariaDB; SQLite ignoriert die vier Pool-Werte) |
+| `THERMOCTL_DB_MAX_OVERFLOW` | 20 | Zusätzliche Verbindungen bei Spitzen |
+| `THERMOCTL_DB_POOL_TIMEOUT` | 30 | Sekunden Wartezeit auf eine freie Verbindung, danach Fehler |
+| `THERMOCTL_DB_POOL_RECYCLE` | 1800 | Sekunden, nach denen eine Verbindung erneuert wird |
+| `THERMOCTL_LOOP_MONITOR_ENABLED` | true | Schleifenmesser ein/aus |
+
+Im Home-Assistant-Add-on gehören diese Werte in das freie `env`-Feld.
+
 ## 7a. Ein Wandtablet
 
 Unter `/kiosk` gibt es eine eigene, große Ansicht für ein Tablet an der Wand: je Zone
