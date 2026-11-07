@@ -43,6 +43,12 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, trim
 
 log = logging.getLogger(__name__)
 
+# Text values longer than the column (e.g. the Base64 IR codes of an IR blaster) are
+# not stored -- truncating would keep a wrong value that looks right. One warning per
+# device/property and process, otherwise every message would repeat it.
+_TEXT_MAX_LENGTH = int(DeviceProperty.last_value_text.type.length or 0)
+_warned_overlong: set[tuple[str, str]] = set()
+
 
 def _integration(session: Session) -> Integration:
     integration = session.scalar(select(Integration).where(Integration.code == "zigbee2mqtt"))
@@ -174,6 +180,20 @@ def _process_state(
         elif isinstance(raw, bool):
             property_model.last_value_number, property_model.last_value_text = None, str(raw).lower()
         elif isinstance(raw, str):
+            if len(raw) > _TEXT_MAX_LENGTH:
+                if (name, property_model.name) not in _warned_overlong:
+                    _warned_overlong.add((name, property_model.name))
+                    log.warning(
+                        "Textwert zu lang für die Spalte, wird nicht gespeichert",
+                        extra={
+                            "geraet": name,
+                            "eigenschaft": property_model.name,
+                            "laenge": len(raw),
+                            "maximale_laenge": _TEXT_MAX_LENGTH,
+                            "anfang": raw[:20],
+                        },
+                    )
+                raw = None
             property_model.last_value_number, property_model.last_value_text = None, raw
         property_model.last_value_at = measured_at
     capabilities = {
