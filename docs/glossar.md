@@ -630,7 +630,7 @@ Siehe auch: [MQTT und Broker](#mqtt-broker), [Messquelle](#messquelle), [Aktor](
 
 *Betrieb* — Ein Raum oder eine Gruppe von Räumen mit eigenem Sollwert.
 
-Einer Zone sind eine Messquelle, Geräte, ein Zeitplan, Sollwerte und Regelparameter zugeordnet. Ohne mindestens eine Zone gibt es nichts zu regeln. Was die Zone nicht selbst einstellt, erbt sie aus den anlagenweiten Regelvorgaben.
+Einer Zone sind eine oder mehrere Messquellen (deren Mittelwert die Raumtemperatur ergibt), Geräte, ein Zeitplan, Sollwerte und Regelparameter zugeordnet. Ohne mindestens eine Zone gibt es nichts zu regeln. Was die Zone nicht selbst einstellt, erbt sie aus den anlagenweiten Regelvorgaben.
 
 Auch: Raum, Zonen
 

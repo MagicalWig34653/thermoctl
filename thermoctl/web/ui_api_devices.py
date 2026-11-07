@@ -516,9 +516,7 @@ def _zone_devices(session: Session, principal: Principal, zone: Zone) -> Json:
         "zone": {"id": zone.id, "name": zone.display_name},
         "may_edit": has_permission(principal, "device.manage", zone.id),
         "temperature_sources": [
-            {"id": source.id, "name": source.display_name}
-            for source in sources
-            if source.id not in hidden
+            {"id": source.id, "name": source.display_name} for source in sources
         ],
         "assignments": [
             {

@@ -300,7 +300,7 @@ def test_a_device_not_assigned_as_an_actuator_at_all_is_not_a_candidate(session:
     zone = create_zone(session, "lillys-zimmer")
     trv = create_device(session, "lillys-trv")
     _link(session, trv.id, "thermostat")
-    # `zone.temperature_source_device_id` would point at this device, but it
+    # A device linked to the zone as a temperature source would be a candidate, but it
     # has no `zone_device` row at all -- exactly the real "Lillys Zimmer" case
     # documented in `lokal/plaene/0.11.0-geraetevertrag.md` (e).
     session.flush()

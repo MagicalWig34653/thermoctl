@@ -791,12 +791,21 @@ def test_a_bad_sensor_list_is_rejected_and_writes_nothing(
         assert "temperature_source_device_ids" in response.json()["detail"]
     # Everything is checked before anything is written: no zone came out of the rejections.
     assert session.scalars(select(Zone).where(Zone.name == "rest-fehler")).all() == []
-    # The old single field is gone: it is ignored, not honoured.
-    ignored = client.post(
+    # The old single field is gone: it is refused (422), not silently dropped -- a client
+    # that still sends it must learn that its sensor assignment would not take effect.
+    legacy = client.post(
         "/api/v1/zones",
         headers=head,
         json={**base, "name": "rest-alt", "temperature_source_device_id": good.id},
     )
-    assert ignored.status_code == 201
-    created = session.get(Zone, ignored.json()["id"])
-    assert created is not None and source_device_ids(session, created) == []
+    assert legacy.status_code == 422
+    assert "temperature_source_device_id" in legacy.text
+    assert session.scalars(select(Zone).where(Zone.name == "rest-alt")).all() == []
+    zone = session.scalars(select(Zone)).first()
+    if zone is not None:
+        legacy_put = client.put(
+            f"/api/v1/zones/{zone.id}",
+            headers=head,
+            json={**base, "name": zone.name, "temperature_source_device_id": good.id},
+        )
+        assert legacy_put.status_code == 422

@@ -618,6 +618,17 @@ def test_zone_devices_read_model(client_als: Als, world: World, session: Session
     assert {d["name"] for d in body["devices"]} >= {"steckdose", "ventil"}
 
 
+def test_a_sensor_shared_with_another_room_stays_in_the_list_of_a_reader_of_its_room(
+    client_als: Als, world: World, session: Session
+) -> None:
+    """Why the list of sensors needs no `hidden` filter: whoever may read the room's devices
+    has the room's sensors in `mine`, even when the sensor also hangs in a room he may not see."""
+    zone_mit_fuehler(session, world.b, world.sensor)
+    session.flush()
+    body = _call(_manage(client_als, world.a), "GET", f"/ui-api/zones/{world.a.id}/devices").json()
+    assert body["temperature_sources"] == [{"id": world.sensor.id, "name": "fuehler-a"}]
+
+
 def test_assign_several_sensors_and_windows_but_one_actuator_zone(client_als: Als, world: World, session: Session) -> None:
     client = _manage(client_als, world.a, world.b)
     url = f"/ui-api/zones/{world.a.id}/devices/assign"

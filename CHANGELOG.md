@@ -14,7 +14,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Beim Upgrade zu wissen
 
 - **Eine Migration** (`c7e2a4f91d38`): Die Spalte `zone.temperature_source_device_id` entfällt, die Fühler stehen in der neuen Tabelle `zone_temperature_source`; bestehende Zuordnungen werden übernommen. **Ein Downgrade behält je Zone nur den ersten Fühler.**
-- **REST:** `POST|PUT /api/v1/zones` kennt `temperature_source_device_ids` (Liste) statt `temperature_source_device_id`. Das alte Feld wird ignoriert.
+- **REST:** `POST|PUT /api/v1/zones` kennt `temperature_source_device_ids` (Liste) statt `temperature_source_device_id`. Das alte Feld wird nicht mehr angenommen: Ein Aufruf, der es noch sendet, bekommt `422` (statt dass die Zuordnung stillschweigend entfiele). Fehlt `temperature_source_device_ids` oder ist es `null`, bleiben die Fühler unverändert (beim Anlegen: keine); eine Liste, auch eine leere, ersetzt sie genau.
 - Neue Einstellungen für den DB-Pool (`THERMOCTL_DB_POOL_SIZE`, `_MAX_OVERFLOW`, `_TIMEOUT`, `_RECYCLE`) und `THERMOCTL_LOOP_MONITOR_ENABLED`; für SQLite ohne Wirkung.
 
 ### Neu

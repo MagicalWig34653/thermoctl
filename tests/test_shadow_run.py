@@ -947,6 +947,9 @@ def test_the_background_run_does_not_start_without_mqtt(
     settings = Settings(_env_file=None, database_url=datenbank_url, secret_key="h" * 32)
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    # The loop-lag monitor is a task of its own with its own switch; it has its own
+    # test (`test_the_lifespan_starts_the_loop_monitor_only_when_enabled`).
+    monkeypatch.setenv("THERMOCTL_LOOP_MONITOR_ENABLED", "false")
     get_settings.cache_clear()
 
     def _should_not_have_started(*args: object, **kwargs: object) -> None:
@@ -1014,6 +1017,8 @@ def test_the_lifespan_starts_the_shadow_loop_for_meross_credentials_alone(
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
     monkeypatch.setenv("THERMOCTL_MEROSS_EMAIL", "a@b.de")
     monkeypatch.setenv("THERMOCTL_MEROSS_PASSWORD", "geheim")
+    # Only the control-loop tasks are counted here; the monitor has its own test.
+    monkeypatch.setenv("THERMOCTL_LOOP_MONITOR_ENABLED", "false")
     get_settings.cache_clear()
 
     started: list[object] = []
@@ -1035,6 +1040,43 @@ def test_the_lifespan_starts_the_shadow_loop_for_meross_credentials_alone(
 
     assert len(started) == 1
     assert started[0].cr_code.co_name == "_shadow_loop"  # type: ignore[attr-defined]
+
+    own_engine.dispose()
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("enabled", "expected"), [(True, ["monitor_loop_lag"]), (False, [])])
+def test_the_lifespan_starts_the_loop_monitor_only_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enabled: bool, expected: list[str]
+) -> None:
+    """The loop-lag monitor is started by `loop_monitor_enabled` alone -- independent of
+    MQTT and Meross -- and it is the only task here, so the switch is what decides."""
+    datenbank_url = f"sqlite:///{tmp_path}/monitor.db"
+    own_engine = create_engine(datenbank_url, future=True)
+    Base.metadata.create_all(own_engine)
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", datenbank_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "m" * 32)
+    monkeypatch.setenv("THERMOCTL_LOOP_MONITOR_ENABLED", "true" if enabled else "false")
+    get_settings.cache_clear()
+
+    started: list[str] = []
+    original_create_task = app_modul.asyncio.create_task
+
+    def _recording_create_task(coro: object, *args: object, **kwargs: object) -> object:
+        started.append(coro.cr_code.co_name)  # type: ignore[attr-defined]
+        return original_create_task(coro, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(app_modul.asyncio, "create_task", _recording_create_task)
+
+    anwendung = create_app()
+    anwendung.state.engine.dispose()
+    anwendung.state.engine = own_engine
+    anwendung.state.session_factory = lambda: Session(own_engine)
+
+    with TestClient(anwendung):
+        pass
+
+    assert started == expected
 
     own_engine.dispose()
     get_settings.cache_clear()

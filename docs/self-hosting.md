@@ -626,6 +626,26 @@ Urlaub gilt nie für eine einzelne Zone. REST (`GET`/`POST`/`DELETE /api/v1/vaca
 siehe [`docs/api.md`](api.md)) und MCP (`read_vacation`, `vacation`,
 `cancel_vacation`, siehe [`docs/mcp.md`](mcp.md)) bieten dieselbe Funktion.
 
+## 8c. Mehrere Temperaturfühler je Raum
+
+Ein Raum kann beliebig viele Temperaturfühler haben. Der Istwert, nach dem geregelt wird,
+ist der **Mittelwert aller Fühler, die gerade verwertbar messen**. Drei Folgen, die man
+kennen sollte:
+
+- **Ein Teilausfall meldet keinen Notbetrieb.** Fällt von drei Fühlern einer aus, rechnet
+  der Raum mit den beiden übrigen weiter; es gibt weder eine Sensorstörung noch einen
+  Wechsel in den Notbetrieb. Der Mittelwert springt dabei sofort auf den Wert der
+  verbleibenden Fühler -- ohne Übergang. Erst wenn **kein** Fühler mehr verwertbar misst,
+  greifen Sensor-Timeout, Ersatzquelle und Notbetrieb.
+- **Festhängende Fühler gehen weiter in den Mittelwert ein.** Ein Fühler, dessen Wert sich
+  nicht mehr bewegt, zählt als messend und wird mitgemittelt; die Meldung „Messwert bewegt
+  sich nicht" weist darauf hin, ändert aber die Rechnung nicht.
+- **Die Fenstererkennung über den Temperaturverlauf** (nur für Räume ohne Fensterkontakt
+  und mit eingeschaltetem Schalter) **prüft jeden Fühler einzeln; ein einziger genügt.**
+  Dadurch kann Zugluft an einem Fühler die Erkennung auslösen, obwohl kein Fenster offen
+  ist. Das ist bewusst konservativ: im Zweifel wird abgesenkt. Einen Mittelwertverlauf gibt es nicht, damit ein ausfallender oder
+  zurückkehrender Fühler nie einen Abfall vortäuschen kann.
+
 ## 9. Die Schnittstelle ausprobieren
 
 Unter `/docs` liegt eine Swagger-Oberfläche: jeder Weg der REST-Schnittstelle zum

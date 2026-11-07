@@ -8,6 +8,10 @@ Letzte Aktualisierung: 2026-10-30. Diese Datei sagt, was **jetzt** gilt. Verlauf
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
 - **Migrationskopf:** `c7e2a4f91d38` (mehrere Temperaturfühler je Zone; noch nicht freigegeben).
+- **Mehrere Fühler je Raum -- bekannte Eigenschaften** (Betrieb: `docs/self-hosting.md`, Abschnitt 8c): Ein Teilausfall meldet keinen
+  Notbetrieb, der Mittelwert springt sofort auf die verbleibenden Fühler; festhängende Fühler gehen weiter in den Mittelwert ein; die
+  Fenstererkennung über den Temperaturverlauf löst schon bei einem einzelnen Fühler aus (konservativ, auch durch Zugluft). REST
+  `POST|PUT /api/v1/zones` lehnt das alte Feld `temperature_source_device_id` mit 422 ab.
 - **Messbarkeit (neu, noch nicht freigegeben):** Anfragedauer (`dauer_ms`, `pool_checked_out`) und eine Messung der Schleifenverzögerung
   gehen ins Log (`thermoctl/observability.py`); der DB-Pool ist über `THERMOCTL_DB_POOL_*` einstellbar, das Frontend bricht Anfragen nach
   30 s ab. Anlass: zeitweise 10-30 s zähe Oberfläche, Ursache **nicht** belegt (Verdacht blockierter Event-Loop durch
