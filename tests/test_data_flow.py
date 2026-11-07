@@ -128,7 +128,7 @@ def test_self_regulating_valve_gets_setpoint_actual_and_frost_with_a_window(
     assert set(kinds) == {EDGE_SETPOINT, EDGE_ACTUAL, EDGE_FROST}
     assert kinds[EDGE_SETPOINT].property_name == "occupied_heating_setpoint"
     assert kinds[EDGE_FROST].property_name == "occupied_heating_setpoint"
-    # Der Istwert ist das Mittel der Fühler der Zone, also kommt er von der Zone, nicht von einem Fühler.
+    # Der Istwert ist das Mittel der Fühler der Zone: er kommt von der Zone, nicht von einem Fühler.
     assert kinds[EDGE_ACTUAL].source == "zone"
     assert graph.node(kinds[EDGE_FROST].source).kind == "zone"
 
