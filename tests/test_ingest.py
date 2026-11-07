@@ -1574,3 +1574,43 @@ def test_only_the_properties_present_in_the_message_are_updated(
     session.flush()
     lock = session.scalar(select(DeviceProperty).where(DeviceProperty.name == "child_lock"))
     assert lock is not None and lock.last_value_text == "false"
+
+
+def test_an_overlong_text_value_is_not_stored_but_the_rest_of_the_message_is(
+    session: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An IR code (long Base64) must not abort the message on a length-enforcing DB."""
+    from thermoctl.services import ingest
+
+    ingest._warned_overlong.clear()
+    integration(session)
+    _capability(session, "temperature")
+    exposes: list[dict[str, object]] = [
+        {"type": "numeric", "property": "temperature", "access": 1},
+        {"type": "text", "property": "ir_code_to_send", "access": 2},
+    ]
+    process_message(
+        session,
+        f"{BASIS}/bridge/devices",
+        json.dumps(
+            [{"friendly_name": "irsender", "definition": {"model": "ir", "exposes": exposes}}]
+        ).encode(),
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
+    )
+    length = DeviceProperty.last_value_text.type.length
+    payload = json.dumps({"temperature": 20.5, "ir_code_to_send": "A" * (length + 500)}).encode()
+    with caplog.at_level(logging.WARNING, logger="thermoctl.services.ingest"):
+        for _ in range(2):
+            process_message(
+                session, f"{BASIS}/irsender", payload, base=BASIS, received_at=EMPFANGEN_AM
+            )
+            session.flush()
+
+    prop = session.scalar(select(DeviceProperty).where(DeviceProperty.name == "ir_code_to_send"))
+    assert prop is not None and prop.last_value_text is None
+    assert prop.last_value_at is not None
+    assert [m.value_numeric for m in session.query(Measurement)] == [Decimal("20.500")] * 2
+    warnings = [r for r in caplog.records if "zu lang" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "A" * (length + 1) not in caplog.text
