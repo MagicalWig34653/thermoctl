@@ -14,6 +14,7 @@ from thermoctl.db.models.device import (
     DeviceProperty,
     DevicePropertyValue,
     ZoneDevice,
+    ZoneTemperatureSource,
 )
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
@@ -26,9 +27,10 @@ from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
 )
-from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state, stuck_reading
+from thermoctl.domain.fault import OK, sensor_state, stuck_reading
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
+from thermoctl.domain.room_temperature import RoomTemperature, SensorInput, room_temperature
 from thermoctl.domain.window_alarm import window_alarm_state
 from thermoctl.domain.window_temperature_drop import (
     temperature_detection_cap_exceeded,
@@ -331,27 +333,99 @@ def process_message(
         )
 
 
+def zone_sensor_device_ids(session: Session, zone_id: int) -> list[int]:
+    """The zone's input sensors in display order (`zone_temperature_source`)."""
+    return list(
+        session.scalars(
+            select(ZoneTemperatureSource.device_id)
+            .where(ZoneTemperatureSource.zone_id == zone_id)
+            .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+        )
+    )
+
+
+def _latest_temperature(
+    session: Session, device_id: int, temperature: DeviceCapability | None
+) -> Measurement | None:
+    if temperature is None:
+        return None
+    return session.scalar(
+        select(Measurement)
+        .where(
+            Measurement.device_id == device_id,
+            Measurement.capability_id == temperature.id,
+        )
+        .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
+        .limit(1)
+    )
+
+
+@dataclass(frozen=True)
+class _ZoneRoom:
+    """The room verdict plus the raw latest measurement of each sensor."""
+
+    room: RoomTemperature
+    measurements: dict[int, Measurement | None]
+
+
+def _zone_room(
+    session: Session,
+    sensor_ids: list[int],
+    temperature: DeviceCapability | None,
+    now: datetime,
+    timeout_s: int,
+) -> _ZoneRoom:
+    measurements = {
+        device_id: _latest_temperature(session, device_id, temperature) for device_id in sensor_ids
+    }
+    inputs = [
+        SensorInput(
+            device_id,
+            m.value_numeric if m is not None else None,
+            m.measured_at if m is not None else None,
+        )
+        for device_id, m in measurements.items()
+    ]
+    return _ZoneRoom(room_temperature(inputs, now, timeout_s), measurements)
+
+
+def zone_room_temperature(
+    session: Session, zone: Zone, now: datetime, timeout_s: int
+) -> RoomTemperature:
+    """The room temperature verdict of one zone, read fresh from the measurements.
+
+    For callers outside this module that need the sensor count for a reason text
+    (Grundsatz 5), e.g. the shadow run.
+    """
+    temperature = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "temperature")
+    )
+    return _zone_room(
+        session, zone_sensor_device_ids(session, zone.id), temperature, now, timeout_s
+    ).room
+
+
 def _stuck(
     session: Session,
-    zone: Zone,
+    device_id: int,
     temperature: DeviceCapability,
     now: datetime,
     duration_hours: int,
 ) -> bool:
-    """Whether the zone's current temperature source counts as `festhängend`.
+    """Whether one input sensor's reading counts as `festhängend`.
 
-    Only ever called while `sensor_state()` already reads `ok` for this zone (see
-    `advance_zone_state` below) -- a missing or stale source has its own,
-    established indicator and is not a case for this one (task instructions,
-    section 4).
+    Only ever called for a sensor that `room_temperature()` already judged
+    usable (see `advance_zone_state` below) -- a missing or stale source has its
+    own, established indicator and is not a case for this one (task instructions,
+    section 4). The zone's `sensor_stuck` is "any sensor is stuck"; a stuck sensor
+    keeps counting in the mean (reported, but regulation continues).
     """
-    assert zone.temperature_source_device_id is not None  # guaranteed by the caller
     cutoff = now - timedelta(hours=duration_hours)
     history_covers_duration = (
         session.scalar(
             select(Measurement.id)
             .where(
-                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.device_id == device_id,
                 Measurement.capability_id == temperature.id,
                 Measurement.measured_at <= cutoff,
             )
@@ -364,7 +438,7 @@ def _stuck(
         for value in session.scalars(
             select(Measurement.value_numeric)
             .where(
-                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.device_id == device_id,
                 Measurement.capability_id == temperature.id,
                 Measurement.measured_at >= cutoff,
                 Measurement.measured_at <= now,
@@ -393,26 +467,16 @@ def advance_zone_state(session: Session, now: datetime) -> None:
     # every zone evaluated this cycle.
     outdoor = outdoor_reading(session, setting_row, now)
     for zone in session.scalars(select(Zone)):
-        measurement = None
-        if zone.temperature_source_device_id is not None and temperature is not None:
-            measurement = session.scalar(
-                select(Measurement)
-                .where(
-                    Measurement.device_id == zone.temperature_source_device_id,
-                    Measurement.capability_id == temperature.id,
-                )
-                .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
-                .limit(1)
+        sensor_ids = zone_sensor_device_ids(session, zone.id)
+        timeout_s = control_parameters(session, zone).sensor_timeout_seconds
+        zone_room = _zone_room(session, sensor_ids, temperature, now, timeout_s)
+        room = zone_room.room
+        code = room.status
+        if len(sensor_ids) > 1:
+            log.debug(
+                "Raumtemperatur aus mehreren Fühlern",
+                extra={"zone_id": zone.id, "begruendung": room.reason},
             )
-        code = (
-            NO_SOURCE
-            if zone.temperature_source_device_id is None
-            else sensor_state(
-                measurement.measured_at if measurement is not None else None,
-                now,
-                control_parameters(session, zone).sensor_timeout_seconds,
-            )
-        )
         status_id = status_ids.get(code)
         if status_id is None:  # pragma: no cover
             # As above: consistency check against the migration, not against input.
@@ -425,13 +489,22 @@ def advance_zone_state(session: Session, now: datetime) -> None:
                 updated_at=now,
             )
             session.add(state)
-        state.temperature_c = measurement.value_numeric if measurement is not None else None
-        state.measured_at = measurement.measured_at if measurement is not None else None
+        if room.status == OK:
+            state.temperature_c = room.mean
+            state.measured_at = room.measured_at
+        else:
+            # No usable sensor: keep the newest reading any sensor has, flagged by
+            # the status (`veraltet`/`keine_quelle`) -- with exactly one sensor this
+            # is what the zone always showed. Never a mean of stale values.
+            known = [m for m in zone_room.measurements.values() if m is not None]
+            last_known = max(known, key=lambda m: m.measured_at) if known else None
+            state.temperature_c = last_known.value_numeric if last_known is not None else None
+            state.measured_at = last_known.measured_at if last_known is not None else None
         state.sensor_status_id = status_id
-        state.sensor_stuck = (
-            code == OK
-            and temperature is not None
-            and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
+        usable_ids = [v.device_id for v in room.sensors if v.status == OK]
+        state.sensor_stuck = temperature is not None and any(
+            _stuck(session, device_id, temperature, now, setting_row.stuck_reading_hours)
+            for device_id in usable_ids
         )
         (
             new_window_open,
@@ -445,8 +518,9 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             contact,
             window_role,
             temperature,
+            sensor_ids,
             now,
-            control_parameters(session, zone).sensor_timeout_seconds,
+            timeout_s,
             state,
             setting_row,
         )
@@ -521,6 +595,7 @@ def _window_open(
     contact: DeviceCapability | None,
     window_role: DeviceRole | None,
     temperature: DeviceCapability | None,
+    sensor_ids: list[int],
     now: datetime,
     timeout_s: int,
     previous_state: ZoneState | None,
@@ -569,7 +644,7 @@ def _window_open(
         return None, False, None, None, None
 
     judgement = _window_open_from_temperature(
-        session, zone, temperature, now, previous_state, setting_row
+        session, zone, temperature, sensor_ids, now, previous_state, setting_row
     )
     return (
         judgement.open,
@@ -617,6 +692,7 @@ def _window_open_from_temperature(
     session: Session,
     zone: Zone,
     temperature: DeviceCapability | None,
+    sensor_ids: list[int],
     now: datetime,
     previous_state: ZoneState | None,
     setting_row: Setting,
@@ -635,7 +711,7 @@ def _window_open_from_temperature(
     (measured off its own cumulative streak, not off the hold's clock) that
     closes the feedback loop the hold alone leaves open.
     """
-    if temperature is None or zone.temperature_source_device_id is None:
+    if temperature is None or not sensor_ids:
         return _TemperatureWindowJudgement(False, None, None, None)
 
     previous_silence_until = (
@@ -689,38 +765,45 @@ def _window_open_from_temperature(
         cutoff = temperature_drop_history_cutoff(
             now, setting_row.window_temp_drop_window_minutes
         )
-        history_covers_duration = (
-            session.scalar(
-                select(Measurement.id)
-                .where(
-                    Measurement.device_id == zone.temperature_source_device_id,
-                    Measurement.capability_id == temperature.id,
-                    Measurement.measured_at <= cutoff,
+        # Judged per sensor, any one is enough: there is deliberately no history of
+        # the mean, so a sensor dropping out or returning can never fake a drop.
+        # Each sensor needs its own sufficient history (`history_covers_duration`).
+        detected = False
+        for device_id in sensor_ids:
+            history_covers_duration = (
+                session.scalar(
+                    select(Measurement.id)
+                    .where(
+                        Measurement.device_id == device_id,
+                        Measurement.capability_id == temperature.id,
+                        Measurement.measured_at <= cutoff,
+                    )
+                    .limit(1)
                 )
-                .limit(1)
+                is not None
             )
-            is not None
-        )
-        values = [
-            value
-            for value in session.scalars(
-                select(Measurement.value_numeric)
-                .where(
-                    Measurement.device_id == zone.temperature_source_device_id,
-                    Measurement.capability_id == temperature.id,
-                    Measurement.measured_at >= cutoff,
-                    Measurement.measured_at <= now,
-                    Measurement.value_numeric.is_not(None),
+            values = [
+                value
+                for value in session.scalars(
+                    select(Measurement.value_numeric)
+                    .where(
+                        Measurement.device_id == device_id,
+                        Measurement.capability_id == temperature.id,
+                        Measurement.measured_at >= cutoff,
+                        Measurement.measured_at <= now,
+                        Measurement.value_numeric.is_not(None),
+                    )
+                    .order_by(Measurement.measured_at.asc(), Measurement.id.asc())
                 )
-                .order_by(Measurement.measured_at.asc(), Measurement.id.asc())
-            )
-            if value is not None
-        ]
-        detected = window_open_suspected(
-            values,
-            history_covers_duration=history_covers_duration,
-            drop_threshold_k=setting_row.window_temp_drop_threshold_k,
-        )
+                if value is not None
+            ]
+            if window_open_suspected(
+                values,
+                history_covers_duration=history_covers_duration,
+                drop_threshold_k=setting_row.window_temp_drop_threshold_k,
+            ):
+                detected = True
+                break
 
         if not detected:
             # Not detected this cycle -- but the cumulative streak is not

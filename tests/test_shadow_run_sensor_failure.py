@@ -37,7 +37,12 @@ from tests.helpers import (
 )
 from thermoctl.db.base import Base
 from thermoctl.db.engine import session_factory
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
@@ -159,7 +164,8 @@ def _setup_zone(session: Session) -> tuple[Zone, Device, Device, Device]:
     session.add(wall)
     session.flush()
     _link(session, wall, "temperature")
-    zone.temperature_source_device_id = wall.id
+    session.add(ZoneTemperatureSource(zone_id=zone.id, device_id=wall.id))
+    session.flush()
 
     trv = Device(
         integration_id=_integration_id(session), external_id="bad-trv", display_name="Bad TRV"

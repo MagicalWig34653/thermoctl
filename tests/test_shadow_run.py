@@ -37,7 +37,7 @@ from thermoctl.app import create_app
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import session_factory
-from thermoctl.db.models.device import ZoneDevice
+from thermoctl.db.models.device import ZoneDevice, ZoneTemperatureSource
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent, ClusterClaim, Setting
@@ -1850,7 +1850,8 @@ async def test_the_shadow_loop_reports_a_newly_stuck_reading(
         http_session.flush()
         device = create_device(http_session, "starrer-fuehler")
         zone = create_zone(http_session, "starre-zone")
-        zone.temperature_source_device_id = device.id
+        http_session.add(ZoneTemperatureSource(zone_id=zone.id, device_id=device.id))
+        http_session.flush()
         for step in range(20):
             http_session.add(
                 Measurement(

@@ -76,6 +76,7 @@ from thermoctl.domain.temperature_source_health import (
 from thermoctl.domain.thermostat_mode import MODE_READING_ONLY, switches
 from thermoctl.domain.zone_settings import ControlParameters, control_parameters
 from thermoctl.services.emergency_prior import entry_prior_hint
+from thermoctl.services.ingest import zone_room_temperature, zone_sensor_device_ids
 from thermoctl.services.temperature_source_health import zone_candidates
 
 log = logging.getLogger(__name__)
@@ -514,11 +515,14 @@ def _persist_episode(
     """
     events = stage_output.events
     if events.episode_started:
-        source_device = (
-            session.get(Device, zone.temperature_source_device_id)
-            if zone.temperature_source_device_id is not None
-            else None
-        )
+        # Several input sensors: no single one is "the" source of the failure, so the
+        # names are listed comma-separated and the id stays NULL. With exactly one
+        # sensor both columns are filled as they always were.
+        source_devices = [
+            device
+            for device_id in zone_sensor_device_ids(session, zone.id)
+            if (device := session.get(Device, device_id)) is not None
+        ]
         row = SensorFailureEpisode(
             zone_id=zone.id,
             zone_name=zone.display_name,
@@ -532,9 +536,11 @@ def _persist_episode(
             warm_restart_hysteresis_k=policy.profile.values.warm_restart_hysteresis_k,
             emergency_setpoint_c=policy.emergency_setpoint_c,
             sensor_timeout_seconds=sensor_timeout_seconds,
-            source_device_id=zone.temperature_source_device_id,
+            source_device_id=source_devices[0].id if len(source_devices) == 1 else None,
             source_device_name=(
-                source_device.display_name if source_device is not None else None
+                ", ".join(d.display_name for d in source_devices)[:128]
+                if source_devices
+                else None
             ),
             # `notification_state` stays at its column default (`offen`)
             # deliberately -- Auftrag 8 owns the webhook and only needs to pick
@@ -703,13 +709,29 @@ def _apply_sensor_failure(
         replacement_reading = emergency_operation.SourceReading(usable=False, measured_at=None)
 
     prior = _load_emergency_state(db_state)
+    wall_measured_at = wall_probe.measured_at
+    if (
+        prior is not None
+        and prior.tracked_kind == emergency_operation.KIND_WANDFUEHLER
+        and prior.last_counted_measurement_at is not None
+        and wall_measured_at is not None
+        and wall_measured_at < prior.last_counted_measurement_at
+    ):
+        # With several input sensors the room's `measured_at` is the newest of the
+        # usable ones and can step *back* when the sensor that delivered it drops
+        # out (the mean then rests on an older reading). The recovery count treats
+        # every changed timestamp as a new sample, so it would count that older
+        # reading a second time. Never feed a timestamp older than the last counted
+        # one into the count: it is the same series, seen again. (With one sensor
+        # `measured_at` never decreases, so this changes nothing there.)
+        wall_measured_at = prior.last_counted_measurement_at
     stage_output = emergency_operation.advance(
         prior,
         emergency_operation.StageInput(
             now=now,
             enabled=zone.sensor_failure_enabled,
             wall_probe=emergency_operation.SourceReading(
-                usable=health.wall_probe_usable, measured_at=wall_probe.measured_at
+                usable=health.wall_probe_usable, measured_at=wall_measured_at
             ),
             replacement=replacement_reading,
             recovery_seconds=policy.profile.values.recovery_seconds,
@@ -1940,6 +1962,19 @@ def _process_zone(
         # place that may reroute the publisher to read the actuator plan
         # instead.
         _apply_emergency_actuators(session, zone, sensor_failure_outcome, settings, parameter, now)
+
+    if sf_stage != emergency_operation.STAGE_ERSATZQUELLE and sensor_status == OK:
+        # Grundsatz 5: with several input sensors the reason says how many of them
+        # the room temperature actually rests on (the mean of the usable ones).
+        room = zone_room_temperature(session, zone, now, parameter.sensor_timeout_seconds)
+        if room.total_count > 1:
+            effective_decision = replace(
+                effective_decision,
+                reason=(
+                    f"{effective_decision.reason} Raumtemperatur: Mittelwert aus "
+                    f"{room.usable_count} von {room.total_count} Fühlern."
+                ),
+            )
 
     _apply_decision_to_state(state, effective_decision, now)
 

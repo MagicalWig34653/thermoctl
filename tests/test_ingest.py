@@ -5,7 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
@@ -21,17 +21,27 @@ from thermoctl.db.models.device import (
     DeviceCapabilityLink,
     DeviceProperty,
     ZoneDevice,
+    ZoneTemperatureSource,
 )
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.services.ingest import advance_zone_state, process_message
+from thermoctl.services.ingest import (
+    advance_zone_state,
+    process_message,
+    zone_sensor_device_ids,
+)
 
 DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
 BASIS = "test-basis"
 EMPFANGEN_AM = datetime(2026, 8, 29, 7, 0)
+
+
+def _attach(session: Session, zone: Zone, device: Device, order: int = 0) -> None:
+    session.add(ZoneTemperatureSource(zone_id=zone.id, device_id=device.id, sort_order=order))
+    session.flush()
 
 
 def _capability(session: Session, code: str) -> DeviceCapability:
@@ -91,7 +101,7 @@ def test_an_unknown_device_is_created_without_a_zone(session: Session) -> None:
     device = session.scalar(select(Device).where(Device.external_id == name))
     assert device is not None
     assert device.is_enabled is True
-    assert not any(zone.temperature_source_device_id == device.id for zone in session.query(Zone))
+    assert session.scalar(select(ZoneTemperatureSource.id)) is None
 
 
 def test_a_missing_capability_does_not_discard_the_other_values(
@@ -201,8 +211,8 @@ def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
     frisch = create_zone(session, "frisch-zone")
     alt = create_zone(session, "alt-zone")
     ohne = create_zone(session, "ohne-zone")
-    frisch.temperature_source_device_id = fresh_device.id
-    alt.temperature_source_device_id = old_device.id
+    _attach(session, frisch, fresh_device)
+    _attach(session, alt, old_device)
     alt.sensor_timeout_seconds = 30
     for device, age in ((fresh_device, 60), (old_device, 31)):
         session.add(
@@ -252,7 +262,7 @@ def test_a_reading_unchanged_for_longer_than_the_configured_duration_is_stuck(
     temperature = _capability(session, "temperature")
     device = create_device(session, _device_names()[0])
     zone = create_zone(session, "starre-zone")
-    zone.temperature_source_device_id = device.id
+    _attach(session, zone, device)
     _identical_history(session, temperature, device, value=Decimal("22.70"))
 
     advance_zone_state(session, EMPFANGEN_AM)
@@ -274,7 +284,7 @@ def test_a_sensor_oscillating_between_two_resolution_steps_is_not_stuck(
     temperature = _capability(session, "temperature")
     device = create_device(session, _device_names()[0])
     zone = create_zone(session, "pendel-zone")
-    zone.temperature_source_device_id = device.id
+    _attach(session, zone, device)
     for step in range(31):
         value = Decimal("22.70") if step % 2 == 0 else Decimal("22.80")
         session.add(
@@ -305,7 +315,7 @@ def test_history_shorter_than_the_configured_duration_is_not_yet_stuck(
     temperature = _capability(session, "temperature")
     device = create_device(session, _device_names()[0])
     zone = create_zone(session, "junge-zone")
-    zone.temperature_source_device_id = device.id
+    _attach(session, zone, device)
     # Only reaches back one hour, far short of the configured twelve.
     _identical_history(session, temperature, device, value=Decimal("22.70"))
 
@@ -326,7 +336,7 @@ def test_a_stale_source_is_never_checked_for_being_stuck(session: Session) -> No
     temperature = _capability(session, "temperature")
     device = create_device(session, _device_names()[0])
     zone = create_zone(session, "abgelaufene-zone")
-    zone.temperature_source_device_id = device.id
+    _attach(session, zone, device)
     zone.sensor_timeout_seconds = 30
     # Identical readings, but the most recent one is already older than the timeout
     # -- `sensor_state()` reads `veraltet`, not `ok`.
@@ -562,7 +572,7 @@ def _temp_drop_zone(session: Session, name: str) -> tuple[Zone, Setting, DeviceC
     temperature = _capability(session, "temperature")
     device = create_device(session, _device_names()[0])
     zone = create_zone(session, name)
-    zone.temperature_source_device_id = device.id
+    _attach(session, zone, device)
     zone.window_temp_drop_detection_enabled = True
     return zone, settings, temperature
 
@@ -583,8 +593,7 @@ def _add_reading(
 
 def test_a_drop_at_exactly_the_threshold_opens_the_window(session: Session) -> None:
     zone, _settings, temperature = _temp_drop_zone(session, "sturz-an-schwelle-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -602,8 +611,7 @@ def test_a_drop_at_exactly_the_threshold_opens_the_window(session: Session) -> N
 
 def test_a_drop_just_under_the_threshold_does_not_open_the_window(session: Session) -> None:
     zone, _settings, temperature = _temp_drop_zone(session, "sturz-knapp-darunter-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -627,8 +635,7 @@ def test_a_slow_cooldown_does_not_open_the_window(session: Session) -> None:
     """The room drifting down a few tenths of a Kelvin once heating stops must
     never be mistaken for an opened window."""
     zone, _settings, temperature = _temp_drop_zone(session, "langsames-auskuehlen-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     for step, value in enumerate(("21.00", "20.95", "20.90", "20.85")):
         _add_reading(
@@ -650,8 +657,7 @@ def test_the_end_of_a_heating_phase_does_not_open_the_window(session: Session) -
     levelling off as the heater switches off -- the room never actually falls,
     so this must not read as a dropped, opened-window temperature."""
     zone, _settings, temperature = _temp_drop_zone(session, "heizphasenende-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     for step, value in enumerate(("20.50", "20.90", "21.00", "21.00")):
         _add_reading(
@@ -670,8 +676,7 @@ def test_the_end_of_a_heating_phase_does_not_open_the_window(session: Session) -
 
 def test_too_few_readings_in_the_history_does_not_open_the_window(session: Session) -> None:
     zone, _settings, temperature = _temp_drop_zone(session, "zu-wenig-messwerte-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     # Only reaches back a couple of minutes, far short of the configured window.
     _add_reading(
         session,
@@ -699,7 +704,7 @@ def test_the_switch_on_without_a_temperature_source_never_opens_the_window(
     source to reason about, exactly like `sensor_stuck` and the sensor-fault
     detection already require one."""
     zone, _settings, _temperature = _temp_drop_zone(session, "ohne-quelle-mit-schalter-zone")
-    zone.temperature_source_device_id = None
+    session.execute(delete(ZoneTemperatureSource).where(ZoneTemperatureSource.zone_id == zone.id))
 
     advance_zone_state(session, EMPFANGEN_AM)
 
@@ -718,8 +723,7 @@ def test_a_reporting_gap_mid_window_still_yields_a_correct_result(session: Sessi
     those, without needing anything from inside the gap itself, and still reach
     the correct verdict."""
     zone, _settings, temperature = _temp_drop_zone(session, "meldeluecke-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -743,8 +747,7 @@ def test_a_triggered_suspicion_holds_without_a_fresh_drop_and_then_lapses(
     session: Session,
 ) -> None:
     zone, _settings, temperature = _temp_drop_zone(session, "vermutung-haelt-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -797,8 +800,7 @@ def test_a_single_flicker_at_the_hold_boundary_does_not_reset_the_streak(
     missed cycle at the hold boundary, followed by a resumed detection shortly
     after (within `window_temp_drop_gap_tolerance_minutes`)."""
     zone, _settings, temperature = _temp_drop_zone(session, "einzelner-ausreisser-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -877,8 +879,7 @@ def test_the_cap_forces_a_silence_once_a_streak_runs_too_long(session: Session) 
     silence_minutes = 15
     settings.window_temp_drop_max_suspected_minutes = cap_minutes
     settings.window_temp_drop_silence_minutes = silence_minutes
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -928,8 +929,7 @@ def test_silence_blocks_a_fresh_drop_then_lapses_and_trusts_one_again(
     silence_minutes = 15
     settings.window_temp_drop_max_suspected_minutes = cap_minutes
     settings.window_temp_drop_silence_minutes = silence_minutes
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -1013,8 +1013,7 @@ def test_a_real_window_contact_governs_exclusively_even_when_it_reads_unknown(
     temperature guess must not step in during that outage, however steep the
     zone's own recent temperature drop looks."""
     zone, _settings, temperature = _temp_drop_zone(session, "kontakt-und-temperatur-zone")
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -1059,8 +1058,7 @@ def test_the_switch_off_never_opens_the_window_from_temperature_alone(
 ) -> None:
     zone, _settings, temperature = _temp_drop_zone(session, "schalter-aus-zone")
     zone.window_temp_drop_detection_enabled = False
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
@@ -1101,8 +1099,7 @@ def test_the_cold_window_alarm_applies_to_a_temperature_inferred_window_too(
             received_at=EMPFANGEN_AM,
         )
     )
-    device_id = zone.temperature_source_device_id
-    assert device_id is not None
+    device_id = zone_sensor_device_ids(session, zone.id)[0]
     start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
     _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
     _add_reading(
