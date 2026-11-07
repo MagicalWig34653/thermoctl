@@ -7,7 +7,11 @@ Letzte Aktualisierung: 2026-10-30. Diese Datei sagt, was **jetzt** gilt. Verlauf
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `b3f5d7a92c61`.
+- **Migrationskopf:** `c7e2a4f91d38` (mehrere Temperaturfühler je Zone; noch nicht freigegeben).
+- **Messbarkeit (neu, noch nicht freigegeben):** Anfragedauer (`dauer_ms`, `pool_checked_out`) und eine Messung der Schleifenverzögerung
+  gehen ins Log (`thermoctl/observability.py`); der DB-Pool ist über `THERMOCTL_DB_POOL_*` einstellbar, das Frontend bricht Anfragen nach
+  30 s ab. Anlass: zeitweise 10-30 s zähe Oberfläche, Ursache **nicht** belegt (Verdacht blockierter Event-Loop durch
+  synchrone DB-Arbeit in `async def`, `app.py` Regelschleife/MQTT/Aufräumlauf). Erst die Logs nach dem Einspielen entscheiden.
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
@@ -231,7 +235,19 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 - **Ein Gerät, eine Zone als Aktor** (Entscheidung des Eigners): ein Gerät, das schon Aktor einer anderen Zone ist,
   nimmt keinen zweiten Heizbefehl; mehrere Aktoren je Zone gehen, eine ODER-Regel gibt es nicht. Gilt nur für **neue**
   Zuordnungen, Bestandsdoppelungen bleiben bearbeit- und lösbar. **Ein Fühler** darf Messquelle mehrerer Zonen, ein
-  Kontakt Fensterkontakt mehrerer Zonen sein; mehrere Fühler → eine Messquelle bleibt abgelehnt.
+  Kontakt Fensterkontakt mehrerer Zonen sein.
+- **Mehrere Eingabefühler je Zone** (Tabelle `zone_temperature_source`, `ZoneTemperatureSource`; die Spalte
+  `zone.temperature_source_device_id` gibt es nicht mehr): Der Raum-Istwert ist der **Mittelwert der brauchbaren
+  Fühler** (`domain/room_temperature.py`, gebildet in `services/ingest.py::advance_zone_state`; Mindestzahl 1, `measured_at`
+  = jüngster Zeitpunkt der brauchbaren, keine Glättung, bei genau einem Fühler wie zuvor). Nur **reine Fühler** sind
+  zulässig; Thermostate (Fähigkeit `thermostat`, z. B. BTH-RA) werden abgelehnt, weil ihr Wert der eingespeiste Echo wäre.
+  **Festhängend** wird je Fühler gemeldet (der Fühler zählt weiter mit). **Fenstererkennung per Temperatursturz** wertet
+  jeden Fühler mit eigener Historie einzeln aus, einer genügt; es gibt keinen Mittelwertverlauf. **Rückkehrprüfung** des
+  Notbetriebs: ein rückwärts springendes `measured_at` wird nicht ein zweites Mal gezählt (`shadow_run._apply_sensor_failure`).
+  Episoden führen bei mehreren Fühlern die Namen kommagetrennt, `source_device_id` ist dann NULL. Der Messwert-Ausgleich
+  gilt einmal je Zone auf den Mittelwert. Schnittstellen: UI-API `POST/DELETE /zones/{id}/devices/sources[/{device_id}]`,
+  REST `temperature_source_device_ids` (Liste ersetzt, `null` = unverändert). Downgrade der Migration behält je Zone nur
+  den ersten Fühler. **Nicht an der echten Anlage abgenommen.**
 - **Restlücke:** zwei gleichzeitige Zuordnungen desselben Geräts zu zwei Zonen sind ohne DB-Constraint nicht ganz
   auszuschließen (Zeilensperre `SELECT ... FOR UPDATE`, unter MariaDB von Hand geprüft: keine zweite Zeile, aber DB-
   Fehler 1020 statt sauberer Meldung; SQLite sperrt keine Zeilen, dort ungeprüft).

@@ -9,6 +9,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.22.0 — in Arbeit
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (`c7e2a4f91d38`): Die Spalte `zone.temperature_source_device_id` entfällt, die Fühler stehen in der neuen Tabelle `zone_temperature_source`; bestehende Zuordnungen werden übernommen. **Ein Downgrade behält je Zone nur den ersten Fühler.**
+- **REST:** `POST|PUT /api/v1/zones` kennt `temperature_source_device_ids` (Liste) statt `temperature_source_device_id`. Das alte Feld wird ignoriert.
+- Neue Einstellungen für den DB-Pool (`THERMOCTL_DB_POOL_SIZE`, `_MAX_OVERFLOW`, `_TIMEOUT`, `_RECYCLE`) und `THERMOCTL_LOOP_MONITOR_ENABLED`; für SQLite ohne Wirkung.
+
+### Neu
+
+- **Mehrere Temperaturfühler je Raum.** Der Istwert ist der Mittelwert der brauchbaren Fühler; fällt einer aus, regelt der Raum mit den übrigen weiter, Notbetrieb erst ohne brauchbaren Fühler. Thermostate sind als Fühler nicht zugelassen. Die Fenstererkennung per Temperatursturz bewertet jeden Fühler für sich.
+- **Antwortzeiten im Log** (`dauer_ms`), Warnung bei blockierter Ereignisschleife, Frontend-Timeout von 30 s.
+
+### Behoben
+
+- Ein Zigbee2MQTT-Gerät mit überlangem Textwert (IR-Sender) führte bei MariaDB zu „Data too long“ und verwarf die ganze Nachricht; der Wert wird jetzt nicht gespeichert, der Rest der Nachricht wird verarbeitet.
+
+---
+
 ## 0.21.1 — 2026-10-30
 
 ### Beim Upgrade zu wissen
