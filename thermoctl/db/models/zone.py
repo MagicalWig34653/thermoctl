@@ -78,9 +78,6 @@ class Zone(TimestampMixin, Base):
     operating_mode_id: Mapped[int] = mapped_column(
         ForeignKey("operating_mode.id"), nullable=False
     )
-    temperature_source_device_id: Mapped[int | None] = mapped_column(
-        ForeignKey("device.id", ondelete="SET NULL"), nullable=True
-    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     operating_mode: Mapped[OperatingMode] = relationship(lazy="joined")

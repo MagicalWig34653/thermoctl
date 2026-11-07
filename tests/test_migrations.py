@@ -1069,11 +1069,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (Dashboard-Layout), then `c5e1a9d3b072` (Anordnung der Gerätekarte), then
     # `d4b8f2a60c19` (Kachelart `control`), then
     # `e7a3c15b9d28` (Vorlagen), then `a8d4f12c6e53` (Aufbewahrung des
-    # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen) -- every time the
+    # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen), then
+    # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["b3f5d7a92c61"]
+    assert scripts.get_heads() == ["c7e2a4f91d38"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1188,6 +1189,13 @@ def test_sensor_failure_upgrade_preserves_installation(
                             }
                             for row in rows
                         ]
+                    if name == "zone":
+                        # `c7e2a4f91d38` löst `temperature_source_device_id` in die Tabelle
+                        # `zone_temperature_source` auf (Bestand hier: ohne Quelle).
+                        rows = [
+                            {k: v for k, v in row.items() if k != "temperature_source_device_id"}
+                            for row in rows
+                        ]
                     upgraded = sa.MetaData()
                     upgraded.reflect(connection, only=[name])
                     new_table = upgraded.tables[name]
@@ -1196,6 +1204,7 @@ def test_sensor_failure_upgrade_preserves_installation(
                     wanted = {c.name for c in metadata.tables[name].c} | (
                         {"thermostat_mode"} if name == "zone_device" else set()
                     )
+                    wanted.discard("temperature_source_device_id")
                     columns = [c for c in new_table.c if c.name in wanted]
                     assert [
                         dict(row)

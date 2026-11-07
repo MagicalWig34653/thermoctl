@@ -76,6 +76,27 @@ class ZoneDevice(Base):
     )
 
 
+class ZoneTemperatureSource(Base):
+    """A temperature sensor whose reading feeds a zone's actual temperature.
+
+    A zone has any number of them (none means: no measurement source). The
+    order in `sort_order` is the display order. Falls away with the zone and with
+    the device: a deleted sensor simply leaves the list.
+    """
+
+    __tablename__ = "zone_temperature_source"
+    __table_args__ = (UniqueConstraint("zone_id", "device_id", name="fuehler_je_zone"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("zone.id", ondelete="CASCADE"), nullable=False)
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("device.id", ondelete="CASCADE"), nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+
+
 class ControllerBinding(Base):
     """What a button press on a controller triggers.
 
