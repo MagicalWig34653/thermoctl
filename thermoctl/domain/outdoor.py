@@ -1,7 +1,7 @@
 """The plant-wide outdoor temperature: one source, not one per zone.
 
-Modelled exactly like a zone's own temperature source
-(`zone.temperature_source_device_id`) -- picked from the known Zigbee2MQTT devices
+Modelled like a zone's input temperature sensors
+(table `zone_temperature_source`) -- picked from the known Zigbee2MQTT devices
 with a `temperature` capability, read through the same ingest path every other
 measurement already comes in through -- except that this one column lives on
 `setting` instead of on a zone, because there is exactly one outside for the whole
@@ -92,8 +92,8 @@ def set_outdoor_temperature_source(
 ) -> None:
     """Picks (or clears) the plant-wide outdoor temperature source.
 
-    Exactly the same check `device_assignment.set_temperature_source` runs for a
-    zone's own source -- reused, not duplicated, so the two can never quietly
+    Exactly the same capability check `device_assignment.add_temperature_source` runs
+    for a zone's input sensor -- reused, not duplicated, so the two can never quietly
     drift apart on what "can act as a temperature source" means.
     """
     if device is not None:

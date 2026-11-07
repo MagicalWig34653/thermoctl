@@ -313,9 +313,9 @@ Siehe auch: [Aktor](#aktor), [Zigbee2MQTT und Brücke](#zigbee2mqtt)
 <a id="messquelle"></a>
 ### Messquelle
 
-*Sensorik* — Der Temperatursensor, nach dem eine Zone regelt.
+*Sensorik* — Die Temperatursensoren, nach denen eine Zone regelt.
 
-Die Messquelle (auch Wandfühler oder Raumfühler) wird bei den Geräten der Zone aus den bekannten Geräten mit Temperaturmessung gewählt. Was bei einem Ausfall geschieht, steht unter Sensor-Timeout, Ersatzquelle und Notbetrieb.
+Eine Zone kann beliebig viele Messquellen (auch Wandfühler oder Raumfühler) haben; sie werden bei den Geräten der Zone aus den bekannten reinen Fühlern mit Temperaturmessung hinzugefügt oder entfernt. Die Raumtemperatur ist der Mittelwert der Fühler, die gerade verwertbar messen; ein einziger verwertbarer Fühler genügt. Was bei einem Ausfall geschieht, steht unter Sensor-Timeout, Ersatzquelle und Notbetrieb.
 
 Auch: Wandfühler, Raumfühler, Fühler, Temperatursensor, Messquelle wählen
 

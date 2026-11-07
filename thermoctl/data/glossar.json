@@ -229,8 +229,8 @@
     {
       "id": "messquelle",
       "term": "Messquelle",
-      "short": "Der Temperatursensor, nach dem eine Zone regelt.",
-      "explanation": "Die Messquelle (auch Wandfühler oder Raumfühler) wird bei den Geräten der Zone aus den bekannten Geräten mit Temperaturmessung gewählt. Was bei einem Ausfall geschieht, steht unter Sensor-Timeout, Ersatzquelle und Notbetrieb.",
+      "short": "Die Temperatursensoren, nach denen eine Zone regelt.",
+      "explanation": "Eine Zone kann beliebig viele Messquellen (auch Wandfühler oder Raumfühler) haben; sie werden bei den Geräten der Zone aus den bekannten reinen Fühlern mit Temperaturmessung hinzugefügt oder entfernt. Die Raumtemperatur ist der Mittelwert der Fühler, die gerade verwertbar messen; ein einziger verwertbarer Fühler genügt. Was bei einem Ausfall geschieht, steht unter Sensor-Timeout, Ersatzquelle und Notbetrieb.",
       "synonyms": ["Wandfühler", "Raumfühler", "Fühler", "Temperatursensor", "Messquelle wählen"],
       "area": "Sensorik",
       "see_also": ["ersatzquelle", "sensor-timeout", "sensorkalibrierung"]

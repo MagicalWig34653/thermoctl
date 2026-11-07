@@ -26,6 +26,7 @@ from tests.helpers import (
     create_settings,
     create_zone,
     create_zone_state,
+    zone_mit_fuehler,
 )
 from thermoctl.db.base import Base
 from thermoctl.db.models.state import ShadowDecision
@@ -375,7 +376,7 @@ def build_year(args: argparse.Namespace) -> None:
             zone = create_zone(session, f"year-zone-{number}")
             create_zone_state(session, zone)
             device = create_device(session, f"year-device-{number}")
-            zone.temperature_source_device_id = device.id
+            zone_mit_fuehler(session, zone, device)
             device_ids.append(device.id)
         session.commit()
         started = time.perf_counter()

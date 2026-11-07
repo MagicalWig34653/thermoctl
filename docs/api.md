@@ -93,8 +93,14 @@ Löschen mit `204`.
 
 ```json
 {"name": "bad", "display_name": "Bad", "operating_mode_id": 1,
- "sort_order": 10, "temperature_source_device_id": null}
+ "sort_order": 10, "temperature_source_device_ids": [12, 13]}
 ```
+
+`temperature_source_device_ids` sind die Eingabe-Temperaturfühler der Zone (beliebig viele;
+reine Fühler mit Temperaturmessung, kein Thermostat). Fehlt das Feld oder ist es `null`,
+bleiben die Fühler unverändert; eine Liste ersetzt sie vollständig, `[]` löst alle. Ein
+unbekanntes, doppeltes oder ungeeignetes Gerät wird mit `422` abgelehnt, ohne dass etwas
+geschrieben wird.
 
 ### Modi und Sollwerte
 

@@ -25,6 +25,7 @@ from tests.helpers import (
     create_zone_state,
     role,
     source,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.base import utcnow
@@ -72,7 +73,7 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
         sensor.display_name = f"Raumfühler {name}"
         sensor.model = "Demo-Sensor T1"
         sensor.last_seen_at = now
-        zone.temperature_source_device_id = sensor.id
+        zone_mit_fuehler(session, zone, sensor)
         health = create_device_state(session, sensor)
         health.last_payload_at = now
         health.battery_percent = Decimal(92 - i * 7)

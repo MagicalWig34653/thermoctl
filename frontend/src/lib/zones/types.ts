@@ -12,12 +12,10 @@ export interface RoomForm {
   display_name: string;
   sort_order: number;
   operating_mode: string;
-  temperature_source_device_id: number | null;
 }
 
 export interface RoomFormOptions {
   operating_modes: NamedOption[];
-  devices: { id: number; name: string }[];
   name_limit: number;
   display_name_limit: number;
   /** `null` beim Anlegen. */

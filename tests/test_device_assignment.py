@@ -820,3 +820,26 @@ def test_deleting_a_device_removes_it_from_the_source_list(session: Session) -> 
     session.expire_all()
 
     assert source_device_ids(session, zone) == [keeper.id]
+
+
+def test_a_lost_race_on_the_same_sensor_is_reported_as_already_assigned(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two requests pass the existence check together; the unique key decides the loser."""
+    source(session)
+    zone = create_zone(session, "fuehler-rennen")
+    sensor = _with_capability(session, "fuehler-rennen-s", "temperature")
+    add_temperature_source(session, zone, sensor, actor_id=None)
+
+    real_scalar = session.scalar
+    calls = {"n": 0}
+
+    def blind_first(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real_scalar(*args, **kwargs)
+
+    monkeypatch.setattr(session, "scalar", blind_first)
+    with pytest.raises(AssignmentAlreadyExists):
+        add_temperature_source(session, zone, sensor, actor_id=None)
+    monkeypatch.undo()
+    assert source_device_ids(session, zone) == [sensor.id]

@@ -19,7 +19,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
-    zone_mit_fuehler,
     capability,
     create_device,
     create_mode,
@@ -27,6 +26,7 @@ from tests.helpers import (
     create_zone,
     create_zone_state,
     role,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME

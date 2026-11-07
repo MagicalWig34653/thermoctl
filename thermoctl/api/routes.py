@@ -47,7 +47,12 @@ from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.tokens import resolve_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth
 from thermoctl.db.models.operations import Setting
@@ -70,6 +75,15 @@ from thermoctl.domain.control import (
     save_settings,
     save_solar_location,
     settings,
+)
+from thermoctl.domain.device_assignment import (
+    TEMPERATURE_SOURCE,
+    CapabilityMissing,
+    add_temperature_source,
+    check_capability,
+    check_pure_sensor,
+    remove_temperature_source,
+    source_device_ids,
 )
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands
 from thermoctl.domain.modes import DomainError, create_mode, update_setpoints
@@ -191,6 +205,49 @@ def _mode_access(session: Session, principal: Principal) -> None:
         _permission(principal, "zone.read")
 
 
+def _checked_sensors(session: Session, device_ids: list[int] | None) -> list[Device] | None:
+    """The requested input sensors, validated before anything is written (`None` = unchanged)."""
+    if device_ids is None:
+        return None
+    if len(set(device_ids)) != len(device_ids):
+        raise _domain_error(
+            "temperature_source_device_ids", "Ein Gerät steht doppelt in der Liste."
+        )
+    devices: list[Device] = []
+    for device_id in device_ids:
+        device = session.get(Device, device_id)
+        if device is None:
+            raise _domain_error(
+                "temperature_source_device_ids", f"Gerät {device_id} ist nicht bekannt."
+            )
+        try:
+            check_capability(session, device, TEMPERATURE_SOURCE)
+            check_pure_sensor(session, device)
+        except CapabilityMissing as exc:
+            raise _domain_error("temperature_source_device_ids", exc.notice) from exc
+        devices.append(device)
+    return devices
+
+
+def _replace_sensors(
+    session: Session, zone_obj: Zone, principal: Principal, devices: list[Device] | None
+) -> None:
+    """Makes the zone's input sensors exactly `devices`; unchanged ones stay untouched."""
+    if devices is None:
+        return
+    wanted = {device.id for device in devices}
+    current = source_device_ids(session, zone_obj)
+    for device_id in current:
+        if device_id not in wanted:
+            gone = session.get(Device, device_id)
+            assert gone is not None  # foreign key
+            remove_temperature_source(session, zone_obj, gone, actor_id=principal.user_id)
+    for device in devices:
+        if device.id in current:
+            continue
+        add_temperature_source(session, zone_obj, device, actor_id=principal.user_id)
+
+
 @router.get("/zones", response_model=list[ZoneResponse])
 def zones(
     session: Annotated[Session, Depends(get_session)],
@@ -215,10 +272,14 @@ def create_zone_view(
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
     _permission(principal, "zone.manage")
+    fields = data.model_dump(exclude={"temperature_source_device_ids"})
+    sensors = _checked_sensors(session, data.temperature_source_device_ids)
     try:
-        return create_zone(session, principal, **data.model_dump())
+        created = create_zone(session, principal, **fields)
     except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
+    _replace_sensors(session, created, principal, sensors)
+    return created
 
 
 @router.put("/zones/{zone_id}", response_model=ZoneResponse)
@@ -230,10 +291,13 @@ def save_zone(
 ) -> Zone:
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "zone.manage", zone_id)
+    fields = data.model_dump(exclude={"temperature_source_device_ids"})
+    sensors = _checked_sensors(session, data.temperature_source_device_ids)
     try:
-        update_zone(session, zone_obj, principal, **data.model_dump())
+        update_zone(session, zone_obj, principal, **fields)
     except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
+    _replace_sensors(session, zone_obj, principal, sensors)
     return zone_obj
 
 
@@ -529,12 +593,11 @@ def devices(
     ):
         zones.setdefault(device_id, set()).add(name)
     for device_id, name in session.execute(
-        select(Zone.temperature_source_device_id, Zone.name).where(
-            Zone.temperature_source_device_id.is_not(None)
+        select(ZoneTemperatureSource.device_id, Zone.name).join(
+            Zone, Zone.id == ZoneTemperatureSource.zone_id
         )
     ):
-        if device_id is not None:
-            zones.setdefault(device_id, set()).add(name)
+        zones.setdefault(device_id, set()).add(name)
 
     rows = session.execute(
         select(Device, Integration, DeviceHealth)

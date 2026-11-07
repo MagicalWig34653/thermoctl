@@ -28,6 +28,7 @@ from tests.helpers import (
     role,
     sensor_status_of,
     source,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -50,6 +51,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.device_assignment import source_device_ids
 from thermoctl.domain.mapping_map import property_port_id, zone_port_id
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY
 from thermoctl.domain.thermostat_mode import (
@@ -163,7 +165,7 @@ def world(session: Session) -> World:
     a, b = create_zone(session, "Wohnen"), create_zone(session, "Bad")
     sensor = _with(session, create_device(session, "fuehler-a"), "temperature")
     sensor2 = _with(session, create_device(session, "fuehler-b"), "temperature")
-    a.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, a, sensor)
     plug = _with(session, create_device(session, "steckdose"), "switch")
     contact = _with(session, create_device(session, "fenster"), "contact")
     ctrl = _with(session, create_device(session, "drehknopf"), "action")
@@ -215,7 +217,8 @@ def _zone_endpoints(w: World) -> list[tuple[str, str, dict[str, Any] | None, boo
         ("POST", f"{base}/devices/assign", {"device_id": w.plug.id, "role_code": "actuator"}, True),
         ("POST", f"{base}/devices/detach", {"assignment_id": 1}, True),
         ("POST", f"{base}/devices/regulation", {"assignment_id": 1, "thermostat_mode": MODE_READING_ONLY}, True),
-        ("POST", f"{base}/devices/source", {"device_id": w.sensor.id}, True),
+        ("POST", f"{base}/devices/sources", {"device_id": w.sensor.id}, True),
+        ("DELETE", f"{base}/devices/sources/{w.sensor.id}", None, True),
         ("POST", f"{base}/devices/swap", {"old_device_id": w.sensor.id, "new_device_id": w.sensor2.id}, True),
         ("POST", f"{base}/devices/button", {"device_id": w.ctrl.id, "action_code": "x"}, True),
     ]
@@ -299,8 +302,8 @@ def test_malformed_bodies_are_422(client_als: Als, world: World) -> None:
         if method == "POST":
             _fehler(_call(client, method, url, {"unerwartet": 1}), 422, "validation")
     for method, url, _body, write in _zone_endpoints(world):
-        if write:
-            bad = {"device_id": "abc"} if url.endswith("/source") else {"unerwartet": 1}
+        if write and method != "DELETE":  # DELETE hat keinen Körper
+            bad = {"device_id": "abc"} if url.endswith("/sources") else {"unerwartet": 1}
             _fehler(_call(client, method, url, bad), 422, "validation")
 
 
@@ -350,7 +353,7 @@ def test_plant_shows_wiring_and_defects_per_visible_zone(client_als: Als, world:
     assert body["bridge"] is None
     zones = {z["name"]: z for z in body["zones"]}
     wohnen = zones["Wohnen"]
-    assert wohnen["temperature_source"]["name"] == "fuehler-a"
+    assert [d["name"] for d in wohnen["temperature_sources"]] == ["fuehler-a"]
     assert [d["name"] for d in wohnen["actuators"]] == ["steckdose"]
     assert wohnen["actuators"][0]["assignment_id"] is not None
     assert wohnen["defects"] == []
@@ -379,8 +382,8 @@ def test_map_is_a_real_model_with_ports_directions_and_reasons(client_als: Als, 
     assert device_ports[property_port_id(valve.id, SETPOINT_PROPERTY)]["valve_channel"] == "setpoint"
     assert device_ports[property_port_id(valve.id, ACTUAL)]["valve_channel"] == "actual"
     assert device_ports[f"dev-{valve.id}-thermostat"]["direction"] == "in"
-    # Mehrfachsensoren / Fensterkontakte: der Eingang der Zone nimmt mehrere Linien, die Messquelle nur eine
-    assert slots["temperature_source"]["single"] is True and slots["window_contact"]["single"] is False
+    # Mehrfachsensoren / Fensterkontakte: der Eingang der Zone nimmt mehrere Linien, auch die Messquelle
+    assert slots["temperature_source"]["single"] is False and slots["window_contact"]["single"] is False
     # Linien: Messquelle und die beiden Ventillinien
     drawn = {(c["slot"], c["device_id"]) for c in body["connections"]}
     assert ("temperature_source", world.sensor.id) in drawn
@@ -423,7 +426,7 @@ def _only_in_b(session: Session, world: World) -> Device:
     eine Messquelle für B. Raum A bekommt nichts davon."""
     _assign(session, world.b, world.plug, "actuator")
     _assign(session, world.b, world.contact, "window_contact")
-    world.b.temperature_source_device_id = world.sensor2.id
+    zone_mit_fuehler(session, world.b, world.sensor2)
     ctrl_b = _with(session, create_device(session, "schalter-bad"), "action")
     _prop(session, ctrl_b, "external_temperature", readable=True)
     _assign(session, world.b, ctrl_b, "controller")
@@ -483,10 +486,10 @@ def test_connect_sets_source_window_and_actuator_and_disconnect_removes_them(cli
     def connect(first: str, second: str) -> Any:
         return _call(client, "POST", "/ui-api/devices/map/connect", {"from_id": first, "to_id": second})
 
-    # Mehrfachsensoren: Messquelle der Zone b (eine Linie) ...
+    # Messquelle der Zone b (eine Linie je Fühler) ...
     assert connect(f"dev-{world.sensor2.id}-temperature", zone_port_id(world.b.id, "temperature_source")).json() == {"ok": True, "mode": None}
     session.expire_all()
-    assert session.get(Zone, world.b.id).temperature_source_device_id == world.sensor2.id  # type: ignore[union-attr]
+    assert source_device_ids(session, world.b) == [world.sensor2.id]
     # ... Fensterkontakt (Zone zuerst, Reihenfolge egal) und Heizbefehl
     assert connect(zone_port_id(world.b.id, "window_contact"), f"dev-{world.contact.id}-contact").status_code == 200
     assert connect(zone_port_id(world.b.id, "actuator"), f"dev-{world.plug.id}-switch").json()["mode"] is None
@@ -506,7 +509,7 @@ def test_connect_sets_source_window_and_actuator_and_disconnect_removes_them(cli
     assert _rows(session, world.b, world.contact) == []
     assert disconnect(f"conn-{world.b.id}-temperature_source-{world.sensor2.id}").json()["ok"] is True
     session.expire_all()
-    assert session.get(Zone, world.b.id).temperature_source_device_id is None  # type: ignore[union-attr]
+    assert source_device_ids(session, world.b) == []
     plug_gone = disconnect(f"conn-{world.b.id}-actuator-{world.plug.id}").json()
     assert "behält seinen letzten Zustand" in plug_gone["message"] and _rows(session, world.b, world.plug) == []
 
@@ -601,7 +604,7 @@ def test_zone_devices_read_model(client_als: Als, world: World, session: Session
     _assign(session, world.a, valve, "actuator", MODE_READING_ONLY)
     body = _call(_manage(client_als, world.a), "GET", f"/ui-api/zones/{world.a.id}/devices").json()
     assert body["zone"] == {"id": world.a.id, "name": "Wohnen"} and body["may_edit"] is True
-    assert body["temperature_source"] == {"id": world.sensor.id, "name": "fuehler-a"}
+    assert body["temperature_sources"] == [{"id": world.sensor.id, "name": "fuehler-a"}]
     actuator = next(a for a in body["assignments"] if a["role"]["code"] == "actuator")
     assert actuator["thermostat_mode"] == MODE_READING_ONLY and actuator["is_thermostat"] is True
     assert actuator["thermostat_mode_label"] == "Nur Raumtemperatur melden"
@@ -686,19 +689,59 @@ def test_regulation_switches_the_valve_mode_and_is_audited(client_als: Als, worl
     assert _rows(session, world.a, valve)[0].thermostat_mode == MODE_READING_ONLY
 
 
-def test_source_can_be_set_replaced_and_cleared(client_als: Als, world: World, session: Session) -> None:
+def test_sources_can_be_added_in_any_number_and_removed_one_by_one(
+    client_als: Als, world: World, session: Session
+) -> None:
     client = _manage(client_als, world.a)
-    url = f"/ui-api/zones/{world.a.id}/devices/source"
+    url = f"/ui-api/zones/{world.a.id}/devices/sources"
+    assert source_device_ids(session, world.a) == [world.sensor.id]
     out = _call(client, "POST", url, {"device_id": world.sensor2.id})
-    assert out.json()["temperature_source"]["id"] == world.sensor2.id
+    assert out.status_code == 200
+    assert [s["id"] for s in out.json()["temperature_sources"]] == [world.sensor.id, world.sensor2.id]
+    assert "temperature_source" not in out.json()
+    assert [p["id"] for p in out.json()["picture"]["temperature_sources"]] == [world.sensor.id, world.sensor2.id]
     session.expire_all()
-    assert session.get(Zone, world.a.id).temperature_source_device_id == world.sensor2.id  # type: ignore[union-attr]
+    assert source_device_ids(session, world.a) == [world.sensor.id, world.sensor2.id]
+    summaries = session.scalars(select(AuditEvent.summary).where(AuditEvent.object_type == "zone_temperature_source")).all()
+    assert any("hinzugefügt" in s for s in summaries)
+    # Doppelt, kein Fühler (Steckdose), unbekannt: abgelehnt, nichts geändert.
+    _fehler(_call(client, "POST", url, {"device_id": world.sensor2.id}), 409, "already_assigned")
     _fehler(_call(client, "POST", url, {"device_id": world.plug.id}), 422, "capability_missing")
     _fehler(_call(client, "POST", url, {"device_id": 99999}), 404, "not_found")
-    cleared = _call(client, "POST", url, {"device_id": None})
-    assert cleared.json()["temperature_source"] is None
     session.expire_all()
-    assert session.get(Zone, world.a.id).temperature_source_device_id is None  # type: ignore[union-attr]
+    assert source_device_ids(session, world.a) == [world.sensor.id, world.sensor2.id]
+    # Entfernen: nur dieser eine Fühler.
+    gone = _call(client, "DELETE", f"{url}/{world.sensor.id}")
+    assert gone.status_code == 200
+    assert [s["id"] for s in gone.json()["temperature_sources"]] == [world.sensor2.id]
+    session.expire_all()
+    assert source_device_ids(session, world.a) == [world.sensor2.id]
+    summaries = session.scalars(select(AuditEvent.summary).where(AuditEvent.object_type == "zone_temperature_source")).all()
+    assert any("gelöst" in s for s in summaries)
+    _fehler(_call(client, "DELETE", f"{url}/{world.sensor.id}"), 404, "not_found")
+    _fehler(_call(client, "DELETE", f"{url}/99999"), 404, "not_found")
+    assert _call(client, "DELETE", f"{url}/{world.sensor2.id}").json()["temperature_sources"] == []
+
+
+def test_a_thermostat_is_rejected_as_a_source(client_als: Als, world: World, session: Session) -> None:
+    valve = _with(session, _valve(session, "ventil-als-fuehler"), "temperature")
+    client = _manage(client_als, world.a)
+    refused = _fehler(_call(client, "POST", f"/ui-api/zones/{world.a.id}/devices/sources", {"device_id": valve.id}), 422, "capability_missing")
+    assert "Thermostat" in refused["detail"]
+    assert valve.id not in source_device_ids(session, world.a)
+
+
+def test_source_endpoints_need_device_manage_on_the_zone(client_als: Als, world: World, session: Session) -> None:
+    url = f"/ui-api/zones/{world.a.id}/devices/sources"
+    reader = client_als([("device.read", None), ("zone.read", None)])
+    _fehler(_call(reader, "POST", url, {"device_id": world.sensor2.id}), 403, "forbidden")
+    _fehler(_call(reader, "DELETE", f"{url}/{world.sensor.id}"), 403, "forbidden")
+    blind = client_als([("device.manage", None)])  # darf die Zone nicht sehen
+    other_zone = "/ui-api/zones/99999/devices/sources"
+    _fehler(_call(blind, "POST", other_zone, {"device_id": world.sensor2.id}), 404, "not_found")
+    _fehler(_call(blind, "DELETE", f"{other_zone}/{world.sensor.id}"), 404, "not_found")
+    session.expire_all()
+    assert source_device_ids(session, world.a) == [world.sensor.id]
 
 
 def test_swap_moves_all_roles_and_resets_the_valve_mode(client_als: Als, world: World, session: Session) -> None:
@@ -713,7 +756,7 @@ def test_swap_moves_all_roles_and_resets_the_valve_mode(client_als: Als, world: 
     # Messquelle tauscht mit
     assert _call(client, "POST", url, {"old_device_id": world.sensor.id, "new_device_id": world.sensor2.id}).status_code == 200
     session.expire_all()
-    assert session.get(Zone, world.a.id).temperature_source_device_id == world.sensor2.id  # type: ignore[union-attr]
+    assert source_device_ids(session, world.a) == [world.sensor2.id]
 
 
 def test_swap_errors(client_als: Als, world: World, session: Session) -> None:
@@ -1006,16 +1049,15 @@ def test_one_sensor_is_the_temperature_source_of_two_zones_and_both_zones_read_i
     for code in ("ok", "veraltet", "keine_quelle"):
         sensor_status_of(session, code)
     shared = _with(session, create_device(session, "gemeinsamer-fuehler"), "temperature")
-    world.a.temperature_source_device_id = None  # beide Zonen beginnen ohne Messquelle
-    session.flush()
+    own = source_device_ids(session, world.a)  # Zone a hat schon einen eigenen Fühler
     client = _manage(client_als, world.a, world.b)
     out = f"dev-{shared.id}-temperature"
     for zone in (world.a, world.b):
         done = _call(client, "POST", "/ui-api/devices/map/connect", {"from_id": out, "to_id": zone_port_id(zone.id, "temperature_source")})
         assert done.status_code == 200 and done.json() == {"ok": True, "mode": None}
     session.expire_all()
-    assert session.get(Zone, world.a.id).temperature_source_device_id == shared.id  # type: ignore[union-attr]
-    assert session.get(Zone, world.b.id).temperature_source_device_id == shared.id  # type: ignore[union-attr]
+    assert source_device_ids(session, world.a) == [*own, shared.id]
+    assert source_device_ids(session, world.b) == [shared.id]
 
     # Zwei Linien vom selben Ausgang, jede einzeln geführt und lösbar.
     graph = _call(client, "GET", "/ui-api/devices/map").json()

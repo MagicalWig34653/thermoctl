@@ -28,7 +28,6 @@ def _daten(session: Session, name: str = "wohnzimmer") -> dict[str, str]:
         "display_name": "Wohnzimmer",
         "operating_mode": str(operating_mode(session).id),
         "sort_order": "4",
-        "temperature_source_device_id": "",
     }
 
 

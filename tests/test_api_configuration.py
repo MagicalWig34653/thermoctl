@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    capability,
+    create_device,
     create_mode,
     create_settings,
     create_zone,
@@ -18,8 +20,10 @@ from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
+from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
+from thermoctl.domain.device_assignment import source_device_ids
 
 
 @pytest.fixture
@@ -49,7 +53,6 @@ def test_creating_updating_and_deleting_zones(
         "display_name": "API-Zone",
         "operating_mode_id": kind.id,
         "sort_order": 4,
-        "temperature_source_device_id": None,
     }
 
     angelegt = client.post("/api/v1/zones", headers=head, json=data)
@@ -275,7 +278,6 @@ def test_renaming_to_a_taken_name_yields_422(client, api_token, session) -> None
         json={
             "name": "belegt", "display_name": "Andere",
             "operating_mode_id": kind.id, "sort_order": 0,
-            "temperature_source_device_id": None,
         },
         headers=head,
     )
@@ -711,3 +713,90 @@ def test_command_log_limits_are_writable_and_bounded(
         assert response.status_code == 422
     stored = client.get("/api/v1/control", headers=head).json()
     assert stored[field] == ok_value
+
+
+def _sensor(session: Session, name: str, code: str = "temperature") -> Device:
+    device = create_device(session, name)
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, code).id)
+    )
+    session.flush()
+    return device
+
+
+def test_the_input_sensors_of_a_zone_are_replaced_by_a_list_and_none_leaves_them(
+    client: TestClient, session: Session, api_token
+) -> None:
+    kind = operating_mode(session)
+    head = api_token([("zone.manage", None), ("zone.read", None), ("device.read", None)])
+    first, second, third = (_sensor(session, f"rest-fuehler-{n}") for n in range(3))
+    data: dict[str, object] = {
+        "name": "rest-fuehler",
+        "display_name": "Rest-Fühler",
+        "operating_mode_id": kind.id,
+        "temperature_source_device_ids": [first.id, second.id],
+    }
+    created = client.post("/api/v1/zones", headers=head, json=data)
+    assert created.status_code == 201, created.text
+    zone = session.get(Zone, created.json()["id"])
+    assert zone is not None
+    assert source_device_ids(session, zone) == [first.id, second.id]
+    # The list replaces: one stays, one goes, one is new.
+    data["temperature_source_device_ids"] = [second.id, third.id]
+    assert client.put(f"/api/v1/zones/{zone.id}", headers=head, json=data).status_code == 200
+    session.expire_all()
+    assert source_device_ids(session, zone) == [second.id, third.id]
+    # Without the field (or `null`) the sensors stay as they are.
+    del data["temperature_source_device_ids"]
+    assert client.put(f"/api/v1/zones/{zone.id}", headers=head, json=data).status_code == 200
+    data["temperature_source_device_ids"] = None
+    assert client.put(f"/api/v1/zones/{zone.id}", headers=head, json=data).status_code == 200
+    session.expire_all()
+    assert source_device_ids(session, zone) == [second.id, third.id]
+    # The empty list removes all of them.
+    data["temperature_source_device_ids"] = []
+    assert client.put(f"/api/v1/zones/{zone.id}", headers=head, json=data).status_code == 200
+    session.expire_all()
+    assert source_device_ids(session, zone) == []
+    # The device list names the zone for each of its sensors.
+    data["temperature_source_device_ids"] = [first.id]
+    assert client.put(f"/api/v1/zones/{zone.id}", headers=head, json=data).status_code == 200
+    listed = {d["id"]: d["zones"] for d in client.get("/api/v1/devices", headers=head).json()}
+    assert listed[first.id] == ["rest-fuehler"] and listed[second.id] == []
+
+
+def test_a_bad_sensor_list_is_rejected_and_writes_nothing(
+    client: TestClient, session: Session, api_token
+) -> None:
+    kind = operating_mode(session)
+    head = api_token([("zone.manage", None), ("zone.read", None)])
+    good = _sensor(session, "rest-gut")
+    plug = _sensor(session, "rest-steckdose", "switch")
+    valve = _sensor(session, "rest-ventil")
+    session.add(
+        DeviceCapabilityLink(device_id=valve.id, capability_id=capability(session, "thermostat").id)
+    )
+    session.flush()
+    base = {"name": "rest-fehler", "display_name": "Fehler", "operating_mode_id": kind.id}
+    for bad in (
+        [good.id, good.id],  # doppelt
+        [999999],  # unbekannt
+        [good.id, plug.id],  # kann nicht messen
+        [good.id, valve.id],  # Thermostat ist kein Fuehler
+    ):
+        response = client.post(
+            "/api/v1/zones", headers=head, json={**base, "temperature_source_device_ids": bad}
+        )
+        assert response.status_code == 422, bad
+        assert "temperature_source_device_ids" in response.json()["detail"]
+    # Everything is checked before anything is written: no zone came out of the rejections.
+    assert session.scalars(select(Zone).where(Zone.name == "rest-fehler")).all() == []
+    # The old single field is gone: it is ignored, not honoured.
+    ignored = client.post(
+        "/api/v1/zones",
+        headers=head,
+        json={**base, "name": "rest-alt", "temperature_source_device_id": good.id},
+    )
+    assert ignored.status_code == 201
+    created = session.get(Zone, ignored.json()["id"])
+    assert created is not None and source_device_ids(session, created) == []
