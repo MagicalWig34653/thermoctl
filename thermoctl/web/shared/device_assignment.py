@@ -2,7 +2,12 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.controller import seen_actions
@@ -21,10 +26,13 @@ def assignment_context(session: Session, zone: Zone, **extra: object) -> dict[st
         .where(ZoneDevice.zone_id == zone.id)
         .order_by(DeviceRole.id, ZoneDevice.sort_order, Device.display_name)
     ).all()
-    temperature_source = (
-        session.get(Device, zone.temperature_source_device_id)
-        if zone.temperature_source_device_id is not None
-        else None
+    temperature_sources = list(
+        session.scalars(
+            select(Device)
+            .join(ZoneTemperatureSource, ZoneTemperatureSource.device_id == Device.id)
+            .where(ZoneTemperatureSource.zone_id == zone.id)
+            .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+        )
     )
     capabilities: dict[int, list[str]] = {}
     for device_id, code in session.execute(
@@ -68,7 +76,7 @@ def assignment_context(session: Session, zone: Zone, **extra: object) -> dict[st
         "devices": devices,
         "roles": roles,
         "assignments": assignments,
-        "temperature_source": temperature_source,
+        "temperature_sources": temperature_sources,
         "errors": {},
         **extra,
     }

@@ -1,11 +1,16 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.thermostat_mode import (
@@ -44,8 +49,8 @@ class CapabilityMissing(Exception):
 
 
 # What a slot in the plant requires from a device. The keys are the roles' codes,
-# plus `"temperature_source"` -- it is not a role in the sense of `device_role`, but a column
-# on the zone, yet needs the same check.
+# plus `"temperature_source"` -- it is not a role in the sense of `device_role`, but an entry
+# in `zone_temperature_source`, yet needs the same check.
 #
 # `controller` is deliberately absent here: a device that only displays does not need
 # any ability that shows up in the capabilities. A caller passing `None` is asking
@@ -317,30 +322,119 @@ def set_thermostat_mode(
     )
 
 
-def set_temperature_source(
+def source_device_ids(session: Session, zone: Zone) -> list[int]:
+    """The ids of the zone's input temperature sensors, in display order."""
+    return list(
+        session.scalars(
+            select(ZoneTemperatureSource.device_id)
+            .where(ZoneTemperatureSource.zone_id == zone.id)
+            .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+        )
+    )
+
+
+def check_pure_sensor(session: Session, device: Device) -> None:
+    """Rejects a thermostat as input temperature sensor of a zone.
+
+    "Pure sensor" means: the device has no `thermostat` capability. A thermostat with its
+    own room temperature (e.g. a Bosch BTH-RA) would feed back its own echo: thermoctl
+    writes the room temperature to the valve, the valve reports it as `local_temperature`,
+    and that would become the zone's reading again.
+    """
+    if "thermostat" in _capabilities(session, device):
+        raise CapabilityMissing(
+            f"'{device.display_name}' ist ein Thermostat -- dessen Raumtemperatur ist keine "
+            "Messquelle (Echo-Rückkopplung: thermoctl schreibt sie ja selbst ans Ventil). "
+            "Als Messquelle dient nur ein reiner Fühler."
+        )
+
+
+def add_temperature_source(
     session: Session,
     zone: Zone,
-    device: Device | None,
+    device: Device,
+    *,
+    actor_id: int | None,
+    source: str = "web",
+) -> ZoneTemperatureSource:
+    """Adds a sensor to the zone's input temperature sensors (appended at the end).
+
+    Raises `AssignmentAlreadyExists` if the device already is one, `CapabilityMissing`
+    if it does not measure a temperature or is a thermostat.
+    """
+    if (
+        session.scalar(
+            select(ZoneTemperatureSource.id).where(
+                ZoneTemperatureSource.zone_id == zone.id,
+                ZoneTemperatureSource.device_id == device.id,
+            )
+        )
+        is not None
+    ):
+        raise AssignmentAlreadyExists
+    check_capability(session, device, TEMPERATURE_SOURCE)
+    check_pure_sensor(session, device)
+    last = session.scalar(
+        select(func.max(ZoneTemperatureSource.sort_order)).where(
+            ZoneTemperatureSource.zone_id == zone.id
+        )
+    )
+    entry = ZoneTemperatureSource(
+        zone_id=zone.id,
+        device_id=device.id,
+        sort_order=0 if last is None else last + 1,
+    )
+    try:
+        # Savepoint: a lost race on `fuehler_je_zone` must not break the caller's transaction.
+        with session.begin_nested():
+            session.add(entry)
+            session.flush()
+    except IntegrityError:
+        raise AssignmentAlreadyExists from None
+    audit.record(
+        session,
+        source=source,
+        action="assign",
+        object_type="zone_temperature_source",
+        object_id=str(zone.id),
+        summary=f"Messquelle '{device.display_name}' zu '{zone.display_name}' hinzugefügt",
+        user_id=actor_id,
+    )
+    return entry
+
+
+def remove_temperature_source(
+    session: Session,
+    zone: Zone,
+    device: Device,
     *,
     actor_id: int | None,
     source: str = "web",
 ) -> None:
-    if device is not None:
-        check_capability(session, device, TEMPERATURE_SOURCE)
-    zone.temperature_source_device_id = device.id if device is not None else None
+    """Removes one sensor from the zone's input temperature sensors.
+
+    Raises `ValueError` if the device is not one of them. Without any sensor left the
+    zone has no measurement source (`keine_quelle`).
+    """
+    entry = session.scalar(
+        select(ZoneTemperatureSource).where(
+            ZoneTemperatureSource.zone_id == zone.id,
+            ZoneTemperatureSource.device_id == device.id,
+        )
+    )
+    if entry is None:
+        raise ValueError("Das Gerät ist keine Messquelle dieser Zone.")
+    session.delete(entry)
     audit.record(
         session,
         source=source,
-        action="assign" if device is not None else "unassign",
+        action="unassign",
         object_type="zone_temperature_source",
         object_id=str(zone.id),
-        summary=(
-            f"Messquelle von '{zone.display_name}' auf '{device.display_name}' gesetzt"
-            if device is not None
-            else f"Messquelle von '{zone.display_name}' gelöst"
-        ),
+        summary=f"Messquelle '{device.display_name}' von '{zone.display_name}' gelöst",
         user_id=actor_id,
     )
+    session.flush()
 
 
 def swap_device(
@@ -369,7 +463,13 @@ def swap_device(
             )
         )
     )
-    war_temperature_source = zone.temperature_source_device_id == old.id
+    old_source = session.scalar(
+        select(ZoneTemperatureSource).where(
+            ZoneTemperatureSource.zone_id == zone.id,
+            ZoneTemperatureSource.device_id == old.id,
+        )
+    )
+    war_temperature_source = old_source is not None
     if not old_assignments and not war_temperature_source:
         raise ValueError("Das alte Gerät ist dieser Zone nicht zugeordnet.")
 
@@ -378,7 +478,13 @@ def swap_device(
     # and never even see which roles come along with them. Check first, then write,
     # otherwise the swap would be left half-done after a rejection.
     if war_temperature_source:
+        if new_link.id in source_device_ids(session, zone):
+            raise ValueError(
+                f"'{new_link.display_name}' ist schon Messquelle von '{zone.display_name}' -- "
+                "ein Tausch darauf würde den Fühler doppelt eintragen."
+            )
         check_capability(session, new_link, TEMPERATURE_SOURCE)
+        check_pure_sensor(session, new_link)
     for assignment in old_assignments:
         role = session.get(DeviceRole, assignment.device_role_id)
         if role is not None:
@@ -413,8 +519,8 @@ def swap_device(
                 )
             )
         session.delete(assignment)
-    if war_temperature_source:
-        zone.temperature_source_device_id = new_link.id
+    if old_source is not None:
+        old_source.device_id = new_link.id
 
     audit.record(
         session,

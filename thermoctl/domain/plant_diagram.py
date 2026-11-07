@@ -1,7 +1,8 @@
 """What device does what, where -- as a picture instead of a list.
 
-The assignment of devices to zones lives in three tables: `zone.temperature_source_device_id`
-for the temperature source, `zone_device` with a role for actuators and window contacts,
+The assignment of devices to zones lives in three tables:
+`zone_temperature_source` for the temperature sources (any number per zone),
+`zone_device` with a role for actuators and window contacts,
 and `device_capability_link` for what a device can do at all. Anyone wanting to know why
 a room stays cold has to piece these three together in their head.
 
@@ -22,7 +23,12 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY, TEMPERATURE_SOURCE
@@ -40,7 +46,7 @@ class DevicePicture:
     # sit in the database and would otherwise never stand out.
     unsuitable: str | None = None
     # The id of the `zone_device` row through which this device hangs at this slot --
-    # None for the temperature source (that is a column on the zone, not a row) and
+    # None for a temperature source (a `zone_temperature_source` row, not a `zone_device` one) and
     # for devices without a zone. The interface needs it to be able to pull a device
     # back out.
     assignment_id: int | None = None
@@ -50,7 +56,7 @@ class DevicePicture:
 class ZonePicture:
     zone_id: int
     name: str
-    temperature_source: DevicePicture | None
+    temperature_sources: list[DevicePicture]
     window_contacts: list[DevicePicture] = field(default_factory=list)
     actuators: list[DevicePicture] = field(default_factory=list)
     controllers: list[DevicePicture] = field(default_factory=list)
@@ -59,12 +65,12 @@ class ZonePicture:
     def defects(self) -> list[str]:
         """What is stopping this zone from controlling anything. Empty means: fully wired."""
         missing = []
-        if self.temperature_source is None:
+        if not self.temperature_sources:
             missing.append("keine Messquelle — ohne Ist-Wert entscheidet die Regelung nichts")
         if not self.actuators:
             missing.append("kein Aktor — die Entscheidung erreicht kein Ventil")
-        for device in [self.temperature_source, *self.window_contacts, *self.actuators]:
-            if device is not None and device.unsuitable:
+        for device in [*self.temperature_sources, *self.window_contacts, *self.actuators]:
+            if device.unsuitable:
                 missing.append(device.unsuitable)
         return missing
 
@@ -143,18 +149,29 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
         )
         assigned.add(device.id)
 
+    sources_by_zone: dict[int, list[int]] = {}
+    for zone_id, device_id in session.execute(
+        select(ZoneTemperatureSource.zone_id, ZoneTemperatureSource.device_id)
+        .where(ZoneTemperatureSource.zone_id.in_([zone.id for zone in zones]))
+        .order_by(ZoneTemperatureSource.sort_order, ZoneTemperatureSource.id)
+    ):
+        sources_by_zone.setdefault(zone_id, []).append(device_id)
+
     pictures = []
     for zone in zones:
-        source = devices.get(zone.temperature_source_device_id or 0)
-        if source is not None:
-            assigned.add(source.id)
+        sources = [
+            devices[device_id]
+            for device_id in sources_by_zone.get(zone.id, [])
+            if device_id in devices
+        ]
+        assigned.update(source.id for source in sources)
         pictures.append(
             ZonePicture(
                 zone_id=zone.id,
                 name=zone.display_name,
-                temperature_source=(
-                    _picture(source, capabilities, codes, TEMPERATURE_SOURCE) if source else None
-                ),
+                temperature_sources=[
+                    _picture(source, capabilities, codes, TEMPERATURE_SOURCE) for source in sources
+                ],
                 window_contacts=by_zone[zone.id]["window_contact"],
                 actuators=by_zone[zone.id]["actuator"],
                 controllers=by_zone[zone.id]["controller"],

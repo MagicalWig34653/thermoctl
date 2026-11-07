@@ -6,7 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import DeviceCapability, Integration
 from thermoctl.db.models.measurement import DeviceHealth
 from thermoctl.db.models.operations import Setting
@@ -52,12 +57,11 @@ def build_device_survey(session: Session) -> tuple[list[DeviceSurvey], Setting |
     ):
         zones[device_id].add(display_name)
     for device_id, display_name in session.execute(
-        select(Zone.temperature_source_device_id, Zone.display_name).where(
-            Zone.temperature_source_device_id.is_not(None)
+        select(ZoneTemperatureSource.device_id, Zone.display_name).join(
+            Zone, Zone.id == ZoneTemperatureSource.zone_id
         )
     ):
-        if device_id is not None:
-            zones[device_id].add(display_name)
+        zones[device_id].add(display_name)
 
     defaults = session.get(Setting, 1)
     silent_after = (

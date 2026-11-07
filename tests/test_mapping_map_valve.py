@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    zone_mit_fuehler,
     capability,
     create_device,
     create_mode,
@@ -98,8 +99,7 @@ def _zone(session: Session, name: str, *, with_source: bool = True) -> Zone:
     role(session, "actuator")
     zone = create_zone(session, name)
     if with_source:
-        zone.temperature_source_device_id = _sensor(session, f"fuehler-{name}").id
-        session.flush()
+        zone_mit_fuehler(session, zone, _sensor(session, f"fuehler-{name}"))
     return zone
 
 

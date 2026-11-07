@@ -10,12 +10,13 @@ from decimal import Decimal
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from starlette.routing import BaseRoute
 
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
-from thermoctl.db.models.device import Device
+from thermoctl.db.models.device import Device, ZoneTemperatureSource
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import (
     COMMAND_OUTCOMES,
@@ -110,6 +111,21 @@ def create_zone(session: Session, name: str) -> Zone:
     session.add(zone)
     session.flush()
     return zone
+
+
+def zone_mit_fuehler(session: Session, zone: Zone, device: Device) -> ZoneTemperatureSource:
+    """Makes `device` an input temperature sensor of `zone` (appended), without audit or checks."""
+    last = session.scalar(
+        select(func.max(ZoneTemperatureSource.sort_order)).where(
+            ZoneTemperatureSource.zone_id == zone.id
+        )
+    )
+    entry = ZoneTemperatureSource(
+        zone_id=zone.id, device_id=device.id, sort_order=0 if last is None else last + 1
+    )
+    session.add(entry)
+    session.flush()
+    return entry
 
 
 def create_all_permissions(session: Session) -> None:

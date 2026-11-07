@@ -53,7 +53,6 @@ from thermoctl.domain.device_assignment import (
     actuator_elsewhere_notice,
     assign_device,
     detach_device,
-    set_temperature_source,
     set_thermostat_mode,
     swap_device,
 )

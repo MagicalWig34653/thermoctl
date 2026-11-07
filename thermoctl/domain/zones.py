@@ -47,7 +47,6 @@ def create_zone(
     display_name: str,
     operating_mode_id: int,
     sort_order: int,
-    temperature_source_device_id: int | None,
     solar_gain_factor: Decimal = Decimal(0),
     source: str = "web",
 ) -> Zone:
@@ -59,7 +58,6 @@ def create_zone(
         display_name=display_name,
         operating_mode_id=operating_mode_id,
         sort_order=sort_order,
-        temperature_source_device_id=temperature_source_device_id,
         solar_gain_factor=solar_gain_factor,
     )
     try:
@@ -91,7 +89,6 @@ def update_zone(
     display_name: str,
     operating_mode_id: int,
     sort_order: int,
-    temperature_source_device_id: int | None,
     solar_gain_factor: Decimal | None = None,
     source: str = "web",
 ) -> None:
@@ -104,7 +101,6 @@ def update_zone(
             zone.display_name = display_name
             zone.operating_mode_id = operating_mode_id
             zone.sort_order = sort_order
-            zone.temperature_source_device_id = temperature_source_device_id
             # `None` means "leave as is": the web form edits this field on the
             # parameters page, not on the zone form, and must not reset it on every
             # save of the zone's name.

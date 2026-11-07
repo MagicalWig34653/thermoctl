@@ -13,6 +13,7 @@ from tests.helpers import (
     create_zone_state,
     operating_mode,
     role,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -551,7 +552,7 @@ def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Sessio
 def test_a_temperature_source_in_a_foreign_zone_is_not_found(
     client_als, session: Session
 ) -> None:
-    """The counterpart to `_devices_in()` picking up `zone.temperature_source_device_id`:
+    """The counterpart to `_devices_in()` picking up `zone_temperature_source`:
     that second source must stay scoped to the principal's own visible zones just like
     the `ZoneDevice` one always was. A sensor hanging off a foreign zone's temperature
     source -- never a `ZoneDevice` row -- must still 404 as a channel's `source_device_id`,
@@ -565,7 +566,7 @@ def test_a_temperature_source_in_a_foreign_zone_is_not_found(
 
     foreign_zone = create_zone(session, "fremde-zone")
     foreign_sensor = create_device(session, "fremder-fuehler")
-    foreign_zone.temperature_source_device_id = foreign_sensor.id
+    zone_mit_fuehler(session, foreign_zone, foreign_sensor)
     session.flush()
 
     client = client_als([("device.read", own_zone.id), ("device.manage", own_zone.id)])
