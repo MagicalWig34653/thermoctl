@@ -23,6 +23,7 @@ from tests.helpers import (
     create_zone,
     role,
     source,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -121,7 +122,7 @@ def world(session: Session) -> World:
             zone_id=zone.id, device_id=ctrl.id, device_role_id=role(session, "controller").id
         )
     )
-    zone.temperature_source_device_id = sensor.id
+    zone_mit_fuehler(session, zone, sensor)
     session.flush()
     return World(zone, ctrl, sensor)
 

@@ -19,6 +19,7 @@ from tests.helpers import (
     sensor_status_of,
     source,
     user_with_permissions,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
@@ -108,7 +109,7 @@ def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Sess
         (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
     )
     device = create_device(session, beispiele["geraete"][2])
-    session.get(Zone, 1).temperature_source_device_id = device.id
+    zone_mit_fuehler(session, session.get(Zone, 1), device)
     session.add(
         ZoneDevice(
             zone_id=2,

@@ -176,10 +176,10 @@ class Setting(Base):
         Boolean, default=True, server_default=true(), nullable=False
     )
     # --- Außentemperatur und Fenster-Alarm --------------------------------------
-    # Same pattern as `zone.temperature_source_device_id` -- picked from the known
-    # Zigbee2MQTT devices with a `temperature` capability -- but exactly one for the
-    # whole plant, not one per zone: there is only one outside. `SET NULL`, like the
-    # zone column, so deleting the device does not also delete this row.
+    # Same pattern as a zone's input sensors (`zone_temperature_source`) -- picked from
+    # the known Zigbee2MQTT devices with a `temperature` capability -- but exactly one
+    # for the whole plant, not several per zone: there is only one outside. `SET NULL`,
+    # so deleting the device does not also delete this row.
     outdoor_temperature_source_device_id: Mapped[int | None] = mapped_column(
         ForeignKey("device.id", ondelete="SET NULL"), nullable=True
     )

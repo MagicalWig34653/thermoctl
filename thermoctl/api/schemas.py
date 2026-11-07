@@ -24,7 +24,9 @@ class WriteZone(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
     operating_mode_id: int
     sort_order: int = 0
-    temperature_source_device_id: int | None = None
+    # The zone's input temperature sensors. `None` leaves them as they are; a list (also an
+    # empty one) replaces them -- there is any number of them per zone.
+    temperature_source_device_ids: list[int] | None = None
     # How much this zone gains from sunshine: 0 for not at all, 1 for a lot. The
     # default is 0, so a caller that does not know about solar setback switches it
     # off for the zone rather than silently enabling it.

@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_device, create_zone, integration, role
+from tests.helpers import create_device, create_zone, integration, role, zone_mit_fuehler
 from thermoctl.db.models.device import Device, ZoneDevice
 
 
@@ -65,12 +65,16 @@ def test_the_same_role_twice_on_the_same_device_is_excluded(session: Session) ->
         session.flush()
 
 
-def test_a_zone_has_exactly_one_temperature_source(session: Session) -> None:
-    """The cardinality lives in the column, not in an application rule."""
+def test_a_zone_has_any_number_of_temperature_sources_but_each_device_once(
+    session: Session,
+) -> None:
+    """The uniqueness lives in the table (`fuehler_je_zone`), not in an application rule."""
     zone = create_zone(session, "flur")
-    zone.temperature_source_device_id = create_device(session, "sensor_flur").id
-    session.flush()
-    assert zone.temperature_source_device_id is not None
+    first = create_device(session, "sensor_flur")
+    zone_mit_fuehler(session, zone, first)
+    zone_mit_fuehler(session, zone, create_device(session, "sensor_flur_2"))
+    with pytest.raises(IntegrityError):
+        zone_mit_fuehler(session, zone, first)
 
 
 def test_swapping_a_device_leaves_the_zone_untouched(session: Session) -> None:

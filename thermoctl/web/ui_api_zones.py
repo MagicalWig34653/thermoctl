@@ -37,7 +37,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
-from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import OperatingMode
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, visible_zones
@@ -82,17 +81,10 @@ class RoomFormOut(BaseModel):
     display_name: str
     sort_order: int
     operating_mode: str
-    temperature_source_device_id: int | None
-
-
-class DeviceChoiceOut(BaseModel):
-    id: int
-    name: str
 
 
 class RoomFormOptionsOut(BaseModel):
     operating_modes: list[NamedOut]
-    devices: list[DeviceChoiceOut]
     name_limit: int
     display_name_limit: int
     #: `null` beim Anlegen.
@@ -173,21 +165,19 @@ class RoomCreateIn(BaseModel):
     display_name: str = ""
     operating_mode: str = ""
     sort_order: Number = 0
-    temperature_source_device_id: Number = None
 
 
 class RoomUpdateIn(BaseModel):
     """Nur gesendete Felder ändern etwas; fehlt ein Feld, bleibt es unverändert.
 
     Abweichung zur HTML-Form, die immer alles sendet: Ein Teil-Aufruf kann so nie
-    still etwas überschreiben. `temperature_source_device_id: null` entfernt die Quelle.
+    still etwas überschreiben.
     """
 
     name: str | None = None
     display_name: str | None = None
     operating_mode: str | None = None
     sort_order: Number = None
-    temperature_source_device_id: Number = None
 
 
 class ReportIn(BaseModel):
@@ -243,21 +233,6 @@ def _checked_sort_order(value: Number) -> int:
     return number
 
 
-def _checked_device(session: Session, value: Number) -> int | None:
-    text = _text(value)
-    if not text:
-        return None
-    try:
-        device_id = int(text)
-    except ValueError as exc:
-        raise _invalid(
-            "temperature_source_device_id", "Bitte ein bekanntes Gerät auswählen."
-        ) from exc
-    if session.get(Device, device_id) is None:
-        raise _invalid("temperature_source_device_id", "Dieses Gerät ist nicht bekannt.")
-    return device_id
-
-
 def _name_taken() -> RoomApiError:
     return RoomApiError(409, "Dieser Name ist bereits vergeben.", "name_taken", "name")
 
@@ -269,7 +244,6 @@ def _room_form(zone: Zone) -> RoomFormOut:
         display_name=zone.display_name,
         sort_order=zone.sort_order,
         operating_mode=zone.operating_mode.code,
-        temperature_source_device_id=zone.temperature_source_device_id,
     )
 
 
@@ -299,12 +273,6 @@ def room_form(
             NamedOut(code=kind.code, label=kind.label)
             for kind in session.scalars(select(OperatingMode).order_by(OperatingMode.id))
         ],
-        devices=[
-            DeviceChoiceOut(id=device.id, name=device.display_name)
-            for device in session.scalars(
-                select(Device).order_by(Device.display_name, Device.id)
-            )
-        ],
         name_limit=NAME_LIMIT,
         display_name_limit=DISPLAY_NAME_LIMIT,
         room=_room_form(zone) if zone is not None else None,
@@ -330,7 +298,6 @@ def create_room(body: RoomCreateIn, principal: Prin, session: Sess) -> RoomFormO
     display_name = _checked_display_name(body.display_name)
     mode_id = _checked_operating_mode(session, body.operating_mode)
     sort_order = _checked_sort_order(body.sort_order)
-    device_id = _checked_device(session, body.temperature_source_device_id)
     try:
         zone = create_zone(
             session,
@@ -339,7 +306,6 @@ def create_room(body: RoomCreateIn, principal: Prin, session: Sess) -> RoomFormO
             display_name=display_name,
             operating_mode_id=mode_id,
             sort_order=sort_order,
-            temperature_source_device_id=device_id,
         )
     except ZoneNameTaken as exc:
         raise _name_taken() from exc
@@ -365,11 +331,6 @@ def save_room(zone_id: int, body: RoomUpdateIn, principal: Prin, session: Sess) 
     sort_order = (
         _checked_sort_order(body.sort_order) if "sort_order" in sent else zone.sort_order
     )
-    device_id = (
-        _checked_device(session, body.temperature_source_device_id)
-        if "temperature_source_device_id" in sent
-        else zone.temperature_source_device_id
-    )
     try:
         update_zone(
             session,
@@ -379,7 +340,6 @@ def save_room(zone_id: int, body: RoomUpdateIn, principal: Prin, session: Sess) 
             display_name=display_name,
             operating_mode_id=mode_id,
             sort_order=sort_order,
-            temperature_source_device_id=device_id,
         )
     except ZoneNameTaken as exc:
         raise _name_taken() from exc

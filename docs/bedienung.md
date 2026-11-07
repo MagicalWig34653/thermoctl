@@ -222,7 +222,8 @@ gemeldet“, solange keine MQTT-Nachricht einging; bei Meross-Geräten, die sich
 melden, sondern nur stündlich beim Geräteabgleich mit der Cloud: „wurde noch nie als online
 abgeglichen“) und Fähigkeiten — Temperaturmessung, Schaltausgang oder Thermostatventil.
 Auffälliges steht zuerst, ein Suchfeld und „nur Auffälliges“ grenzen ein. **Zuordnung je
-Raum** legt pro Raum die Temperaturquelle fest, ordnet Geräte zu (per Auswahlfeld) und
+Raum** legt pro Raum die Temperaturfühler fest (beliebig viele; die Raumtemperatur ist der
+Mittelwert der verwertbaren, ein Thermostat taugt nicht als Fühler), ordnet Geräte zu (per Auswahlfeld) und
 tauscht ein Gerät aus; dort steht auch die Tastenzuordnung.
 
 ![Geräteliste mit Suchfeld und Karten je Gerät, Auffälliges zuerst](bilder/anlage-geraete.png)

@@ -171,3 +171,9 @@ def test_result_types_are_immutable() -> None:
         r.mean = Decimal("1")  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         r.sensors[0].status = "x"  # type: ignore[misc]
+
+
+def test_without_a_temperature_capability_there_is_no_latest_reading(session) -> None:  # type: ignore[no-untyped-def]
+    from thermoctl.services.ingest import _latest_temperature
+
+    assert _latest_temperature(session, 1, None) is None

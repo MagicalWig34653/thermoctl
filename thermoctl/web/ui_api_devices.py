@@ -30,7 +30,13 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    DeviceProperty,
+    ZoneDevice,
+    ZoneTemperatureSource,
+)
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome, DeviceCapability, DeviceRole
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
@@ -51,8 +57,10 @@ from thermoctl.domain.device_assignment import (
     AssignmentAlreadyExists,
     CapabilityMissing,
     actuator_elsewhere_notice,
+    add_temperature_source,
     assign_device,
     detach_device,
+    remove_temperature_source,
     set_thermostat_mode,
     swap_device,
 )
@@ -174,9 +182,7 @@ def _hidden_device_ids(session: Session, principal: Principal) -> set[int]:
     for zone_id, device_id in session.execute(select(ZoneDevice.zone_id, ZoneDevice.device_id)):
         (mine if zone_id in visible else elsewhere).add(device_id)
     for zone_id, device_id in session.execute(
-        select(Zone.id, Zone.temperature_source_device_id).where(
-            Zone.temperature_source_device_id.is_not(None)
-        )
+        select(ZoneTemperatureSource.zone_id, ZoneTemperatureSource.device_id)
     ):
         (mine if zone_id in visible else elsewhere).add(device_id)
     return elsewhere - mine
@@ -266,9 +272,7 @@ def show_plant(
             {
                 "zone_id": zone.zone_id,
                 "name": zone.name,
-                "temperature_source": (
-                    _picture(zone.temperature_source) if zone.temperature_source else None
-                ),
+                "temperature_sources": [_picture(d) for d in zone.temperature_sources],
                 "window_contacts": [_picture(d) for d in zone.window_contacts],
                 "actuators": [_picture(d) for d in zone.actuators],
                 "controllers": [_picture(d) for d in zone.controllers],
@@ -506,14 +510,16 @@ def _zone_devices(session: Session, principal: Principal, zone: Zone) -> Json:
     context = assignment_context(session, zone)
     capabilities: dict[int, list[str]] = context["capabilities"]  # type: ignore[assignment]
     picture = cast("ZonePicture", context["picture"])
-    source = context["temperature_source"]
+    sources = cast("list[Device]", context["temperature_sources"])
     hidden = _hidden_device_ids(session, principal)
     return {
         "zone": {"id": zone.id, "name": zone.display_name},
         "may_edit": has_permission(principal, "device.manage", zone.id),
-        "temperature_source": (
-            {"id": source.id, "name": source.display_name} if source is not None else None  # type: ignore[attr-defined]
-        ),
+        "temperature_sources": [
+            {"id": source.id, "name": source.display_name}
+            for source in sources
+            if source.id not in hidden
+        ],
         "assignments": [
             {
                 "id": assignment.id,
@@ -544,9 +550,7 @@ def _zone_devices(session: Session, principal: Principal, zone: Zone) -> Json:
             for code in MODES
         ],
         "picture": {
-            "temperature_source": (
-                _picture(picture.temperature_source) if picture.temperature_source else None
-            ),
+            "temperature_sources": [_picture(d) for d in picture.temperature_sources],
             "window_contacts": [_picture(d) for d in picture.window_contacts],
             "actuators": [_picture(d) for d in picture.actuators],
             "controllers": [_picture(d) for d in picture.controllers],
@@ -629,7 +633,7 @@ class RegulationIn(BaseModel):
 
 
 class SourceIn(BaseModel):
-    device_id: int | None = None
+    device_id: int
 
 
 class SwapIn(BaseModel):
@@ -714,20 +718,41 @@ def regulation(
     return _zone_devices(session, principal, zone)
 
 
-@router.post("/zones/{zone_id}/devices/source")
-def temperature_source(
+@router.post("/zones/{zone_id}/devices/sources")
+def add_source(
     zone_id: int,
     body: SourceIn,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Json:
-    """Messquelle der Zone setzen; `device_id: null` löst sie."""
+    """Einen Fühler zu den Messquellen der Zone hinzufügen (beliebig viele je Zone)."""
     zone = _manage_zone(session, principal, zone_id)
-    device = _device(session, body.device_id) if body.device_id is not None else None
+    device = _device(session, body.device_id)
     try:
-        set_temperature_source(session, zone, device, actor_id=principal.user_id)
+        add_temperature_source(session, zone, device, actor_id=principal.user_id)
+    except AssignmentAlreadyExists:
+        raise RoomApiError(
+            409, "Dieses Gerät ist bereits Messquelle dieser Zone.", "already_assigned"
+        ) from None
     except CapabilityMissing as exc:
         raise RoomApiError(422, exc.notice, "capability_missing") from None
+    return _zone_devices(session, principal, zone)
+
+
+@router.delete("/zones/{zone_id}/devices/sources/{device_id}")
+def remove_source(
+    zone_id: int,
+    device_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Json:
+    """Einen Fühler aus den Messquellen der Zone lösen."""
+    zone = _manage_zone(session, principal, zone_id)
+    device = _device(session, device_id)
+    try:
+        remove_temperature_source(session, zone, device, actor_id=principal.user_id)
+    except ValueError:
+        raise _not_found("Messquelle") from None
     return _zone_devices(session, principal, zone)
 
 

@@ -22,6 +22,7 @@ from tests.helpers import (
     create_zone_state,
     operating_mode,
     source,
+    zone_mit_fuehler,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
@@ -29,6 +30,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.models.dashboard import DashboardSection, DashboardTile
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
+from thermoctl.domain.device_assignment import source_device_ids
 from thermoctl.domain.glossary import default_glossary
 from thermoctl.domain.problem_report import NOTE_LIMIT, REPORT_KINDS
 
@@ -227,7 +229,7 @@ def test_form_options_for_a_new_room(client_als: Als, session: Session) -> None:
     body = client_als(MANAGE).get("/ui-api/room-form").json()
     assert body["room"] is None
     assert [m["code"] for m in body["operating_modes"]] == ["auto", "off"]
-    assert [d["id"] for d in body["devices"]] != []
+    assert "devices" not in body
     assert body["name_limit"] == 64 and body["display_name_limit"] == 128
 
 
@@ -244,7 +246,6 @@ def test_form_options_carry_the_current_values_of_an_existing_room(
         "display_name": "Bad",
         "sort_order": 7,
         "operating_mode": "auto",
-        "temperature_source_device_id": None,
     }
 
 
@@ -264,11 +265,8 @@ def test_create_writes_the_zone_and_the_audit_entry(client_als: Als, session: Se
     assert entry.summary == "Zone kueche angelegt"
 
 
-def test_create_trims_and_accepts_numbers_as_text_and_a_known_source_device(
-    client_als: Als, session: Session
-) -> None:
+def test_create_trims_and_accepts_numbers_as_text(client_als: Als, session: Session) -> None:
     _anlage(session)
-    device = create_device(session, "fuehler")
     response = _call(
         client_als(MANAGE),
         "POST",
@@ -278,13 +276,11 @@ def test_create_trims_and_accepts_numbers_as_text_and_a_known_source_device(
             "display_name": " Flur ",
             "operating_mode": "off",
             "sort_order": "-2",
-            "temperature_source_device_id": str(device.id),
         },
     )
     assert response.status_code == 201, response.text
     zone = session.scalars(select(Zone).where(Zone.name == "flur")).one()
     assert (zone.display_name, zone.sort_order) == ("Flur", -2)
-    assert zone.temperature_source_device_id == device.id
 
 
 @pytest.mark.parametrize(
@@ -298,8 +294,6 @@ def test_create_trims_and_accepts_numbers_as_text_and_a_known_source_device(
         ({"operating_mode": "unsinn"}, "operating_mode"),
         ({"sort_order": "abc"}, "sort_order"),
         ({"sort_order": 2**31}, "sort_order"),
-        ({"temperature_source_device_id": "abc"}, "temperature_source_device_id"),
-        ({"temperature_source_device_id": 999999}, "temperature_source_device_id"),
     ],
 )
 def test_create_reports_field_errors_and_writes_nothing(
@@ -350,7 +344,7 @@ def test_save_changes_the_sent_fields_only_and_audits(
 ) -> None:
     zone = _anlage(session)
     device = create_device(session, "fuehler")
-    zone.temperature_source_device_id = device.id
+    zone_mit_fuehler(session, zone, device)
     session.flush()
     response = _call(
         client_als(MANAGE),
@@ -362,19 +356,15 @@ def test_save_changes_the_sent_fields_only_and_audits(
     session.refresh(zone)
     assert (zone.name, zone.display_name, zone.sort_order) == ("bad", "Badezimmer", 5)
     assert zone.operating_mode.code == "auto"
-    assert zone.temperature_source_device_id == device.id
+    # Die Fühler gehören nicht zum Raumformular und bleiben beim Speichern unberührt.
+    assert source_device_ids(session, zone) == [device.id]
     assert response.json()["display_name"] == "Badezimmer"
     entry = _audit(session, "update")[-1]
     assert (entry.object_type, entry.object_id) == ("zone", str(zone.id))
 
 
-def test_save_changes_every_field_and_can_clear_the_source_device(
-    client_als: Als, session: Session
-) -> None:
+def test_save_changes_every_field(client_als: Als, session: Session) -> None:
     zone = _anlage(session)
-    device = create_device(session, "fuehler")
-    zone.temperature_source_device_id = device.id
-    session.flush()
     response = _call(
         client_als(MANAGE),
         "PUT",
@@ -384,14 +374,12 @@ def test_save_changes_every_field_and_can_clear_the_source_device(
             "display_name": "WC",
             "operating_mode": "off",
             "sort_order": "9",
-            "temperature_source_device_id": None,
         },
     )
     assert response.status_code == 200, response.text
     session.refresh(zone)
     assert (zone.name, zone.display_name, zone.sort_order) == ("wc", "WC", 9)
     assert zone.operating_mode.code == "off"
-    assert zone.temperature_source_device_id is None
 
 
 @pytest.mark.parametrize(
@@ -402,7 +390,6 @@ def test_save_changes_every_field_and_can_clear_the_source_device(
         ({"display_name": ""}, "display_name"),
         ({"operating_mode": "unsinn"}, "operating_mode"),
         ({"sort_order": "abc"}, "sort_order"),
-        ({"temperature_source_device_id": 999999}, "temperature_source_device_id"),
     ],
 )
 def test_save_reports_field_errors_and_changes_nothing(

@@ -28,6 +28,7 @@ from tests.helpers import (
     integration,
     role,
     seed_switch_command,
+    zone_mit_fuehler,
 )
 from thermoctl.config import get_settings
 from thermoctl.db.base import Base
@@ -714,7 +715,7 @@ async def test_recovery_resends_the_current_setpoint_even_if_unchanged(
     session.add(wall)
     session.flush()
     _link(session, wall, "temperature")
-    zone.temperature_source_device_id = wall.id
+    zone_mit_fuehler(session, zone, wall)
 
     relais = Device(
         integration_id=integration(session, "zigbee2mqtt").id,
@@ -888,7 +889,7 @@ async def test_recovery_restores_the_previous_operating_mode_exactly_once_with_r
         session.add(wall)
         session.flush()
         _link(session, wall, "temperature")
-        zone.temperature_source_device_id = wall.id
+        zone_mit_fuehler(session, zone, wall)
 
         trv = Device(
             integration_id=integration(session, "zigbee2mqtt").id,
@@ -1111,7 +1112,7 @@ def _setup_recoverable_zone_with_trv(
     session.add(wall)
     session.flush()
     _link(session, wall, "temperature")
-    zone.temperature_source_device_id = wall.id
+    zone_mit_fuehler(session, zone, wall)
 
     trv = Device(
         integration_id=integration(session, "zigbee2mqtt").id,
@@ -1537,7 +1538,7 @@ async def test_recovery_does_not_violate_the_real_minimum_on_duration(
         session.add(wall)
         session.flush()
         _link(session, wall, "temperature")
-        zone.temperature_source_device_id = wall.id
+        zone_mit_fuehler(session, zone, wall)
 
         relais = Device(
             integration_id=integration(session, "zigbee2mqtt").id,
@@ -1930,7 +1931,7 @@ async def test_a_reading_only_valve_gets_nothing_in_emergency_operation_or_on_re
     session.add(wall)
     session.flush()
     _link(session, wall, "temperature")
-    zone.temperature_source_device_id = wall.id
+    zone_mit_fuehler(session, zone, wall)
 
     def _trv(external_id: str, thermostat_mode: str) -> Device:
         trv = Device(

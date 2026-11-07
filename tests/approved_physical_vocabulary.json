@@ -511,6 +511,7 @@
       "thermoctl hätte nicht geheizt, das Altsystem heizte — Ist"
     ],
     "thermoctl/domain/device_assignment.py": [
+      "' ist ein Thermostat -- dessen Raumtemperatur ist keine Messquelle (Echo-Rückkopplung: thermoctl schreibt sie ja selbst ans Ventil). Als Messquelle dient nur ein reiner Fühler.",
       "' ist bereits Aktor",
       "; ein Gerät kann nur eine Zone heizen.",
       "Nur ein Aktor hat eine Thermostat-Betriebsart.",
@@ -551,6 +552,7 @@
       "heizung"
     ],
     "thermoctl/domain/mapping_map.py": [
+      "' ist ein Thermostat -- dessen Raumtemperatur ist keine Messquelle (Echo-Rückkopplung: thermoctl schreibt sie ja selbst ans Ventil). Als Messquelle dient nur ein reiner Fühler.",
       "': thermoctl beschreibt am Thermostatventil nur die Eigenschaft, die an seiner Karte als",
       "Ausgang: der Sollwert der Zone (Zeitplan, Übersteuerung, Boost, Frostschutz), wird als Sollwert ans Ventil geschrieben.",
       "Diese Zone hat keine Messquelle -- ohne Messwert gibt es keine Raumtemperatur, die ans Ventil geschrieben werden könnte. Verbinden Sie zuerst eine Messquelle.",
