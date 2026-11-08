@@ -50,6 +50,10 @@ def _query_measurement(
             session.execute(text("DROP INDEX ix_shadow_decision_zone_decided_id"))
             session.execute(text("DROP INDEX ix_shadow_decision_retention"))
             session.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
+            session.execute(text("DROP INDEX ix_shadow_decision_zone_heat_decided_id"))
+            session.execute(
+                text("DROP INDEX ix_shadow_decision_zone_outcome_decided_id")
+            )
             session.execute(
                 text(
                     "CREATE INDEX ix_shadow_decision_decided_at "
@@ -72,6 +76,8 @@ def _query_measurement(
                 "ix_shadow_decision_retention",
                 "ix_shadow_decision_solar_setback",
                 "ix_shadow_decision_zone_decided_id",
+                "ix_shadow_decision_zone_heat_decided_id",
+                "ix_shadow_decision_zone_outcome_decided_id",
             ]
         )
         if shadow_indexes != expected_indexes:
@@ -180,6 +186,11 @@ def _insert_measurement(rows: int, with_old_index: bool) -> dict[str, object]:
         connection.execute(text("DROP INDEX ix_shadow_decision_retention"))
         # Ebenso der Index der Sonnenabsenkung: er gehört nicht zum Vergleich von damals.
         connection.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
+        # Gleiches gilt für die beiden späteren Zonen-Indizes (Migration d4a8e1b73c52).
+        connection.execute(text("DROP INDEX ix_shadow_decision_zone_heat_decided_id"))
+        connection.execute(
+            text("DROP INDEX ix_shadow_decision_zone_outcome_decided_id")
+        )
     if with_old_index:
         with engine.begin() as connection:
             connection.execute(
