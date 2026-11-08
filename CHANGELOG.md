@@ -9,6 +9,15 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.22.1 — in Arbeit
+
+### Behoben
+
+- **Raumübersicht (`GET /ui-api/rooms`) war bei vielen Vergleichsdaten langsam.** Die Mittelwerte der Ersatzquelle-Vergleiche (letzte 7 Tage) lud der Dienst als ORM-Objekte und rechnete in Python (bei 75.000 Zeilen rund 0,9 s CPU); jetzt aggregiert die Datenbank (`GROUP BY`, `COUNT`, `SUM`), der Mittelwert wird weiter in Python aus Summe und Anzahl gebildet, die Anzeige ist unverändert.
+- **Rund 10 Abfragen je Zone** (Rollen, Fähigkeiten, Notbetriebszustand, Aktorzustand, Vergleiche) gibt es nicht mehr: Die Übersicht lädt sie einmal je Anfrage. Gemessen mit 10 Zonen: 119 statt 28 Statements.
+
+---
+
 ## 0.22.0 — 2026-11-07
 
 ### Beim Upgrade zu wissen

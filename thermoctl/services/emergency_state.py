@@ -12,14 +12,15 @@ here writes anything.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import Numeric, func, select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device
+from thermoctl.db.models.device import Device, ZoneDevice
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import (
     ActuatorEmergencyState,
@@ -30,7 +31,7 @@ from thermoctl.db.models.sensor_failure import (
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import emergency_actuator_plan, emergency_display, emergency_operation
 from thermoctl.domain.outdoor import OutdoorReading, outdoor_reading
-from thermoctl.services.shadow_run import zone_actuator_assignments
+from thermoctl.services.shadow_run import actuator_assignments_by_zone
 
 # How far back the Ersatzquelle<->Wandfühler comparison looks (plan Auftrag
 # 8b item 2, Entscheidung R2: "mittlere Abweichung ... über die letzten Tage").
@@ -137,42 +138,142 @@ def entered_notice_text(view: ZoneEmergencyView) -> str:
     return "\n".join(lines)
 
 
-def _comparisons(
-    session: Session, zone: Zone, now: datetime, device_names: dict[int, str]
-) -> tuple[SourceComparisonView, ...]:
-    since = now - timedelta(days=COMPARISON_WINDOW_DAYS)
-    rows = session.scalars(
-        select(SensorFailureSourceComparison).where(
-            SensorFailureSourceComparison.zone_id == zone.id,
-            SensorFailureSourceComparison.measured_at >= since,
-            SensorFailureSourceComparison.usable.is_(True),
-            SensorFailureSourceComparison.echo.is_(False),
-            SensorFailureSourceComparison.wall_probe_c.is_not(None),
-            SensorFailureSourceComparison.raw_c.is_not(None),
-        )
-    ).all()
-    by_device: dict[int, list[Decimal]] = {}
-    names: dict[int, str] = {}
-    for row in rows:
-        if row.device_id is None:
-            continue
-        assert row.wall_probe_c is not None and row.raw_c is not None  # narrowed above
-        # Konvention aus `domain/temperature_source_health.py::_corrected`:
-        # `corrected = raw - offset_k`. Ein um 1 K zu warm messendes Thermostat
-        # (raw = wall + 1) braucht also `offset_k = raw - wall_probe = +1.0`,
-        # damit `corrected` danach wieder auf den Wandfühler fällt -- nicht
-        # umgekehrt (Kreuzreview von c1ae1c5: das Vorzeichen stand verkehrt).
-        by_device.setdefault(row.device_id, []).append(row.raw_c - row.wall_probe_c)
-        names[row.device_id] = row.device_name
+@dataclass(frozen=True)
+class _ComparisonAggregate:
+    device_id: int
+    device_name: str
+    sample_count: int
+    deviation_sum: Decimal
 
+
+@dataclass
+class EmergencyContext:
+    """Everything `zone_emergency_view` looks up per zone, loaded once for a
+    whole set of zones (a handful of statements instead of ~10 per zone: the
+    Raumübersicht showed ten zones with ~119 statements). Build it with
+    `emergency_context`; `zone_emergency_view` builds a one-zone context
+    itself when none is passed, so single-zone callers are unchanged."""
+
+    states: dict[int, ZoneSensorFailureState]
+    episodes: dict[int, SensorFailureEpisode]
+    devices: dict[int, Device]
+    actuator_rows: dict[int, ActuatorEmergencyState]
+    assignments: dict[int, list[tuple[ZoneDevice, Device, str]]]
+    comparisons: dict[int, list[_ComparisonAggregate]]
+    outdoor: OutdoorReading | None
+
+
+def emergency_context(
+    session: Session, zones: Sequence[Zone], now: datetime, setting_row: Setting | None
+) -> EmergencyContext:
+    zone_ids = [zone.id for zone in zones]
+    states: dict[int, ZoneSensorFailureState] = {}
+    episodes: dict[int, SensorFailureEpisode] = {}
+    devices: dict[int, Device] = {}
+    actuator_rows: dict[int, ActuatorEmergencyState] = {}
+    assignments = actuator_assignments_by_zone(session, zones)
+    comparisons: dict[int, list[_ComparisonAggregate]] = {}
+    if zone_ids:
+        states = {
+            state.zone_id: state
+            for state in session.scalars(
+                select(ZoneSensorFailureState).where(ZoneSensorFailureState.zone_id.in_(zone_ids))
+            )
+        }
+        episode_ids = {s.episode_id for s in states.values() if s.episode_id is not None}
+        if episode_ids:
+            episodes = {
+                episode.id: episode
+                for episode in session.scalars(
+                    select(SensorFailureEpisode).where(SensorFailureEpisode.id.in_(episode_ids))
+                )
+            }
+        device_ids = {
+            s.active_source_device_id for s in states.values() if s.active_source_device_id
+        }
+        zone_device_ids = {zd.id for rows in assignments.values() for zd, _, _ in rows}
+        if device_ids:
+            devices = {
+                device.id: device
+                for device in session.scalars(select(Device).where(Device.id.in_(device_ids)))
+            }
+        if zone_device_ids:
+            actuator_rows = {
+                row.zone_device_id: row
+                for row in session.scalars(
+                    select(ActuatorEmergencyState).where(
+                        ActuatorEmergencyState.zone_device_id.in_(zone_device_ids)
+                    )
+                )
+            }
+        comparisons = _comparison_aggregates(session, zone_ids, now)
+    outdoor = outdoor_reading(session, setting_row, now) if setting_row is not None else None
+    return EmergencyContext(
+        states=states,
+        episodes=episodes,
+        devices=devices,
+        actuator_rows=actuator_rows,
+        assignments=assignments,
+        comparisons=comparisons,
+        outdoor=outdoor,
+    )
+
+
+def _comparison_aggregates(
+    session: Session, zone_ids: Sequence[int], now: datetime
+) -> dict[int, list[_ComparisonAggregate]]:
+    """Count and sum of the deviation per zone and Ersatzquelle, aggregated by the
+    database -- the table grows by a row per candidate reading and zone, and
+    loading a week of them as ORM objects to average them in Python cost ~0.9 s
+    for 75,000 rows. The mean itself is formed in Python from SUM/COUNT (as
+    `Decimal` division), not with `AVG`: SQLite and MariaDB return `AVG` with
+    different scale/type, SUM over the two-digit columns is exact on both.
+    """
+    since = now - timedelta(days=COMPARISON_WINDOW_DAYS)
+    comparison = SensorFailureSourceComparison
+    # Konvention aus `domain/temperature_source_health.py::_corrected`:
+    # `corrected = raw - offset_k`. Ein um 1 K zu warm messendes Thermostat
+    # (raw = wall + 1) braucht also `offset_k = raw - wall_probe = +1.0`,
+    # damit `corrected` danach wieder auf den Wandfühler fällt -- nicht
+    # umgekehrt (Kreuzreview von c1ae1c5: das Vorzeichen stand verkehrt).
+    rows = session.execute(
+        select(
+            comparison.zone_id,
+            comparison.device_id,
+            func.max(comparison.device_name),
+            func.count(),
+            func.sum(comparison.raw_c - comparison.wall_probe_c, type_=Numeric(18, 2)),
+        )
+        .where(
+            comparison.zone_id.in_(list(zone_ids)),
+            comparison.measured_at >= since,
+            comparison.usable.is_(True),
+            comparison.echo.is_(False),
+            comparison.wall_probe_c.is_not(None),
+            comparison.raw_c.is_not(None),
+            comparison.device_id.is_not(None),
+        )
+        .group_by(comparison.zone_id, comparison.device_id)
+    )
+    result: dict[int, list[_ComparisonAggregate]] = {}
+    for zone_id, device_id, device_name, count, deviation_sum in rows:
+        result.setdefault(zone_id, []).append(
+            _ComparisonAggregate(device_id, device_name, count, Decimal(deviation_sum))
+        )
+    return result
+
+
+def _comparison_views(
+    aggregates: Sequence[_ComparisonAggregate], device_names: dict[int, str]
+) -> tuple[SourceComparisonView, ...]:
     views: list[SourceComparisonView] = []
-    for device_id, deviations in by_device.items():
-        mean = sum(deviations, Decimal(0)) / len(deviations)
+    for aggregate in aggregates:
+        mean = aggregate.deviation_sum / aggregate.sample_count
         views.append(
             SourceComparisonView(
-                device_id=device_id,
-                device_name=device_names.get(device_id, names[device_id]),
-                sample_count=len(deviations),
+                device_id=aggregate.device_id,
+                device_name=device_names.get(aggregate.device_id, aggregate.device_name),
+                sample_count=aggregate.sample_count,
                 mean_deviation_k=mean,
                 suggested_offset_text=emergency_display.suggested_offset_text(mean),
             )
@@ -182,31 +283,40 @@ def _comparisons(
 
 
 def zone_emergency_view(
-    session: Session, zone: Zone, now: datetime, setting_row: Setting | None
+    session: Session,
+    zone: Zone,
+    now: datetime,
+    setting_row: Setting | None,
+    context: EmergencyContext | None = None,
 ) -> ZoneEmergencyView:
     """Everything the control page and REST/MCP show for one zone's Notbetrieb
     state. Never raises for a zone that has never seen a failure -- `stage`
     falls back to `"normal"` and every other field to its "nothing recorded"
     default, exactly like a fresh `ZoneSensorFailureState` row would.
+
+    A caller that renders many zones passes one `emergency_context(...)` for all
+    of them; without it the lookups are made for this zone alone.
     """
-    db_state = session.get(ZoneSensorFailureState, zone.id)
+    if context is None:
+        context = emergency_context(session, [zone], now, setting_row)
+    db_state = context.states.get(zone.id)
     stage = db_state.stage if db_state is not None else emergency_operation.STAGE_NORMAL
     episode = (
-        session.get(SensorFailureEpisode, db_state.episode_id)
+        context.episodes.get(db_state.episode_id)
         if db_state is not None and db_state.episode_id is not None
         else None
     )
     source_device = (
-        session.get(Device, db_state.active_source_device_id)
+        context.devices.get(db_state.active_source_device_id)
         if db_state is not None and db_state.active_source_device_id is not None
         else None
     )
 
-    assignments = zone_actuator_assignments(session, zone)
+    assignments = context.assignments[zone.id]
     device_names = {device.id: device.display_name for _, device, _ in assignments}
     actuator_views: list[ActuatorEmergencyView] = []
     for zone_device, device, kind in assignments:
-        emergency_row = session.get(ActuatorEmergencyState, zone_device.id)
+        emergency_row = context.actuator_rows.get(zone_device.id)
         handover_attempted = (
             emergency_row is not None and emergency_row.handover_attempted_at is not None
         )
@@ -246,7 +356,7 @@ def zone_emergency_view(
             )
         )
 
-    outdoor = outdoor_reading(session, setting_row, now) if setting_row is not None else None
+    outdoor = context.outdoor
 
     # A zone with a thermostat AND a floor switch does both at once, so the
     # banner must not stop at whichever actuator sorts first: the thermostat
@@ -313,6 +423,6 @@ def zone_emergency_view(
             emergency_display.outdoor_status_text(outdoor.status) if outdoor is not None else None
         ),
         actuators=tuple(actuator_views),
-        comparisons=_comparisons(session, zone, now, device_names),
+        comparisons=_comparison_views(context.comparisons.get(zone.id, []), device_names),
         banner=banner,
     )
