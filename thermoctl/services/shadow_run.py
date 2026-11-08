@@ -7,6 +7,7 @@ exact rows later become the basis for comparison against the old system (subproj
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -472,38 +473,65 @@ def zone_actuator_assignments(
     has no entry in plan 1.4's vorrangtabelle at all and is silently skipped,
     not treated as an error.
     """
+    return actuator_assignments_by_zone(session, [zone])[zone.id]
+
+
+def actuator_assignments_by_zone(
+    session: Session, zones: Sequence[Zone]
+) -> dict[int, list[tuple[ZoneDevice, Device, str]]]:
+    """`zone_actuator_assignments` for several zones at once: a fixed handful of
+    statements instead of ~4 per zone and ~1 per actuator (the Raumübersicht
+    asked for it once per zone). Same classification, same per-zone order;
+    every requested zone has an entry, possibly empty."""
+    result: dict[int, list[tuple[ZoneDevice, Device, str]]] = {z.id: [] for z in zones}
+    if not result:
+        return result
     actuator_role = session.scalar(select(DeviceRole).where(DeviceRole.code == "actuator"))
     if actuator_role is None:
-        return []
-    switch = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "switch"))
-    thermostat = session.scalar(
-        select(DeviceCapability).where(DeviceCapability.code == "thermostat")
-    )
+        return result
+    codes = {
+        capability.code: capability.id
+        for capability in session.scalars(
+            select(DeviceCapability).where(DeviceCapability.code.in_(
+                (emergency_actuator_plan.KIND_SWITCH, emergency_actuator_plan.KIND_THERMOSTAT)
+            ))
+        )
+    }
+    switch_id = codes.get("switch")
+    thermostat_id = codes.get(emergency_actuator_plan.KIND_THERMOSTAT)
     rows = session.execute(
         select(ZoneDevice, Device)
         .join(Device, Device.id == ZoneDevice.device_id)
-        .where(ZoneDevice.zone_id == zone.id, ZoneDevice.device_role_id == actuator_role.id)
+        .where(
+            ZoneDevice.zone_id.in_(list(result)),
+            ZoneDevice.device_role_id == actuator_role.id,
+        )
         .order_by(ZoneDevice.sort_order, ZoneDevice.id)
     ).all()
-    result: list[tuple[ZoneDevice, Device, str]] = []
-    for zone_device, device in rows:
-        capability_ids = set(
-            session.scalars(
-                select(DeviceCapabilityLink.capability_id).where(
-                    DeviceCapabilityLink.device_id == device.id
-                )
+    capability_ids: dict[int, set[int]] = {}
+    if rows:
+        for device_id, capability_id in session.execute(
+            select(DeviceCapabilityLink.device_id, DeviceCapabilityLink.capability_id).where(
+                DeviceCapabilityLink.device_id.in_({device.id for _, device in rows})
             )
-        )
+        ):
+            capability_ids.setdefault(device_id, set()).add(capability_id)
+    for zone_device, device in rows:
         if zone_device.thermostat_mode == MODE_READING_ONLY:
             # `reading_only`: thermoctl never writes a setpoint to this valve, so the
             # Notbetrieb handover (operating_mode + emergency setpoint) must not
             # reach it either -- no plan entry at all, same as an actuator without
             # either capability (domain/thermostat_mode.py).
             continue
-        if switch is not None and switch.id in capability_ids:
-            result.append((zone_device, device, emergency_actuator_plan.KIND_SWITCH))
-        elif thermostat is not None and thermostat.id in capability_ids:
-            result.append((zone_device, device, emergency_actuator_plan.KIND_THERMOSTAT))
+        device_capabilities = capability_ids.get(device.id, set())
+        if switch_id is not None and switch_id in device_capabilities:
+            result[zone_device.zone_id].append(
+                (zone_device, device, emergency_actuator_plan.KIND_SWITCH)
+            )
+        elif thermostat_id is not None and thermostat_id in device_capabilities:
+            result[zone_device.zone_id].append(
+                (zone_device, device, emergency_actuator_plan.KIND_THERMOSTAT)
+            )
     return result
 
 

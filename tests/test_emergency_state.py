@@ -1,10 +1,12 @@
 """`services/emergency_state.py` -- the one read REST/MCP/the control page share
 (Auftrag 8b, Grundsatz 6)."""
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from tests.helpers import capability, create_device, create_settings, create_zone, role
@@ -15,8 +17,14 @@ from thermoctl.db.models.sensor_failure import (
     SensorFailureSourceComparison,
     ZoneSensorFailureState,
 )
+from thermoctl.db.models.zone import Zone
 from thermoctl.domain import emergency_operation
-from thermoctl.services.emergency_state import entered_notice_text, zone_emergency_view
+from thermoctl.services.emergency_state import (
+    emergency_context,
+    entered_notice_text,
+    zone_emergency_view,
+)
+from thermoctl.services.shadow_run import actuator_assignments_by_zone
 
 NOW = datetime(2026, 10, 2, 12, 0, 0)
 
@@ -416,3 +424,244 @@ def test_mixed_zone_banner_names_thermostat_and_floor_in_either_order(
     assert "10 Min. an" in view.banner.detail
     for forbidden in ("Kennlinie", "Festtakt", "°C"):
         assert forbidden not in view.banner.headline
+
+
+# --- Charakterisierung der Ersatzquelle-Vergleiche (vor dem Umbau auf SQL-Aggregation) ---
+
+
+def _comparison(
+    session: Session,
+    zone_id: int | None,
+    device_id: int | None,
+    measured_at: datetime,
+    *,
+    raw: str | None = "21.00",
+    wall: str | None = "20.00",
+    echo: bool = False,
+    usable: bool = True,
+    device_name: str = "Snapshot",
+) -> None:
+    session.add(
+        SensorFailureSourceComparison(
+            zone_id=zone_id,
+            zone_name="Z",
+            device_id=device_id,
+            device_name=device_name,
+            measured_at=measured_at,
+            wall_probe_c=Decimal(wall) if wall is not None else None,
+            raw_c=Decimal(raw) if raw is not None else None,
+            corrected_c=None,
+            echo=echo,
+            usable=usable,
+        )
+    )
+
+
+def test_comparison_mean_is_exact_decimal_over_two_digit_samples(session: Session) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    device = create_device(session, "Quelle")
+    # Abweichungen +0.33, +0.33, +0.34 -> Summe 1.00, Mittel 1/3 (28 Stellen, wie Decimal-Division).
+    for index, (raw, wall) in enumerate(
+        [("20.33", "20.00"), ("20.33", "20.00"), ("20.34", "20.00")]
+    ):
+        _comparison(
+            session, zone.id, device.id, NOW - timedelta(hours=index), raw=raw, wall=wall
+        )
+    session.flush()
+
+    (comparison,) = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert comparison.sample_count == 3
+    assert comparison.mean_deviation_k == Decimal("1.00") / 3
+    assert comparison.mean_deviation_k == Decimal("0.3333333333333333333333333333")
+    assert comparison.device_id == device.id
+
+
+def test_comparison_mean_keeps_the_sign_of_raw_minus_wall_probe(session: Session) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    device = create_device(session, "Quelle")
+    _comparison(session, zone.id, device.id, NOW, raw="19.50", wall="20.00")
+    _comparison(session, zone.id, device.id, NOW - timedelta(hours=1), raw="19.25", wall="20.00")
+    session.flush()
+
+    (comparison,) = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert comparison.mean_deviation_k == Decimal("-0.625")
+
+
+def test_comparison_window_boundary_is_inclusive_at_exactly_seven_days(session: Session) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    device = create_device(session, "Quelle")
+    _comparison(session, zone.id, device.id, NOW - timedelta(days=7), raw="22.00")  # genau drin
+    _comparison(
+        session, zone.id, device.id, NOW - timedelta(days=7, seconds=1), raw="30.00"
+    )  # eine Sekunde zu alt
+    session.flush()
+
+    (comparison,) = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert comparison.sample_count == 1
+    assert comparison.mean_deviation_k == Decimal("2.00")
+
+
+def test_comparison_ignores_unusable_echo_and_incomplete_rows_and_other_zones(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    other = create_zone(session, "Flur")
+    device = create_device(session, "Quelle")
+    _comparison(session, zone.id, device.id, NOW, raw="21.00")  # zaehlt, +1.00
+    _comparison(session, zone.id, device.id, NOW, raw="25.00", usable=False)
+    _comparison(session, zone.id, device.id, NOW, raw="25.00", echo=True)
+    _comparison(session, zone.id, device.id, NOW, raw=None)
+    _comparison(session, zone.id, device.id, NOW, wall=None)
+    _comparison(session, zone.id, None, NOW, raw="25.00")  # Gerät gelöscht
+    _comparison(session, other.id, device.id, NOW, raw="25.00")
+    session.flush()
+
+    (comparison,) = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert comparison.sample_count == 1
+    assert comparison.mean_deviation_k == Decimal("1.00")
+
+
+def test_comparison_with_no_samples_in_the_window_is_empty(session: Session) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    device = create_device(session, "Quelle")
+    _comparison(session, zone.id, device.id, NOW - timedelta(days=30))
+    session.flush()
+
+    assert zone_emergency_view(session, zone, NOW, settings).comparisons == ()
+
+
+def test_comparisons_group_per_device_sorted_by_the_snapshot_name_without_an_actuator(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    zulu = create_device(session, "zulu")
+    alpha = create_device(session, "alpha")
+    gone = create_device(session, "wird-geloescht")
+    for device, raw, snapshot in ((zulu, "22.00", "mm-zulu"), (alpha, "21.00", "nn-alpha")):
+        _comparison(session, zone.id, device.id, NOW, raw=raw, device_name=snapshot)
+    # Kein Aktor der Zone -> Anzeigename kommt aus dem Snapshot der Zeile (hier sortiert er
+    # nach diesem Namen, nicht nach dem Live-Namen des Geräts).
+    _comparison(session, zone.id, gone.id, NOW, raw="20.50", device_name="Snapshot-Name")
+    session.flush()
+
+    views = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert [(v.device_name, v.sample_count, v.mean_deviation_k) for v in views] == [
+        ("Snapshot-Name", 1, Decimal("0.50")),
+        ("mm-zulu", 1, Decimal("2.00")),
+        ("nn-alpha", 1, Decimal("1.00")),
+    ]
+
+
+def test_comparison_name_comes_from_the_actuator_device_when_it_is_one(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    actuator = _thermostat_actuator(session, zone.id, 0)
+    _comparison(
+        session, zone.id, actuator.device_id, NOW, raw="21.00", device_name="Snapshot"
+    )
+    session.flush()
+
+    (comparison,) = zone_emergency_view(session, zone, NOW, settings).comparisons
+
+    assert comparison.device_name == f"zone-{zone.id}-thermostat"
+
+
+# --- Statement-Zahl: Nachschlagen einmal je Anfrage statt je Zone ---
+
+
+def _count_statements(session: Session, action: Callable[[], object]) -> int:
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    engine = session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        action()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    return len(statements)
+
+
+def _zones_with_actuators(session: Session, count: int, prefix: str = "Raum") -> list[Zone]:
+    zones = []
+    for index in range(count):
+        zone = create_zone(session, f"{prefix} {index}")
+        _thermostat_actuator(session, zone.id, 0)
+        _switch_actuator(session, zone.id)
+        zones.append(zone)
+    session.flush()
+    return zones
+
+
+def test_the_shared_context_makes_the_statement_count_independent_of_the_zone_count(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    few = _zones_with_actuators(session, 2)
+    many = few + _zones_with_actuators(session, 8, "Weiterer")
+
+    def banners(zones: list[Zone]) -> None:
+        context = emergency_context(session, zones, NOW, settings)
+        for zone in zones:
+            zone_emergency_view(session, zone, NOW, settings, context)
+
+    assert _count_statements(session, lambda: banners(many)) == _count_statements(
+        session, lambda: banners(few)
+    )
+    assert _count_statements(session, lambda: banners(many)) <= 12
+
+
+def test_the_context_yields_the_same_views_as_one_zone_at_a_time(session: Session) -> None:
+    settings = create_settings(session)
+    zones = _zones_with_actuators(session, 3)
+    device = create_device(session, "Quelle")
+    _comparison(session, zones[1].id, device.id, NOW, raw="21.50")
+    _comparison(session, zones[2].id, device.id, NOW, raw="19.00")
+    session.flush()
+
+    context = emergency_context(session, zones, NOW, settings)
+
+    for zone in zones:
+        assert zone_emergency_view(session, zone, NOW, settings, context) == zone_emergency_view(
+            session, zone, NOW, settings
+        )
+    assert zone_emergency_view(session, zones[0], NOW, settings, context).comparisons == ()
+    (second,) = zone_emergency_view(session, zones[2], NOW, settings, context).comparisons
+    assert second.mean_deviation_k == Decimal("-1.00")
+
+
+def test_actuator_assignments_by_zone_covers_every_zone_and_no_zones(session: Session) -> None:
+    zones = _zones_with_actuators(session, 2)
+    empty = create_zone(session, "Leer")
+    reading_only = _thermostat_actuator(session, empty.id, 0)
+    reading_only.thermostat_mode = "reading_only"
+    session.flush()
+
+    result = actuator_assignments_by_zone(session, [*zones, empty])
+
+    assert [kind for _, _, kind in result[zones[0].id]] == ["thermostat", "switch"]
+    assert result[empty.id] == []
+    assert actuator_assignments_by_zone(session, []) == {}
+
+
+def test_actuator_assignments_by_zone_without_any_actuator_role_is_empty(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "Flur")
+
+    assert actuator_assignments_by_zone(session, [zone]) == {zone.id: []}

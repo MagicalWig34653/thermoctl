@@ -18,6 +18,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Behoben
 
 - **Zähe Oberfläche durch den Regelzyklus.** `_previous_state` (Mindestschaltdauer) lud je Zone und Zyklus die gesamte `shadow_decision`-Historie und lief in Python bis zum Zustandswechsel; bei über 100 000 Zeilen je Zone dauerte der Zyklus mehr als 6 s (im Betrieb etwa 14 s) und blockierte dabei die Ereignisschleife. Jetzt genügen vier Einzelzugriffe über Indizes (neueste Zeile, neueste Zeile mit dem anderen Wert, neuester Rückkehr-Marker, älteste Zeile des Laufs). Ergebnis bitgleich zur alten Fassung (Referenzvergleich im Test, auch mit zufälligen Historien). Gemessen auf MariaDB, 10 Zonen mit je 100 000 Zeilen: Ermittlung für alle Zonen von etwa 5,0 bis 5,5 s auf 0,03 bis 0,08 s.
+- **Raumübersicht (`GET /ui-api/rooms`) war bei vielen Vergleichsdaten langsam.** Die Mittelwerte der Ersatzquelle-Vergleiche (letzte 7 Tage) lud der Dienst als ORM-Objekte und rechnete in Python (bei 75.000 Zeilen rund 0,9 s CPU); jetzt aggregiert die Datenbank (`GROUP BY`, `COUNT`, `SUM`), der Mittelwert wird weiter in Python aus Summe und Anzahl gebildet, die Anzeige ist unverändert.
+- **Rund 10 Abfragen je Zone** (Rollen, Fähigkeiten, Notbetriebszustand, Aktorzustand, Vergleiche) gibt es nicht mehr: Die Übersicht lädt sie einmal je Anfrage. Gemessen mit 10 Zonen: 119 statt 28 Statements.
 
 ---
 

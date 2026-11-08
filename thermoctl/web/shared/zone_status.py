@@ -22,7 +22,7 @@ from thermoctl.domain.schedule import (
 )
 from thermoctl.domain.time import local_time
 from thermoctl.domain.zones import latest_decisions_by_zone
-from thermoctl.services.emergency_state import zone_emergency_view
+from thermoctl.services.emergency_state import emergency_context, zone_emergency_view
 from thermoctl.web import warmth_fraction
 
 MINUTES_PER_DAY = 1440
@@ -173,8 +173,10 @@ def zone_status_context(
     # REST/MCP (`services/emergency_state.zone_emergency_view`, Grundsatz 6).
     # `None` for the overwhelming majority of zones that have never seen a
     # sensor failure -- `zone_banner` itself returns `None` for `STAGE_NORMAL`.
+    # One context for all zones (not ~10 statements per zone, fix/rooms-abfrage).
+    emergency = emergency_context(session, zones, now_utc, settings_row)
     emergency_banners = {
-        zone.id: zone_emergency_view(session, zone, now_utc, settings_row).banner
+        zone.id: zone_emergency_view(session, zone, now_utc, settings_row, emergency).banner
         for zone in zones
     }
 

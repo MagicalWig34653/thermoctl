@@ -3,6 +3,9 @@
 Letzte Aktualisierung: 2026-11-08. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.22.0 (mehrere Eingabefühler je Zone mit Mittelwert, Messbarkeit der Antwortzeiten): Tag `v0.22.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.21.1.
+- **In Arbeit (0.22.1):** Raumübersicht schneller (`fix/rooms-abfrage`): Vergleichsmittel der Ersatzquelle per SQL-Aggregation, Notbetriebs-Nachschlagen
+  einmal je Anfrage (`services/emergency_state.emergency_context`, `shadow_run.actuator_assignments_by_zone`). Kein neuer Index: `EXPLAIN` auf MariaDB
+  zeigt bei Daten nur im 7-Tage-Fenster ohnehin einen Volldurchlauf, ein Index `(zone_id, measured_at)` brächte dort nichts.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
