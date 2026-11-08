@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## 0.22.1 — in Arbeit
+## 0.22.1 — 2026-11-08
 
 ### Beim Upgrade zu wissen
 
