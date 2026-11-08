@@ -3,23 +3,32 @@
 Letzte Aktualisierung: 2026-11-08. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.22.1 (Regelzyklus und Raumübersicht ohne Volllauf über die Historie, Oberfläche nicht mehr zäh): Tag `v0.22.1`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.0.
-- **Neu in 0.22.1:** Raumübersicht schneller (`fix/rooms-abfrage`): Vergleichsmittel der Ersatzquelle per SQL-Aggregation, Notbetriebs-Nachschlagen
-  einmal je Anfrage (`services/emergency_state.emergency_context`, `shadow_run.actuator_assignments_by_zone`). Kein neuer Index: `EXPLAIN` auf MariaDB
-  zeigt bei Daten nur im 7-Tage-Fenster ohnehin einen Volldurchlauf, ein Index `(zone_id, measured_at)` brächte dort nichts.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
 - **Migrationskopf:** `d4a8e1b73c52` (Laufindizes `shadow_decision`).
-- **Neu in 0.22.1:** `shadow_run._previous_state` liest die Historie nicht mehr vollständig, sondern über vier Index-Einzelzugriffe (Ursache der zähen Oberfläche, belegt: >6 s je Zyklus bei 100k Zeilen je Zone). Ergebnis bitgleich zur alten Fassung.
+- **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
+  `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
+  Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
+  10 Zonen mit je 100 000 Zeilen: 5-6 s auf 0,03-0,08 s. Die Raumübersicht (`GET /ui-api/rooms`) aggregiert die Ersatzquelle-Vergleiche in SQL
+  und lädt Notbetriebs-Daten einmal je Anfrage (`services/emergency_state.emergency_context`, `shadow_run.actuator_assignments_by_zone`;
+  119 auf 28 Statements bei 10 Zonen). Ein Index `(zone_id, measured_at)` auf den Vergleichen brächte bei Daten nur im 7-Tage-Fenster nichts.
+  **An der Anlage noch zu bestätigen:** Nach dem Update darf `Ereignisschleife blockiert` im Log nicht mehr erscheinen.
 - **Mehrere Fühler je Raum -- bekannte Eigenschaften** (Betrieb: `docs/self-hosting.md`, Abschnitt 8c): Ein Teilausfall meldet keinen
   Notbetrieb, der Mittelwert springt sofort auf die verbleibenden Fühler; festhängende Fühler gehen weiter in den Mittelwert ein; die
   Fenstererkennung über den Temperaturverlauf löst schon bei einem einzelnen Fühler aus (konservativ, auch durch Zugluft). REST
   `POST|PUT /api/v1/zones` lehnt das alte Feld `temperature_source_device_id` mit 422 ab.
-- **Messbarkeit (neu in 0.22.0):** Anfragedauer (`dauer_ms`, `pool_checked_out`) und eine Messung der Schleifenverzögerung
+- **Messbarkeit (seit 0.22.0):** Anfragedauer (`dauer_ms`, `pool_checked_out`) und eine Messung der Schleifenverzögerung
   gehen ins Log (`thermoctl/observability.py`); der DB-Pool ist über `THERMOCTL_DB_POOL_*` einstellbar, das Frontend bricht Anfragen nach
-  30 s ab. Anlass: zeitweise 10-30 s zähe Oberfläche, Ursache **nicht** belegt (Verdacht blockierter Event-Loop durch
-  synchrone DB-Arbeit in `async def`, `app.py` Regelschleife/MQTT/Aufräumlauf). Erste belegte Ursache: `_previous_state` (siehe 0.22.1 oben).
+  30 s ab. Die Schleifenwarnung hat die Ursache sichtbar gemacht (siehe Antwortzeit oben).
+- **Bekannte Folgearbeiten (Antwortzeit), nicht begonnen:** Regelschleife, MQTT-Ingest und Aufräumlauf laufen weiter als synchrone DB-Arbeit
+  in `async def` (`app.py`) und blockieren die Ereignisschleife, solange sie arbeiten; per `asyncio.to_thread` auszulagern ist
+  sicherheitsrelevant (Regelkette) und braucht eigene Tests samt Gegenlesen. Dazu: `PUT /ui-api/devices/map/layout` je Verschiebung
+  entprellen, die rund 50-60 Asset-Dateien beim Kaltstart bündeln, Statistik-Abfragen in SQL aggregieren, Index auf der Aktion von
+  `audit_event`, `/device-commands` (DISTINCT über Raumnamen).
+- **Nicht gesehen (Projektinhaber):** Gerätekarte mit drei dichten Fühlern, 409/422-Meldungen der Fühlerzuordnung, Datenflussansicht und
+  mobile Ansicht.
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
