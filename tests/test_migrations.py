@@ -1070,11 +1070,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `d4b8f2a60c19` (Kachelart `control`), then
     # `e7a3c15b9d28` (Vorlagen), then `a8d4f12c6e53` (Aufbewahrung des
     # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen), then
-    # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone) -- every time the
+    # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone), then `d4a8e1b73c52`
+    # (Laufindizes des Schattenprotokolls) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["c7e2a4f91d38"]
+    assert scripts.get_heads() == ["d4a8e1b73c52"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

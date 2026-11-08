@@ -9,6 +9,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.22.1 — in Arbeit
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (`d4a8e1b73c52`): zwei neue Indizes auf `shadow_decision` (`zone_id, would_heat, decided_at, id` und `zone_id, outcome_code, decided_at, id`). Reine Indexänderung; auf großen Tabellen dauert das Anlegen einige Sekunden. Rückwärts werden sie wieder entfernt.
+
+### Behoben
+
+- **Zähe Oberfläche durch den Regelzyklus.** `_previous_state` (Mindestschaltdauer) lud je Zone und Zyklus die gesamte `shadow_decision`-Historie und lief in Python bis zum Zustandswechsel; bei über 100 000 Zeilen je Zone dauerte der Zyklus mehr als 6 s (im Betrieb etwa 14 s) und blockierte dabei die Ereignisschleife. Jetzt genügen vier Einzelzugriffe über Indizes (neueste Zeile, neueste Zeile mit dem anderen Wert, neuester Rückkehr-Marker, älteste Zeile des Laufs). Ergebnis bitgleich zur alten Fassung (Referenzvergleich im Test, auch mit zufälligen Historien). Gemessen auf MariaDB, 10 Zonen mit je 100 000 Zeilen: Ermittlung für alle Zonen von etwa 5,0 bis 5,5 s auf 0,03 bis 0,08 s.
+
+---
+
 ## 0.22.0 — 2026-11-07
 
 ### Beim Upgrade zu wissen

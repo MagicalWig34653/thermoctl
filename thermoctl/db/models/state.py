@@ -170,6 +170,23 @@ class ShadowDecision(Base):
             "decided_at",
             "id",
         ),
+        # Für `services/shadow_run.py::_previous_state`: "neueste Zeile der Zone mit dem
+        # anderen `would_heat`" bzw. "neuester Rückkehr-Marker der Zone" sind Einzelzugriffe
+        # (Schlüsselsuche) statt eines Durchlaufs durch die ganze Historie der Zone.
+        Index(
+            "ix_shadow_decision_zone_heat_decided_id",
+            "zone_id",
+            "would_heat",
+            "decided_at",
+            "id",
+        ),
+        Index(
+            "ix_shadow_decision_zone_outcome_decided_id",
+            "zone_id",
+            "outcome_code",
+            "decided_at",
+            "id",
+        ),
         # Für das Schaltprotokoll (`domain/solar_setback_log.py`): findet ohne Tabellenscan,
         # welche Zonen überhaupt je eine Sonnenabsenkung hatten und von wann bis wann.
         # `solar_setback_k` ist fast überall NULL; ein Index mit dieser Spalte vorn macht

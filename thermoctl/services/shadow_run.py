@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
@@ -143,37 +143,73 @@ def _previous_state(
     all yet (`seit_s` is `None` too in that case); rule 5 in `decide()` itself treats
     an unknown duration as nothing to enforce yet, and the invariant mirrors that.
     """
-    rows = list(
-        session.execute(
-            select(
-                ShadowDecision.would_heat,
-                ShadowDecision.decided_at,
-                ShadowDecision.effective_controller,
-                ShadowDecision.outcome_code,
-            )
-            .where(ShadowDecision.zone_id == zone_id)
-            .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
-        )
+    # Performance (Betrieb: ~14 s je Zyklus bei >100k Zeilen je Zone): die Historie wird nicht
+    # mehr vollständig geladen und in Python durchlaufen, sondern mit wenigen gezielten
+    # Index-Zugriffen auf (zone_id, ..., decided_at, id) beantwortet. Das Ergebnis ist das der
+    # früheren Zeile-für-Zeile-Schleife: der Lauf geht von der neuesten Zeile rückwärts, solange
+    # `would_heat` gleich bleibt, und endet vor der ersten abweichenden Zeile oder -- mit
+    # eingeschlossen -- am Rückkehr-Marker.
+    ordering = (ShadowDecision.decided_at, ShadowDecision.id)
+    columns = (
+        ShadowDecision.id,
+        ShadowDecision.decided_at,
+        ShadowDecision.would_heat,
+        ShadowDecision.effective_controller,
     )
-    if not rows:
+    newest = session.execute(
+        select(*columns)
+        .where(ShadowDecision.zone_id == zone_id)
+        .order_by(*(c.desc() for c in ordering))
+        .limit(1)
+    ).first()
+    if newest is None:
         return False, None, None, None
+    current_state = newest.would_heat
 
-    current_state = rows[0].would_heat
-    start = rows[0].decided_at
-    phase_started_by = rows[0].effective_controller
-    for state, moment, controller, outcome_code in rows:
-        if state != current_state:
-            break
-        start = moment
-        phase_started_by = controller
-        if outcome_code == OUTCOME_CODE_NOTBETRIEB_RUECKKEHR:
-            # Grundsatz 7: the recovery marker (`_seed_recovery_phase_marker`)
-            # is the real relay state's only known anchor. Older rows with the
-            # same value are the *simulated* timeline that ran alongside the
-            # emergency cycle; counting them would credit a hold the real relay
-            # never had (minimum on/off duration violated on return).
-            break
-    return current_state, int((now - start).total_seconds()), current_state, phase_started_by
+    # Neueste Zeile mit dem *anderen* Wert: davor (älter) gehört nichts mehr zum Lauf.
+    boundary = session.execute(
+        select(ShadowDecision.id, ShadowDecision.decided_at)
+        .where(ShadowDecision.zone_id == zone_id, ShadowDecision.would_heat == (not current_state))
+        .order_by(*(c.desc() for c in ordering))
+        .limit(1)
+    ).first()
+
+    # Der neueste Marker der Zone. Liegt er neuer als die Grenze, gehört er zum Lauf (er
+    # hat dann zwingend denselben `would_heat`: ein abweichender wäre nicht neuer als die
+    # neueste abweichende Zeile) und schneidet ihn ab -- ältere Marker kommen nie in Frage.
+    marker = session.execute(
+        select(*columns)
+        .where(
+            ShadowDecision.zone_id == zone_id,
+            ShadowDecision.outcome_code == OUTCOME_CODE_NOTBETRIEB_RUECKKEHR,
+        )
+        .order_by(*(c.desc() for c in ordering))
+        .limit(1)
+    ).first()
+    if marker is not None and (
+        boundary is None
+        or (marker.decided_at, marker.id) > (boundary.decided_at, boundary.id)
+    ):
+        first = marker
+    else:
+        # Älteste Zeile des Laufs: die erste nach der Grenze (ohne Grenze: die älteste
+        # überhaupt). Bewusst keine Zeilenvergleichsform: MariaDB nutzt sie nicht als Bereich.
+        oldest = select(*columns).where(ShadowDecision.zone_id == zone_id)
+        if boundary is not None:
+            oldest = oldest.where(
+                ShadowDecision.decided_at >= boundary.decided_at,
+                or_(
+                    ShadowDecision.decided_at > boundary.decided_at,
+                    ShadowDecision.id > boundary.id,
+                ),
+            )
+        first = session.execute(oldest.order_by(*ordering).limit(1)).one()
+    return (
+        current_state,
+        int((now - first.decided_at).total_seconds()),
+        current_state,
+        first.effective_controller,
+    )
 
 
 # Blocker 1 (Hauptsession, nach Auftrag 7b, Grundsatz 7): outcome code for the

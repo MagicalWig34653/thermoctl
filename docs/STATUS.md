@@ -1,13 +1,14 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-30. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-08. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.22.0 (mehrere Eingabefühler je Zone mit Mittelwert, Messbarkeit der Antwortzeiten): Tag `v0.22.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.21.1.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `c7e2a4f91d38` (mehrere Temperaturfühler je Zone).
+- **Migrationskopf:** `d4a8e1b73c52` (Laufindizes `shadow_decision`).
+- **In Arbeit (0.22.1):** `shadow_run._previous_state` liest die Historie nicht mehr vollständig, sondern über vier Index-Einzelzugriffe (Ursache der zähen Oberfläche, belegt: >6 s je Zyklus bei 100k Zeilen je Zone). Ergebnis bitgleich zur alten Fassung.
 - **Mehrere Fühler je Raum -- bekannte Eigenschaften** (Betrieb: `docs/self-hosting.md`, Abschnitt 8c): Ein Teilausfall meldet keinen
   Notbetrieb, der Mittelwert springt sofort auf die verbleibenden Fühler; festhängende Fühler gehen weiter in den Mittelwert ein; die
   Fenstererkennung über den Temperaturverlauf löst schon bei einem einzelnen Fühler aus (konservativ, auch durch Zugluft). REST
@@ -15,7 +16,7 @@ Letzte Aktualisierung: 2026-10-30. Diese Datei sagt, was **jetzt** gilt. Verlauf
 - **Messbarkeit (neu in 0.22.0):** Anfragedauer (`dauer_ms`, `pool_checked_out`) und eine Messung der Schleifenverzögerung
   gehen ins Log (`thermoctl/observability.py`); der DB-Pool ist über `THERMOCTL_DB_POOL_*` einstellbar, das Frontend bricht Anfragen nach
   30 s ab. Anlass: zeitweise 10-30 s zähe Oberfläche, Ursache **nicht** belegt (Verdacht blockierter Event-Loop durch
-  synchrone DB-Arbeit in `async def`, `app.py` Regelschleife/MQTT/Aufräumlauf). Erst die Logs nach dem Einspielen entscheiden.
+  synchrone DB-Arbeit in `async def`, `app.py` Regelschleife/MQTT/Aufräumlauf). Erste belegte Ursache: `_previous_state` (siehe 0.22.1 oben).
 - **Prüfstand:** keine Zahlen aus alten Läufen übernommen. Maßgeblich ist ein frischer Lauf (Ruff, mypy, Tests gegen
   SQLite und MariaDB, Alembic vorwärts/rückwärts, Docker-Bau); die Suite liest `THERMOCTL_TEST_DATABASE_URL`.
 
