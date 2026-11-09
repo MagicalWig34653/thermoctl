@@ -1,13 +1,13 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-08. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-09. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **Letzte Freigabe:** 0.22.1 (Regelzyklus und Raumübersicht ohne Volllauf über die Historie, Oberfläche nicht mehr zäh): Tag `v0.22.1`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.0.
+- **Letzte Freigabe:** 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel): Tag `v0.22.2`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.1.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `d4a8e1b73c52` (Laufindizes `shadow_decision`).
+- **Migrationskopf:** `d4a8e1b73c52` (Laufindizes `shadow_decision`); 0.22.2 bringt keine Migration.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
@@ -125,7 +125,12 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   Hysterese begonnen hat, hält deren Mindestdauer, egal wann und wie PI danach übernimmt; eine von PI begonnene Phase
   folgt PI's eigenen, weicheren Mindestdauern. Welcher Regler eine Phase begann, folgt aus der `shadow_decision`-
   Historie. Bei Sensorausfall, Frostschutz, Aus-Modus, Wiederanlauf und (bei gemischten Zonen) offenem Fenster ist PI
-  ausgesetzt; die Begründung nennt dann PI's eigene Werte. PI kann je nach Einstellung mehr Schaltspiele erzeugen.
+  ausgesetzt und setzt zurück; die Begründung nennt dann PI's eigene Werte. **Der Integralanteil I bleibt dagegen erhalten** bei jedem
+  Wechsel des Sollwertkontexts (Zeitplan-Moduswechsel, Beginn/Ende von Übersteuerung, Boost, Urlaub; auch bei anderer Temperatur;
+  Modulator und Haltezeit der Phase laufen weiter) und bei einer Zeitlücke (mehr als zwei Zyklen Abstand: `angehalten`, nicht über
+  die Lücke integriert, der Modulator beginnt neu; ohne vorherige Auswertung I = 0). Es bleibt die Begrenzung (Anti-Windup). Offen:
+  ob der Modulator bei sehr großen Sollwertsprüngen neu starten soll (bewusst nicht, wegen der Haltezeit-Invariante). Nach langem
+  Ausfall wirkt der erhaltene I beim Wiederanlauf sofort als Tastgrad (Entscheidung des Eigners, 2026-11-09). PI kann je nach Einstellung mehr Schaltspiele erzeugen.
 - **Fenster:** Ein zugeordneter Kontakt entscheidet allein. Ohne Kontakt kann je Zone (Vorgabe aus) ein Temperatursturz
   als Fenster gelten: Referenzwert (Maximum der Vorwerte, ab drei Vorwerten der zweithöchste) minus aktueller Wert ≥
   Schwelle (Vorgabe 1,5 K in 15 min), Plausibilitätsgrenze 6 K, Haltedauer 30 min, kumulative Strähnenzählung mit
@@ -275,6 +280,10 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 
 ### Meross
 
+- **Netzfehler bei der Anmeldung** (DNS, Timeout, `OSError`) werden wie eine Ablehnung behandelt (kein Transport, der Zyklus läuft weiter,
+  Backoff eine Minute, nicht eskalierend). Vorher stoppte ein solcher Fehler vor `cycle()` die Regelung aller Zonen (Vorfall 2026-11-09).
+  Offen: `meross_discovery` ohne Backoff bei Netzfehlern; der MQTT-Zustandsversand in `publishing.py` hat kein eigenes `try` (ein Fehler
+  erreicht nur die äußere Schleife).
 - Schaltbefehle an Meross-Steckdosen (Fußbodenkreise, mss710) über die Cloud; Zugangsdaten nur aus Konfiguration.
 - **Anmeldung mit Backoff** im `MerossSessionCache` (exponentiell ab 1 min, gedeckelt bei 30 min; dauerhaft falsche
   Zugangsdaten springen sofort auf den Deckel). Ein gescheiterter Befehl verwirft die Sitzung nur noch, wenn der

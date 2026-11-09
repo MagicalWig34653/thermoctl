@@ -9,6 +9,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.22.2 — 2026-11-09
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration.** Die Regelung verhält sich nach dem Update anders (siehe unten): Der Integralanteil der PI-Regelung bleibt bei Moduswechsel, Übersteuerung und Zeitlücke erhalten. Im Schaltprotokoll erscheint `sollwertkontext_wechsel` nicht mehr als Rücksetzgrund, und bei Zeitlücken steht `angehalten` statt `zurueckgesetzt`. Ältere Zeilen bleiben lesbar.
+
+### Behoben
+
+- **Ein Netzfehler bei der Meross-Anmeldung stoppte die Regelung aller Zonen.** `ensure_transport` fing nur `MerossError`; ein DNS-Fehler (`URLError`, `Temporary failure in name resolution`) oder Timeout lief als unbehandelte Ausnahme in die Schleife, **vor** `cycle()`. Beim Internetausfall am 2026-11-09 (14:46 UTC) fielen so drei Zyklen für alle Zonen aus, auch ohne Meross-Aktor. Jetzt wird der Netzfehler wie eine Ablehnung behandelt (kein Transport, der Zyklus läuft weiter) mit kurzem, nicht eskalierendem Backoff von einer Minute.
+- **PI: Der Integralanteil wurde nach der Zeitlücke auf 0 gesetzt.** Folge des vorigen Fehlers: Raum 3–6 h unter Soll, danach Überschwingen (±0,5 K, Periode 6–8,5 h). Bei mehr als zwei erwarteten Zyklen Abstand (oder Uhr rückwärts) bleibt I jetzt erhalten und wird nicht über die Lücke integriert; der Modulator (Fenster, Tastgrad) beginnt neu. Ohne vorherige Auswertung bleibt I = 0.
+- **PI: Moduswechsel und Übersteuerung setzten den Integralanteil zurück.** Ein Wechsel des Sollwertkontexts (Tag/Nacht, Beginn und Ende einer Übersteuerung oder von Boost, Urlaub) setzt nichts mehr zurück: I, Modulator und die Haltezeit der laufenden Phase laufen weiter, damit sich die Mindestdauer nicht durch einen Wechsel umgehen lässt. Anti-Windup, Neustart und die Sicherheitsregeln (Fenster, Frostschutz, Sensorausfall, Ventilschutz, Hysterese-Phase) setzen unverändert zurück.
+
+---
+
 ## 0.22.1 — 2026-11-08
 
 ### Beim Upgrade zu wissen
