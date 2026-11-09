@@ -104,8 +104,10 @@ def pi_dt(
 
     Section 2, third paragraph: `dt <= 0`, a gap of more than two expected cycles, or
     no previous evaluation at all (missing state) all mean the same thing -- a service
-    outage must not retroactively become an hours-long control deviation. The caller
-    resets the PI state with `RESET_REASON_TIME_GAP` when this returns `None`.
+    outage must not retroactively become an hours-long control deviation. When this
+    returns `None`, `pi_cycle()` does not integrate: it restarts the modulator with
+    `RESET_REASON_TIME_GAP` but *freezes* the integral (only a missing previous
+    evaluation leaves nothing to freeze, so I stays 0 there).
     """
     if previous_evaluated_at is None:
         return None
@@ -422,17 +424,26 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         expected_cycle_seconds=cycle.expected_cycle_seconds,
     )
     if dt is None:
+        # Zeitlücke (Entscheidung des Projektinhabers nach dem Vorfall 2026-11-09):
+        # der Integralanteil wird *eingefroren*, nicht verworfen -- es wird weder
+        # über die Lücke integriert noch zurückgesetzt. Modulator, Fensterrest und
+        # eingefrorener Tastgrad beginnen neu, ein Fenster kann die Lücke nicht
+        # überdauern. Ohne vorherige Auswertung gibt es nichts einzufrieren.
         new_state = replace(
             reset_pi_state(RESET_REASON_TIME_GAP, now=cycle.now),
             setpoint_context_key=cycle.setpoint_context_key,
         )
+        integrator_action = INTEGRATOR_RESET
+        if base.last_evaluated_at is not None:
+            new_state = replace(new_state, integral=base.integral)
+            integrator_action = INTEGRATOR_HOLD
         return PiCycleOutput(
             state=new_state,
             pi_available=False,
             heating=None,
             duty_raw=None,
             reason_code=RESET_REASON_TIME_GAP,
-            integrator_action=INTEGRATOR_RESET,
+            integrator_action=integrator_action,
             switched=False,
         )
 

@@ -918,15 +918,17 @@ class TestWindupArmingAndInvalidState:
 
 
 class TestPiCycle:
-    def test_a_time_gap_resets_and_reports_pi_unavailable(self) -> None:
+    def test_a_time_gap_reports_pi_unavailable_and_freezes_the_integral(self) -> None:
+        # Geaendert 2026-11-09 (Vorfall): frueher `INTEGRATOR_RESET` und `integral == 0`.
+        # Eine Zeitluecke haelt jetzt den Integralanteil, siehe `TestTimeGapFreezesIntegral`.
         now = _at()
-        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now)).state
+        state = _running_state(now, integral="0.4")
         now += timedelta(seconds=200)  # > 2 * 60s expected cycle
         result = pi_cycle(state, _cycle(now))
         assert result.pi_available is False
         assert result.reason_code == RESET_REASON_TIME_GAP
-        assert result.integrator_action == INTEGRATOR_RESET
-        assert result.state.integral == 0
+        assert result.integrator_action == INTEGRATOR_HOLD
+        assert result.state.integral == Decimal("0.4")
 
     def test_the_very_first_cycle_has_no_previous_evaluation_and_is_itself_a_lockout(
         self,
@@ -953,6 +955,102 @@ class TestPiCycle:
         now += timedelta(seconds=60)
         result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="1"))
         assert result.state.last_reset_reason != RESET_REASON_CONTEXT_CHANGE
+
+
+def _running_state(now: datetime, *, integral: str, context: str = "schedule:default") -> PiState:
+    """A state as left behind by a regular, modulating cycle at `now`."""
+    return PiState(
+        integral=Decimal(integral),
+        last_evaluated_at=now,
+        setpoint_context_key=context,
+        modulator=ModulatorState(
+            on=True,
+            held_for_s=600,
+            remainder_s=Decimal(30),
+            window_start=window_start_for(now),
+            frozen_duty=Decimal("0.5"),
+        ),
+        awaiting_boundary_until=None,
+        last_reset_reason=None,
+    )
+
+
+class TestTimeGapFreezesIntegral:
+    """Entscheidung des Projektinhabers (Vorfall 2026-11-09): eine Zeitluecke
+    verwirft den Integralanteil nicht mehr -- sie friert ihn ein. Ueber die Luecke
+    selbst wird weiterhin nicht integriert; Modulator, Fensterrest und eingefrorener
+    Tastgrad beginnen neu, weil ein Fenster die Luecke nicht ueberdauern kann."""
+
+    def test_the_integral_survives_a_gap_of_more_than_two_cycles(self) -> None:
+        now = _at()
+        state = _running_state(now, integral="0.121")
+        result = pi_cycle(state, _cycle(now + timedelta(seconds=3600), error_k="2"))
+        assert result.state.integral == Decimal("0.121")
+        assert result.integrator_action == INTEGRATOR_HOLD
+        assert result.reason_code == RESET_REASON_TIME_GAP
+        assert result.state.last_reset_reason == RESET_REASON_TIME_GAP
+        assert result.pi_available is False
+        assert result.heating is None
+        assert result.duty_raw is None
+
+    def test_nothing_is_integrated_over_the_gap(self) -> None:
+        """Ein grosser Fehler ueber eine Stunde Luecke wuerde, integriert, den
+        Integralanteil sichtbar bewegen (hier bis zur Saettigung); er bleibt exakt."""
+        now = _at()
+        state = _running_state(now, integral="0.2")
+        result = pi_cycle(state, _cycle(now + timedelta(hours=3), error_k="5"))
+        assert result.state.integral == Decimal("0.2")
+
+    def test_the_modulator_window_restarts_after_a_gap(self) -> None:
+        now = _at()
+        state = _running_state(now, integral="0.3")
+        result = pi_cycle(state, _cycle(now + timedelta(seconds=600)))
+        assert result.state.modulator == NEUTRAL_MODULATOR_STATE
+        assert result.state.awaiting_boundary_until is None
+        assert result.state.last_evaluated_at == now + timedelta(seconds=600)
+        assert result.switched is False
+
+    def test_pi_resumes_with_the_preserved_integral_on_the_next_cycle(self) -> None:
+        now = _at()
+        state = _running_state(now, integral="0.3")
+        later = now + timedelta(seconds=600)
+        gap = pi_cycle(state, _cycle(later))
+        resumed = pi_cycle(gap.state, _cycle(later + timedelta(seconds=60), error_k="0"))
+        assert resumed.pi_available is True
+        assert resumed.integrator_action != INTEGRATOR_RESET
+        # error 0 -> u == I: the preserved integral is the duty, not 0.
+        assert resumed.duty_raw == Decimal("0.3")
+        assert resumed.state.integral == Decimal("0.3")
+
+    def test_a_clock_going_backwards_freezes_the_integral_too(self) -> None:
+        now = _at(minute=10)
+        state = _running_state(now, integral="0.25")
+        result = pi_cycle(state, _cycle(now - timedelta(seconds=30), error_k="3"))
+        assert result.pi_available is False
+        assert result.reason_code == RESET_REASON_TIME_GAP
+        assert result.integrator_action == INTEGRATOR_HOLD
+        assert result.state.integral == Decimal("0.25")
+
+    def test_the_same_instant_twice_freezes_the_integral_too(self) -> None:
+        now = _at(minute=10)
+        state = _running_state(now, integral="0.25")
+        result = pi_cycle(state, _cycle(now, error_k="3"))
+        assert result.reason_code == RESET_REASON_TIME_GAP
+        assert result.state.integral == Decimal("0.25")
+
+    def test_without_a_previous_evaluation_there_is_no_integral_to_freeze(self) -> None:
+        state = dataclasses.replace(NEUTRAL_PI_STATE, integral=Decimal("0.7"))
+        assert state.last_evaluated_at is None
+        result = pi_cycle(state, _cycle(_at()))
+        assert result.reason_code == RESET_REASON_TIME_GAP
+        assert result.integrator_action == INTEGRATOR_RESET
+        assert result.state.integral == 0
+
+    def test_a_context_change_inside_a_gap_still_resets_the_integral(self) -> None:
+        now = _at()
+        state = _running_state(now, integral="0.4", context="schedule:a")
+        result = pi_cycle(state, _cycle(now + timedelta(hours=1), context="schedule:b"))
+        assert result.state.integral == 0
 
 
 class TestPiCycleSwitched:
