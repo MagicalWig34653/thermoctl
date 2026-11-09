@@ -52,6 +52,8 @@ RESET_REASON_WINDOW_OPEN = "fenster_offen"
 RESET_REASON_FROST = "frostschutz"
 RESET_REASON_SENSOR_FAILURE = "sensorausfall"
 RESET_REASON_VALVE_PROTECTION = "ventilschutz"
+# No longer produced (a context change resets nothing since 2026-11); kept so that
+# rows written earlier still show a readable reason in the protocol.
 RESET_REASON_CONTEXT_CHANGE = "sollwertkontext_wechsel"
 RESET_REASON_TIME_GAP = "zeitluecke"
 RESET_REASON_ARMING = "scharfschaltung"
@@ -385,16 +387,19 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
     """One regular PI cycle -- everything that is *not* one of section 4's
     suppressing rules (those go through `reset_pi_state()` directly, see there).
 
-    This single function also covers the "beim Beginn und Ende zurücksetzen, danach
-    weiterlaufen" rows for Übersteuerung and Boost, and the ordinary setpoint-context
-    reset from section 2, without any separate override/boost handling: section 2
-    already defines both as "jede Änderung des wirksamen Sollwertkontexts". The
-    caller forms `cycle.setpoint_context_key` from the origin and identity of
-    whichever setpoint is effective this cycle (override, boost, schedule slot,
-    operating mode, frost protection); whenever it differs from the previous cycle's
-    key, this function resets before doing anything else -- covering an override's or
-    boost's start *and* end in the same mechanism, with no separate code path to keep
-    in sync with section 4's table.
+    A change of the setpoint context (schedule mode switch, start or end of an
+    override/boost, other override temperature, start or end of a vacation) does
+    **not** reset anything: the project owner's decision of 2026-11 supersedes
+    section 2's former "jede Änderung des wirksamen Sollwertkontexts setzt zurück".
+    The old reset dropped the integral to 0 although the room still needed it
+    (observed: 3-6 h below setpoint afterwards). The caller still forms
+    `cycle.setpoint_context_key` from the origin and identity of the effective
+    setpoint; this function only stores the new key. Integral, modulator (window
+    remainder, frozen duty, running phase and its hold time) carry on unchanged, so
+    the minimum-duration invariant cannot be undermined by a context change. The
+    integral stays bounded by the anti-windup clamp, whatever the new setpoint.
+    What still resets lives elsewhere: section 4's gates (`reset_pi_state()`),
+    restart/invalid state, and the time gap below.
     """
     if state.awaiting_boundary_until is not None and cycle.now < state.awaiting_boundary_until:
         return PiCycleOutput(
@@ -408,12 +413,6 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         )
 
     base = state
-    context_changed = (
-        base.setpoint_context_key is not None
-        and base.setpoint_context_key != cycle.setpoint_context_key
-    )
-    if context_changed:
-        base = reset_pi_state(RESET_REASON_CONTEXT_CHANGE, now=base.last_evaluated_at)
     base = replace(base, setpoint_context_key=cycle.setpoint_context_key)
 
     dt = pi_dt(
@@ -462,9 +461,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         setpoint_context_key=cycle.setpoint_context_key,
         modulator=modulator_result.state,
         awaiting_boundary_until=None,
-        last_reset_reason=(
-            RESET_REASON_CONTEXT_CHANGE if context_changed else base.last_reset_reason
-        ),
+        last_reset_reason=base.last_reset_reason,
     )
     return PiCycleOutput(
         state=new_state,

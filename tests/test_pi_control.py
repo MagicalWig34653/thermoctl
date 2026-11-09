@@ -37,7 +37,6 @@ from thermoctl.domain.pi_control import (
     NEUTRAL_PI_STATE,
     REMAINDER_LIMIT_S,
     RESET_REASON_ARMING,
-    RESET_REASON_CONTEXT_CHANGE,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
     RESET_REASON_SENSOR_FAILURE,
@@ -788,56 +787,63 @@ class TestWindupValveProtection:
         assert result.state.integral == 0
 
 
-class TestWindupOverrideAndBoost:
-    """Section 4's override/boost rows have no separate code path -- see the
-    `pi_cycle` docstring. These tests prove the *effect* the table describes: reset
-    at the start and end, unchanged in between."""
+class TestContextChangeKeepsState:
+    """Project owner's decision (2026-11): a change of the setpoint context --
+    schedule mode switch, override/boost start or end, other override temperature,
+    vacation start or end -- never resets anything. Integral, modulator and the
+    running phase continue exactly as without a change; only the key is updated.
+    (Anti-windup, restart, gates and time gaps still reset: separate tests.)"""
 
-    def test_starting_an_override_resets_the_integral_once(self) -> None:
+    def _running(self, context: str) -> tuple[PiState, datetime]:
         now = _at()
-        state = NEUTRAL_PI_STATE
-        result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="3"))
-        now += timedelta(seconds=60)
-        # Override begins: context key changes.
-        result = pi_cycle(result.state, _cycle(now, context="override:12", error_k="3"))
-        assert result.reason_code != MODULATOR_REASON_TASTGRAD_VORRANG  # sanity, unrelated axis
-        one_cycle_increment = Decimal("0.25") * Decimal(3) * Decimal(60) / Decimal(180 * 60)
-        assert result.state.integral <= one_cycle_increment + Decimal("0.001")
-
-    def test_the_override_continues_running_between_its_start_and_end(self) -> None:
-        now = _at()
-        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context="override:12")).state
-        first_integral = state.integral
+        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context=context, error_k="3")).state
         for _ in range(5):
             now += timedelta(seconds=60)
-            state = pi_cycle(state, _cycle(now, context="override:12")).state
-        assert state.integral >= first_integral
-
-    def test_ending_an_override_resets_the_integral_again(self) -> None:
-        now = _at()
-        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context="override:12", error_k="3")).state
-        for _ in range(5):
-            now += timedelta(seconds=60)
-            state = pi_cycle(state, _cycle(now, context="override:12", error_k="3")).state
+            state = pi_cycle(state, _cycle(now, context=context, error_k="3")).state
         assert state.integral > 0
-        now += timedelta(seconds=60)
-        # Override ends: context key returns to the schedule.
-        result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="3"))
-        assert result.state.last_reset_reason == RESET_REASON_CONTEXT_CHANGE
-        # Exactly one cycle's worth of integral -- not the accumulated override run.
-        one_cycle_increment = Decimal("0.25") * Decimal(3) * Decimal(60) / Decimal(180 * 60)
-        assert result.state.integral <= one_cycle_increment + Decimal("0.001")
+        return state, now + timedelta(seconds=60)
 
-    def test_boost_uses_the_same_context_key_mechanism_as_override(self) -> None:
-        now = _at()
-        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context="boost", error_k="3")).state
-        for _ in range(3):
-            now += timedelta(seconds=60)
-            state = pi_cycle(state, _cycle(now, context="boost", error_k="3")).state
-        integral_during_boost = state.integral
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [
+            ("zeitplan:1", "zeitplan:2"),  # day -> night
+            ("zeitplan:2", "zeitplan:1"),  # night -> day
+            ("zeitplan:1", "override:7"),  # override start
+            ("override:7", "zeitplan:1"),  # override end
+            ("override:7", "override:8"),  # other override
+            ("zeitplan:1", "urlaub:3"),  # vacation start
+            ("urlaub:3", "zeitplan:1"),  # vacation end
+        ],
+    )
+    def test_any_context_change_continues_exactly_like_no_change(
+        self, old: str, new: str
+    ) -> None:
+        state, now = self._running(old)
+        changed = pi_cycle(state, _cycle(now, context=new, error_k="3"))
+        control = pi_cycle(state, _cycle(now, context=old, error_k="3"))
+        assert changed.state.integral == control.state.integral
+        assert changed.state.integral > state.integral
+        assert changed.state.modulator == control.state.modulator
+        assert changed.heating == control.heating
+        assert changed.switched == control.switched
+        assert changed.state.last_reset_reason == control.state.last_reset_reason
+        assert changed.state.setpoint_context_key == new
+
+    def test_the_key_is_updated_so_the_integral_keeps_growing_afterwards(self) -> None:
+        state, now = self._running("zeitplan:1")
+        result = pi_cycle(state, _cycle(now, context="override:7", error_k="3"))
         now += timedelta(seconds=60)
-        result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="3"))
-        assert result.state.integral < integral_during_boost
+        follow = pi_cycle(result.state, _cycle(now, context="override:7", error_k="3"))
+        assert follow.state.integral > result.state.integral
+
+    def test_anti_windup_still_limits_the_integral_across_a_context_change(self) -> None:
+        now = _at()
+        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context="zeitplan:1", error_k="30")).state
+        for i in range(300):
+            now += timedelta(seconds=60)
+            ctx = "override:7" if i % 2 else "zeitplan:1"
+            state = pi_cycle(state, _cycle(now, context=ctx, error_k="30")).state
+        assert state.integral <= Decimal(1)
 
 
 class TestWindupMinimumDurationBlock:
@@ -952,7 +958,7 @@ class TestPiCycle:
         state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now, context="schedule:default")).state
         now += timedelta(seconds=60)
         result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="1"))
-        assert result.state.last_reset_reason != RESET_REASON_CONTEXT_CHANGE
+        assert result.state.last_reset_reason == state.last_reset_reason
 
 
 class TestPiCycleSwitched:

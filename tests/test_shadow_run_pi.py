@@ -18,6 +18,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,7 +49,6 @@ from thermoctl.domain.pi_control import (
     INTEGRATOR_RESET,
     MODULATOR_REASON_HELD,
     RESET_REASON_ARMING,
-    RESET_REASON_CONTEXT_CHANGE,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
     RESET_REASON_SENSOR_FAILURE,
@@ -917,56 +917,79 @@ class TestPrecedenceRulesBeatPi:
             now += timedelta(seconds=60)
         assert saw_a_hold
 
-    def test_starting_and_ending_an_override_resets_the_integral_but_pi_keeps_deciding(
-        self, session: Session
+    @pytest.mark.parametrize("override_c", [Decimal("21.0"), Decimal("24.0")])
+    def test_starting_and_ending_an_override_keeps_integral_and_phase_hold_time(
+        self, session: Session, override_c: Decimal
     ) -> None:
-        zone = _pi_zone(session, "übersteuerung", measured_c=WARM_C)
-        now = NOW
-        shadow_run.cycle(session, now)  # establish some integral first
-
-        now += timedelta(seconds=60)
+        """Owner's decision: no context change resets I -- same or other override
+        temperature, start or end. The running phase's hold time
+        (`pi_last_switch_at`) must not restart either (minimum-duration
+        invariant), and the key must be updated."""
         from tests.helpers import source
         from thermoctl.db.models.override import ZoneOverride
 
-        override = ZoneOverride(
-            zone_id=zone.id,
-            temperature_c=Decimal("24.0"),
-            starts_at=now,
-            ends_at=now + timedelta(minutes=5),
-            source_id=source(session).id,
+        zone = _pi_zone(session, "übersteuerung", measured_c=COLD_C)
+        now = NOW
+        for _ in range(4):
+            shadow_run.cycle(session, now)
+            now += timedelta(seconds=60)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        assert state.pi_setpoint_context_key is not None
+        assert state.pi_setpoint_context_key.startswith("zeitplan:")
+        integral_before = state.pi_integral
+        switch_at_before = state.pi_last_switch_at
+        assert integral_before > 0
+        assert switch_at_before is not None
+
+        session.add(
+            ZoneOverride(
+                zone_id=zone.id,
+                temperature_c=override_c,
+                starts_at=now,
+                ends_at=now + timedelta(minutes=3),
+                source_id=source(session).id,
+            )
         )
-        session.add(override)
         session.flush()
-
         started = _row_for(shadow_run.cycle(session, now), zone)
-        assert started.effective_controller == "pi"  # not a fallback -- PI keeps deciding
-        assert started.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+        assert started.effective_controller == "pi"
+        assert started.pi_reset_reason is None
+        assert started.pi_integral_after >= integral_before
+        session.refresh(state)
+        assert state.pi_last_switch_at == switch_at_before
+        assert state.pi_setpoint_context_key.startswith("override:")
 
-        # Step in realistic ~60s cycles past the override's end -- a single large
-        # jump would itself trip `pi_dt()`'s own time-gap guard (more than twice
-        # the expected cycle) and mask the context-change reset this test means to
-        # observe with an unrelated one.
+        # Past the override's end, in realistic ~60s steps.
         ended = started
-        for _ in range(7):
+        for _ in range(5):
             now += timedelta(seconds=60)
             ended = _row_for(shadow_run.cycle(session, now), zone)
         assert ended.effective_controller == "pi"
-        assert ended.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+        assert ended.pi_reset_reason is None
+        assert ended.pi_integral_after > 0
+        session.refresh(state)
+        assert state.pi_setpoint_context_key.startswith("zeitplan:")
 
-    def test_starting_and_ending_a_vacation_resets_the_integral_but_pi_keeps_deciding(
+    def test_starting_and_ending_a_vacation_keeps_the_integral_and_pi_keeps_deciding(
         self, session: Session
     ) -> None:
-        """Same reasoning as the override case above: a vacation resolves to a fixed
-        temperature with `mode_id=None` too (`domain.schedule._vacation_setpoint`),
-        so without its own branch in `_pi_setpoint_context_key` this would trip the
-        function's `assert` instead of resetting cleanly."""
+        """A vacation resolves to a fixed temperature with `mode_id=None` too
+        (`domain.schedule._vacation_setpoint`), hence its own branch in
+        `_pi_setpoint_context_key`; like every context change it keeps I."""
         from thermoctl.domain.schedule import cancel_vacation, create_vacation
 
-        zone = _pi_zone(session, "urlaub-pi", measured_c=WARM_C)
+        zone = _pi_zone(session, "urlaub-pi", measured_c=COLD_C)
         now = NOW
-        shadow_run.cycle(session, now)  # establish some integral first
+        for _ in range(3):
+            shadow_run.cycle(session, now)
+            now += timedelta(seconds=60)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        integral_before = state.pi_integral
+        switch_at_before = state.pi_last_switch_at
+        assert integral_before > 0
 
-        now += timedelta(seconds=60)
         vacation = create_vacation(
             session,
             start_date=now.date(),
@@ -978,14 +1001,21 @@ class TestPrecedenceRulesBeatPi:
         assert vacation.starts_at <= now < vacation.ends_at
 
         started = _row_for(shadow_run.cycle(session, now), zone)
-        assert started.effective_controller == "pi"  # not a fallback -- PI keeps deciding
-        assert started.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+        assert started.effective_controller == "pi"
+        assert started.pi_reset_reason is None
+        session.refresh(state)
+        assert state.pi_setpoint_context_key is not None
+        assert state.pi_setpoint_context_key.startswith("urlaub:")
+        assert state.pi_last_switch_at == switch_at_before
+        assert started.pi_integral_before == integral_before
 
         now += timedelta(seconds=60)
         cancel_vacation(session, now=now)
         ended = _row_for(shadow_run.cycle(session, now), zone)
         assert ended.effective_controller == "pi"
-        assert ended.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+        assert ended.pi_reset_reason is None
+        session.refresh(state)
+        assert state.pi_setpoint_context_key.startswith("zeitplan:")
 
 
 class TestOnOffOnlyZoneIgnoresTheWindow:

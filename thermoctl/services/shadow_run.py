@@ -1118,11 +1118,11 @@ def _pi_setpoint_context_key(
     returns `None` there except for a fixed-temperature override or a running
     vacation, each handled by its own branch below). It still adds the override's
     own id as an extra axis on top of `setpoint.mode_id`: that alone cannot tell an
-    override apart from a schedule point naming the same mode, and section 2
-    explicitly requires a reset on both the start and the end of an override even
-    then. Boost needs no separate case -- the specification is explicit that boost
-    is technically an override (`ZoneOverride`), so it already goes through the
-    `override` branch.
+    override apart from a schedule point naming the same mode. (A change of this
+    key used to reset the PI state; since 2026-11 it resets nothing -- `pi_cycle()`
+    only stores the new key -- so the key is now purely diagnostic.) Boost needs no
+    separate case -- the specification is explicit that boost is technically an
+    override (`ZoneOverride`), so it already goes through the `override` branch.
 
     The vacation branch exists for the same reason as the override one: a vacation
     also resolves to a fixed temperature with `mode_id=None` (see
@@ -1130,8 +1130,7 @@ def _pi_setpoint_context_key(
     `assert` below would fire the first time a vacation ran on a PI-enabled zone
     with no override active. Its own id, not a fixed string, for the same reason
     the override branch uses `override.id` and not merely `"override"`: two
-    successive vacations must reset the integral between them exactly as two
-    successive overrides do.
+    successive vacations get distinct keys exactly as two successive overrides do.
     """
     if override is not None:
         return f"override:{override.id}"
@@ -1301,20 +1300,17 @@ def _load_pi_state(state: ZoneState) -> PiState:
     )
 
 
-def _write_pi_state(
-    row: ZoneState, old_state: PiState, output: PiCycleOutput, now: datetime
-) -> None:
+def _write_pi_state(row: ZoneState, output: PiCycleOutput, now: datetime) -> None:
     """Persists one regular `pi_cycle()` result -- the inverse of `_load_pi_state`.
 
     `pi_last_switch_at` only moves when the current on/off run genuinely restarted
-    this cycle: either the modulator itself flipped (`output.switched`), or its
-    starting point was reset from under it by a setpoint-context change this same
-    cycle (`old_state`'s context key differs from the new one -- section 2's
-    "Beginn und Ende einer Übersteuerung", handled inside `pi_cycle()` itself, see
-    its docstring) even though the *chosen* on/off value happens not to have
-    changed, or there was no previous run to speak of at all. Any other cycle
-    leaves it untouched, so `_load_pi_state`'s derivation above keeps accumulating
-    the true elapsed time of the *same* run.
+    this cycle: either the modulator itself flipped (`output.switched`), or there
+    was no previous run to speak of at all. A setpoint-context change no longer
+    counts (it resets nothing in `pi_cycle()`, so the running phase continues):
+    restarting the hold time there would let the minimum-duration invariant be
+    dodged by changing the context. Any other cycle leaves it untouched, so
+    `_load_pi_state`'s derivation above keeps accumulating the true elapsed time
+    of the *same* run.
     """
     new_state = output.state
     row.pi_integral = new_state.integral
@@ -1328,11 +1324,7 @@ def _write_pi_state(
         row.pi_last_switch_heating = None
     else:
         row.pi_last_switch_heating = new_state.modulator.on
-        context_reset_this_cycle = (
-            old_state.setpoint_context_key is not None
-            and old_state.setpoint_context_key != new_state.setpoint_context_key
-        )
-        if output.switched or context_reset_this_cycle or row.pi_last_switch_at is None:
+        if output.switched or row.pi_last_switch_at is None:
             row.pi_last_switch_at = _naive(now)
     row.pi_awaiting_boundary_until = _naive(new_state.awaiting_boundary_until)
     row.pi_last_reset_reason = new_state.last_reset_reason
@@ -1663,7 +1655,7 @@ def _pi_outcome(
             pi_min_off_seconds=parameter.pi_min_off_seconds,
         ),
     )
-    _write_pi_state(state, pi_state, output, now)
+    _write_pi_state(state, output, now)
 
     fields["pi_integral_before"] = pi_state.integral
     fields["pi_integral_after"] = output.state.integral
