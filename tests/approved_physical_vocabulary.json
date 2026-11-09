@@ -667,7 +667,8 @@
       "switch"
     ],
     "thermoctl/services/meross_session.py": [
-      "Meross-Anmeldung abgelehnt -- Aktoren bleiben diesen Zyklus unerreichbar"
+      "Meross-Anmeldung abgelehnt -- Aktoren bleiben diesen Zyklus unerreichbar",
+      "Meross-Anmeldung nicht erreichbar (Netzfehler) -- Aktoren bleiben diesen Zyklus unerreichbar"
     ],
     "thermoctl/services/publishing.py": [
       "Aktor an nicht verdrahteter Anbindung wird nicht geschaltet",
