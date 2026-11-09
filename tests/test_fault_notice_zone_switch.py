@@ -232,7 +232,7 @@ def test_sensor_role_assignment_does_not_count_for_command_failures(session: Ses
 
 @pytest.mark.parametrize(
     "key", ["sensor:abc", "sensor:", "sensor:99999", "fenster:99999", "schaltbefehl:99999",
-            "notbetrieb:99999", "unbekannt:1", "zigbee2mqtt:brücke", ""]
+            "schaltbefehl:abc", "notbetrieb:abc", "notbetrieb:99999", "unbekannt:1", "zigbee2mqtt:brücke", ""]
 )
 def test_unresolvable_keys_fail_open(session: Session, key: str) -> None:
     notice = _notice(key, NOTICE_KIND_SENSOR_FAULT)

@@ -211,7 +211,7 @@
         <details class="rounded-lg border" bind:open={openGroups.notify}>
           <summary class="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold">{@render groupHead('Benachrichtigungen', 'notify')}</summary>
           <div class="space-y-4 px-3 pt-1 pb-4">
-            <ToggleRow id={idOf('fault_notifications_enabled')} label="Ausfallbenachrichtigungen" description="Meldet Störungen dieses Raums nach außen. Ausgeschaltet entfällt nur die Benachrichtigung; die Störung bleibt in der Oberfläche, im Schaltprotokoll und in Home Assistant sichtbar." bind:checked={draft.fault_notifications} error={err('fault_notifications_enabled')} />
+            <ToggleRow id={idOf('fault_notifications_enabled')} label="Ausfallbenachrichtigungen" description="Meldet Störungen dieses Raums nach außen. Ausgeschaltet entfällt nur die Benachrichtigung; die Störung bleibt in der Oberfläche und im Schaltprotokoll sichtbar; Home Assistant wird davon nicht berührt." bind:checked={draft.fault_notifications} error={err('fault_notifications_enabled')} />
             <p class="mb-0 text-sm text-muted-foreground">Gilt für Sensorstörung, Notbetrieb, festhängenden Messwert, offenes Fenster und gescheiterte Schaltbefehle. Anlagenweite Meldungen und Mieter-Meldungen bleiben davon unberührt; der anlagenweite Schalter in den Anlageneinstellungen gilt zusätzlich.</p>
           </div>
         </details>

@@ -14,11 +14,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Beim Upgrade zu wissen
 
 - **Eine Migration** (`e9b4c27a1f60`): neue Spalte `zone.fault_notifications_enabled` (ja/nein, Vorgabe **an**). Bestehende Räume behalten ihr Verhalten, es ändert sich nichts, solange der Schalter nicht umgelegt wird. Rückwärts entfällt die Spalte wieder.
-- **MCP:** ein neues Werkzeug (`set_fault_notifications`), damit sind es 28. Es schreibt ins Änderungsprotokoll und braucht `zone.manage`; das ist das erste schreibende MCP-Werkzeug für Räume.
+- **MCP:** ein neues Werkzeug (`set_fault_notifications`), damit sind es 28. Es schreibt ins Änderungsprotokoll und braucht `zone.manage`.
 
 ### Neu
 
-- **Schalter je Raum für Ausfallbenachrichtigungen.** Wer einen Raum ändern darf (`zone.manage`), kann dessen Störungsmeldungen abschalten, in der Raumtechnik unter „Benachrichtigungen", per REST (`fault_notifications_enabled` an `/api/v1/zones`) und per MCP. Betroffen sind Sensorstörung, Notbetrieb samt Entwarnung, festhängender Messwert, Fenster-Alarm und „Schaltbefehl gescheitert". **Es entfällt nur die Benachrichtigung (Webhook):** die Störung bleibt in der Oberfläche, im Schaltprotokoll und in Home Assistant sichtbar; das Audit führt eine so unterdrückte Meldung als `suppressed`. Anlagenweite Meldungen (Brücke/Broker) und Mieter-Problemmeldungen bleiben unberührt, der anlagenweite Schalter der Meldungsart gilt zusätzlich.
+- **Schalter je Raum für Ausfallbenachrichtigungen.** Wer einen Raum ändern darf (`zone.manage`), kann dessen Störungsmeldungen abschalten, in der Raumtechnik unter „Benachrichtigungen", per REST (`fault_notifications_enabled` an `/api/v1/zones`) und per MCP. Betroffen sind Sensorstörung, Notbetrieb samt Entwarnung, festhängender Messwert, Fenster-Alarm und „Schaltbefehl gescheitert". **Es entfällt nur die Benachrichtigung (Webhook):** die Störung bleibt in der Oberfläche und im Schaltprotokoll sichtbar, Home Assistant wird nicht berührt; das Audit führt eine so unterdrückte Meldung als `suppressed`. Anlagenweite Meldungen (Brücke/Broker) und Mieter-Problemmeldungen bleiben unberührt, der anlagenweite Schalter der Meldungsart gilt zusätzlich.
 - **Im Zweifel wird zugestellt.** Ist ein Gerät keinem Raum als Aktor zugeordnet oder lässt sich die Zuordnung nicht lesen, kommt die Meldung wie bisher. Hängt ein Gerät an mehreren Räumen, entfällt sie nur, wenn alle diese Räume abgeschaltet sind.
 - **Grenze bei Notbetrieb:** Wird der Schalter mitten in einer Störung umgelegt, entscheidet jede Meldung einzeln zum Versandzeitpunkt (wie beim anlagenweiten Schalter). Wer nach einer Störung abschaltet, bekommt keine Entwarnung; wer währenddessen wieder anschaltet, bekommt die Entwarnung ohne die vorherige Störungsmeldung.
 

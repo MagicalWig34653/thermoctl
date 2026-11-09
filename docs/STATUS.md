@@ -311,7 +311,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   `notbetrieb:`-Schlüssel). Wer den Webhook stilllegt, verliert den Problemsensor in Home Assistant nicht.
 - **Schalter je Raum** (`zone.fault_notifications_enabled`, Vorgabe an, Recht `zone.manage`; UI, REST, MCP `set_fault_notifications`): unterdrückt nur die
   Webhook-Zustellung der Störungsmeldungen des Raums (Sensor, Notbetrieb samt Entwarnung, festhängender Messwert, Fenster-Alarm, Schaltbefehl);
-  Anzeige, Audit (`suppressed`) und Home Assistant bleiben. Auflösung Meldung → Räume in `services/notice_routing.py`, fail-open (nicht auffindbar =
+  Anzeige und Audit (`suppressed`) bleiben, Home Assistant wird nicht berührt (Notbetrieb und Schaltbefehl gehen ohnehin nicht dorthin). Auflösung Meldung → Räume in `services/notice_routing.py`, fail-open (nicht auffindbar =
   zustellen); Gerät in mehreren Räumen: nur unterdrückt, wenn alle abgeschaltet sind. Mitten in einer Episode umgelegt: jede Meldung wird einzeln
   zum Versandzeitpunkt entschieden (Entwarnung ohne Störungsmeldung oder umgekehrt möglich, ohne Merker). Noch nicht an der Anlage abgenommen.
 - Sechs Meldungsarten sind anlagenweit einzeln abschaltbar (Sensorstörung, Brücke/Broker weg, Schaltbefehl

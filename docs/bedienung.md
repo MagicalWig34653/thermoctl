@@ -311,7 +311,7 @@ lässt sich für einen einzelnen Raum einstellen, ob Störungen dieses Raums gem
 (Vorgabe: an). Steht der Schalter auf aus, entfällt **nur die Benachrichtigung** (Webhook): Sensorstörung,
 Notbetrieb, festhängender Messwert, offenes Fenster und gescheiterte Schaltbefehle an Geräte dieses
 Raums werden dann nicht mehr hinausgeschickt. Die Störung selbst bleibt sichtbar — in der Oberfläche,
-im Schaltprotokoll und in Home Assistant; das Audit-Log verzeichnet die Meldung als unterdrückt.
+im Schaltprotokoll; Home Assistant wird vom Schalter nicht berührt. Das Audit-Log verzeichnet die Meldung als unterdrückt.
 Anlagenweite Meldungen (Brücke/Broker) und Problemmeldungen aus einer Wohnung sind davon nicht
 betroffen, und die Schalter unter Meldungen gelten zusätzlich: Eine Meldung kommt nur, wenn beide an
 sind. Ist ein Gerät mehreren Räumen zugeordnet, wird die Meldung zu seinem Schaltbefehl nur
