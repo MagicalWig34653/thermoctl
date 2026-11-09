@@ -21,6 +21,7 @@ from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import Device, DeviceCapabilityLink
+from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.device_assignment import source_device_ids
@@ -809,3 +810,95 @@ def test_a_bad_sensor_list_is_rejected_and_writes_nothing(
             json={**base, "name": zone.name, "temperature_source_device_id": good.id},
         )
         assert legacy_put.status_code == 422
+
+
+def _zone_body(mode_id: int, name: str, **extra: object) -> dict[str, object]:
+    return {"name": name, "display_name": name.capitalize(), "operating_mode_id": mode_id, **extra}
+
+
+def test_rest_zone_fault_notification_switch_defaults_on_and_null_leaves_it(
+    client: TestClient, session: Session, api_token
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    head = api_token([("zone.read", None), ("zone.manage", None)])
+    mode = operating_mode(session)
+    created = client.post("/api/v1/zones", headers=head, json=_zone_body(mode.id, "melde-a"))
+    assert created.status_code == 201
+    assert created.json()["fault_notifications_enabled"] is True
+    zone_id = created.json()["id"]
+    url = f"/api/v1/zones/{zone_id}"
+
+    off = client.put(
+        url, headers=head, json=_zone_body(mode.id, "melde-a", fault_notifications_enabled=False)
+    )
+    assert off.status_code == 200
+    assert off.json()["fault_notifications_enabled"] is False
+    assert client.get(url, headers=head).json()["fault_notifications_enabled"] is False
+    listed = client.get("/api/v1/zones", headers=head).json()
+    assert [z["fault_notifications_enabled"] for z in listed] == [False]
+
+    # Fehlend und `null` lassen den Schalter unverändert.
+    for body in (
+        _zone_body(mode.id, "melde-a"),
+        _zone_body(mode.id, "melde-a", fault_notifications_enabled=None),
+    ):
+        kept = client.put(url, headers=head, json=body)
+        assert kept.status_code == 200
+        assert kept.json()["fault_notifications_enabled"] is False
+
+    on = client.put(
+        url, headers=head, json=_zone_body(mode.id, "melde-a", fault_notifications_enabled=True)
+    )
+    assert on.json()["fault_notifications_enabled"] is True
+
+
+def test_rest_zone_can_be_created_with_the_switch_off_and_it_is_audited(
+    client: TestClient, session: Session, api_token
+) -> None:
+    create_settings(session)
+    source(session, "api")
+    source(session, "web")
+    head = api_token([("zone.read", None), ("zone.manage", None)])
+    mode = operating_mode(session)
+    created = client.post(
+        "/api/v1/zones",
+        headers=head,
+        json=_zone_body(mode.id, "melde-b", fault_notifications_enabled=False),
+    )
+    assert created.status_code == 201
+    assert created.json()["fault_notifications_enabled"] is False
+    summaries = [
+        e.summary
+        for e in session.query(AuditEvent).filter(AuditEvent.object_type == "zone_settings")
+    ]
+    assert summaries == ["Ausfallbenachrichtigungen für Zone 'Melde-b' auf „aus“ gestellt"]
+
+
+def test_rest_zone_fault_notification_switch_rejects_a_non_boolean_and_needs_zone_manage(
+    client: TestClient, session: Session, api_token
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    mode = operating_mode(session)
+    manager = api_token([("zone.read", None), ("zone.manage", None)])
+    zone_id = client.post(
+        "/api/v1/zones", headers=manager, json=_zone_body(mode.id, "melde-c")
+    ).json()["id"]
+    bad = client.put(
+        f"/api/v1/zones/{zone_id}",
+        headers=manager,
+        json=_zone_body(mode.id, "melde-c", fault_notifications_enabled="vielleicht"),
+    )
+    assert bad.status_code == 422
+
+    reader = api_token([("zone.read", None)])
+    denied = client.put(
+        f"/api/v1/zones/{zone_id}",
+        headers=reader,
+        json=_zone_body(mode.id, "melde-c", fault_notifications_enabled=False),
+    )
+    assert denied.status_code == 403
+    assert client.get(f"/api/v1/zones/{zone_id}", headers=reader).json()[
+        "fault_notifications_enabled"
+    ] is True

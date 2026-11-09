@@ -1071,11 +1071,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `e7a3c15b9d28` (Vorlagen), then `a8d4f12c6e53` (Aufbewahrung des
     # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen), then
     # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone), then `d4a8e1b73c52`
-    # (Laufindizes des Schattenprotokolls) -- every time the
+    # (Laufindizes des Schattenprotokolls), then `e9b4c27a1f60`
+    # (`zone.fault_notifications_enabled`) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["d4a8e1b73c52"]
+    assert scripts.get_heads() == ["e9b4c27a1f60"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1534,5 +1535,52 @@ def test_activation_migration_switches_every_existing_zone_on_and_back_off(
             name: value[1:] for name, value in before.items()
         }
         assert set(downgraded) == set(zones)
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_fault_notifications_migration_keeps_existing_zones_on_and_back(
+    migrations_database_url: str,
+) -> None:
+    """Eine Zone aus der Zeit vor der Spalte bekommt "an" (bisheriges Verhalten);
+    zurück fällt die Spalte wieder weg."""
+    reset = _alembic(migrations_database_url, "downgrade", "base")
+    assert reset.returncode == 0, reset.stderr
+    before = _alembic(migrations_database_url, "upgrade", "d4a8e1b73c52")
+    assert before.returncode == 0, before.stderr
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            assert "fault_notifications_enabled" not in {
+                column["name"] for column in sa.inspect(connection).get_columns("zone")
+            }
+            operating_mode_id = connection.execute(
+                text("SELECT id FROM operating_mode ORDER BY id LIMIT 1")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone "
+                    "(name, display_name, operating_mode_id, sort_order, created_at, updated_at) "
+                    "VALUES ('alt', 'Alt', :mode_id, 0, "
+                    "'2026-11-09 10:00:00', '2026-11-09 10:00:00')"
+                ),
+                {"mode_id": operating_mode_id},
+            )
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            enabled = connection.execute(
+                text("SELECT fault_notifications_enabled FROM zone WHERE name = 'alt'")
+            ).scalar_one()
+        assert bool(enabled) is True
+        down = _alembic(migrations_database_url, "downgrade", "d4a8e1b73c52")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            assert "fault_notifications_enabled" not in {
+                column["name"] for column in sa.inspect(connection).get_columns("zone")
+            }
+        again = _alembic(migrations_database_url, "upgrade", "head")
+        assert again.returncode == 0, again.stderr
     finally:
         db_engine.dispose()

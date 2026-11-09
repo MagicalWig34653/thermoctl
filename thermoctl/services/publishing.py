@@ -66,7 +66,6 @@ from thermoctl.domain.fault import OK
 from thermoctl.domain.fault_notice import (
     FaultNotice,
     command_failure_notice,
-    notification_audit_action,
 )
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
@@ -127,6 +126,7 @@ from thermoctl.services.device_commands import (
 from thermoctl.services.emergency_prior import entry_prior_hint
 from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.meross_session import invalidate as invalidate_meross_session
+from thermoctl.services.notice_routing import notification_audit_action_for
 from thermoctl.services.shadow_run import derive_switch_phase_started_at, zone_actuator_assignments
 
 # Stages in which a zone's actuators are governed by the Notbetrieb vorrangtabelle
@@ -209,10 +209,11 @@ def _note_command_outcome(
     disarmed plant must not silently clear -- or raise -- an alert about hardware it
     never touched.
 
-    `setting_row` decides the audit action via `notification_audit_action` --
-    "sent" only when the notice kind is actually switched on, "suppressed"
-    otherwise. The audit entry itself is still written either way: that the
-    command failed belongs in the log regardless of whether anyone was told.
+    `setting_row` and the zones of `device` decide the audit action via
+    `notification_audit_action_for` -- "sent" only when the notice kind and the
+    zone switch(es) are on, "suppressed" otherwise. The audit entry itself is still
+    written either way: that the command failed belongs in the log regardless of
+    whether anyone was told.
     """
     if outcome == SUPPRESSED:
         return
@@ -226,7 +227,7 @@ def _note_command_outcome(
         audit.record(
             session,
             source="system",
-            action=notification_audit_action(notice.kind, setting_row),
+            action=notification_audit_action_for(session, notice, setting_row),
             object_type="fault",
             object_id=notice.key,
             summary=notice.title,

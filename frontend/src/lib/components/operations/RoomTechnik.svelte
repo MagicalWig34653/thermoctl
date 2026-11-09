@@ -57,6 +57,7 @@
     valve_protection_enabled: 'valve', valve_protection_interval_days: 'valve', valve_protection_duration_minutes: 'valve',
     pi_enabled: 'pi', pi_confirm: 'pi', pi_gain_per_k: 'pi', pi_integral_time_minutes: 'pi', pi_min_on_seconds: 'pi', pi_min_off_seconds: 'pi',
     window_temp_drop_detection_enabled: 'window',
+    fault_notifications_enabled: 'notify',
     sensor_failure_enabled: 'emergency', sensor_failure_profile_id: 'emergency', sensor_failure_emergency_setpoint_c: 'emergency',
   };
   const groupOf = (field: string) => (field.startsWith('backup_offset_') ? 'offsets' : (GROUP_OF[field] ?? 'control'));
@@ -204,6 +205,14 @@
               {#if err('sensor_failure_profile_id')}<p class="mt-1 mb-0 text-sm text-destructive">{err('sensor_failure_profile_id')}</p>{/if}
             </div>
             <NumField id={idOf('sensor_failure_emergency_setpoint_c')} label="Notsollwert" unit="°C" help="emergency_setpoint" bind:value={draft.sensor_failure.emergency_setpoint_c} placeholder={toInput(params.sensor_failure.effective_emergency_setpoint_c)} hint={`Leer = erbt. Wirksam: ${toInput(params.sensor_failure.effective_emergency_setpoint_c)} °C`} error={err('sensor_failure_emergency_setpoint_c')} />
+          </div>
+        </details>
+
+        <details class="rounded-lg border" bind:open={openGroups.notify}>
+          <summary class="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold">{@render groupHead('Benachrichtigungen', 'notify')}</summary>
+          <div class="space-y-4 px-3 pt-1 pb-4">
+            <ToggleRow id={idOf('fault_notifications_enabled')} label="Ausfallbenachrichtigungen" description="Meldet Störungen dieses Raums nach außen. Ausgeschaltet entfällt nur die Benachrichtigung; die Störung bleibt in der Oberfläche, im Schaltprotokoll und in Home Assistant sichtbar." bind:checked={draft.fault_notifications} error={err('fault_notifications_enabled')} />
+            <p class="mb-0 text-sm text-muted-foreground">Gilt für Sensorstörung, Notbetrieb, festhängenden Messwert, offenes Fenster und gescheiterte Schaltbefehle. Anlagenweite Meldungen und Mieter-Meldungen bleiben davon unberührt; der anlagenweite Schalter in den Anlageneinstellungen gilt zusätzlich.</p>
           </div>
         </details>
 

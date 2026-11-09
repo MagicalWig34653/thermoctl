@@ -293,7 +293,7 @@ Siehe auch: [API-Token](#api-token), [Anlagensicht und Wohnungssicht](#oberflaec
 
 *Betrieb* — Hinweise, die thermoctl bei Störungen an ein Ziel wie einen Webhook schicken kann.
 
-Es gibt sechs Arten, die sich einzeln wählen lassen: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Die Auswahl steht in den Regelvorgaben unter Meldungen; wohin eine Meldung geht, steht unter Schnittstellen.
+Es gibt sechs Arten, die sich einzeln wählen lassen: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Die Auswahl steht in den Regelvorgaben unter Meldungen; wohin eine Meldung geht, steht unter Schnittstellen. Je Raum lassen sich die Meldungen zu dessen Störungen zusätzlich abschalten (Raumtechnik, Gruppe Benachrichtigungen); dann entfällt nur die Benachrichtigung, die Störung bleibt sichtbar.
 
 Auch: Störungsmeldungen, Benachrichtigungen, Webhook, Testmeldung
 

@@ -89,6 +89,7 @@ from thermoctl.domain.zone_settings import (
     save_control_parameters,
     save_sensor_failure_parameters,
     sensor_failure_parameters,
+    set_fault_notifications,
     set_window_temp_drop_detection,
     validate_pi_parameters,
     validate_valve_protection,
@@ -243,6 +244,7 @@ class ParametersOut(BaseModel):
     valve_protection: ValveProtectionOut
     pi: PiOut
     window_temp_drop_detection_enabled: bool
+    fault_notifications_enabled: bool
     sensor_failure: ZoneSensorFailureOut
     #: `null`, wenn dieser Principal die Ausgleichswerte nicht sehen darf (`device.manage`).
     backup_offsets: list[BackupOffsetOut] | None
@@ -285,6 +287,7 @@ class ParametersIn(BaseModel):
     pi_min_on_seconds: Number = None
     pi_min_off_seconds: Number = None
     window_temp_drop_detection_enabled: bool | None = None
+    fault_notifications_enabled: bool | None = None
     sensor_failure_enabled: bool | None = None
     sensor_failure_profile_id: int | None = None
     sensor_failure_emergency_setpoint_c: Number = None
@@ -367,6 +370,7 @@ def _parameters(session: Session, principal: Principal, zone: Zone) -> Parameter
             limits={name: _limit(name) for name in PI_FELDER},
         ),
         window_temp_drop_detection_enabled=zone.window_temp_drop_detection_enabled,
+        fault_notifications_enabled=zone.fault_notifications_enabled,
         sensor_failure=ZoneSensorFailureOut(
             own_enabled=zone.sensor_failure_enabled,
             own_profile_id=zone.sensor_failure_profile_id,
@@ -466,6 +470,11 @@ def save_parameters(
         if body.window_temp_drop_detection_enabled is None
         else body.window_temp_drop_detection_enabled
     )
+    fault_notifications = (
+        zone.fault_notifications_enabled
+        if body.fault_notifications_enabled is None
+        else body.fault_notifications_enabled
+    )
     sensor_failure_enabled = (
         zone.sensor_failure_enabled
         if body.sensor_failure_enabled is None
@@ -562,6 +571,13 @@ def save_parameters(
                 session,
                 zone,
                 window_drop,
+                user_id=principal.user_id,
+                token_id=principal.token_id,
+            )
+            set_fault_notifications(
+                session,
+                zone,
+                fault_notifications,
                 user_id=principal.user_id,
                 token_id=principal.token_id,
             )

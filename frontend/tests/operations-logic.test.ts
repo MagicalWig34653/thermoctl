@@ -114,6 +114,22 @@ test('PI einschalten sendet die Bestätigung mit, Ausschalten nicht; leere PI-Fe
   assert.deepEqual(buildParametersPatch(on, d2), { pi_enabled: false });
 });
 
+test('Ausfallbenachrichtigungen: Schalter geht nur bei Änderung mit und stimmt mit dem Entwurf überein', () => {
+  const p = parameters();
+  const d = draftFromParameters(p);
+  assert.equal(d.fault_notifications, true);
+  assert.deepEqual(buildParametersPatch(p, d), {});
+  d.fault_notifications = false;
+  const patch = buildParametersPatch(p, d);
+  assert.deepEqual(patch, { fault_notifications_enabled: false });
+  assert.deepEqual(patchedFields(patch), ['fault_notifications_enabled']);
+  const off = parameters({ fault_notifications_enabled: false });
+  const d2 = draftFromParameters(off);
+  assert.equal(d2.fault_notifications, false);
+  d2.fault_notifications = true;
+  assert.deepEqual(buildParametersPatch(off, d2), { fault_notifications_enabled: true });
+});
+
 test('Notbetrieb der Zone: Profil und Sollwert erben mit null, nur bei Änderung', () => {
   const p = parameters();
   const d = draftFromParameters(p);

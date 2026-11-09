@@ -150,6 +150,11 @@ def test_every_writing_tool_records_an_entry_for_the_token_of_the_caller(
             "sensor_failure_policy",
             lambda: tools["set_sensor_failure_policy"](zone.id, True),
         ),
+        (
+            "set_fault_notifications",
+            "fault_notifications",
+            lambda: tools["set_fault_notifications"](zone.id, False),
+        ),
     ]
     for tool, change_type, call in calls:
         before = _count(session)
@@ -647,3 +652,51 @@ def test_an_already_effective_revert_is_an_answer_and_keeps_its_mark(tmp_path: P
     with pytest.raises(ToolError, match="wirkungslos"):
         tools["revert_change"](created["change_id"])
     engine.dispose()
+
+
+def test_fault_notification_change_is_listed_reverted_and_a_noop_leaves_no_entry(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_settings(session)
+    source(session, "mcp")
+    zone = create_zone(session, "meldeprotokoll")
+    _row, writer = _issue(
+        session, "melder", [("zone.read", None), ("zone.manage", None), ("audit.read", None)]
+    )
+    tools = _tools(session, monkeypatch, writer)
+
+    unchanged = tools["set_fault_notifications"](zone.id, True)
+    assert unchanged["change_id"] is None and _count(session) == 0
+
+    changed = tools["set_fault_notifications"](zone.id, False)
+    assert zone.fault_notifications_enabled is False
+    entry = _entries(session)[0]
+    assert entry.change_type == "fault_notifications" and entry.revertible
+    listed = tools["list_changes"](change_type="fault_notifications")
+    assert [e["id"] for e in listed] == [changed["change_id"]]
+    assert listed[0]["fields"] == [{"field": "enabled", "before": "true", "after": "false"}]
+
+    result = tools["revert_change"](changed["change_id"])
+    assert result["status"] == "reverted"
+    assert result["fields"] == [{"field": "enabled", "before": "false", "after": "true"}]
+    session.refresh(zone)
+    assert zone.fault_notifications_enabled is True
+
+
+def test_reverting_a_fault_notification_change_needs_zone_manage_and_detects_conflicts(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_settings(session)
+    source(session, "mcp")
+    zone = create_zone(session, "meldekonflikt")
+    _row, writer = _issue(session, "melder2", [("zone.read", None), ("zone.manage", None)])
+    change_id = server.set_fault_notifications(session, writer, zone.id, False)["change_id"]
+    _row, reader = _issue(session, "leser2", [("zone.read", None), ("audit.read", None)])
+    with pytest.raises(ToolError, match="zone.manage"):
+        _tools(session, monkeypatch, reader)["revert_change"](change_id)
+    assert zone.fault_notifications_enabled is False
+
+    zone.fault_notifications_enabled = True  # inzwischen anderweitig umgelegt
+    session.flush()
+    with pytest.raises(ToolError):
+        _tools(session, monkeypatch, writer)["revert_change"](change_id)

@@ -88,6 +88,7 @@ export interface RoomParameters {
   valve_protection: { enabled: boolean; interval_days: number; duration_minutes: number };
   pi: PiParameters;
   window_temp_drop_detection_enabled: boolean;
+  fault_notifications_enabled: boolean;
   sensor_failure: ZoneSensorFailure;
   /** `null`: dieser Zugang darf die Ausgleichswerte nicht sehen (`device.manage`). */
   backup_offsets: BackupOffset[] | null;
@@ -115,6 +116,7 @@ export interface ParametersPatch {
   pi_min_on_seconds?: string;
   pi_min_off_seconds?: string;
   window_temp_drop_detection_enabled?: boolean;
+  fault_notifications_enabled?: boolean;
   sensor_failure_enabled?: boolean;
   sensor_failure_profile_id?: number | null;
   sensor_failure_emergency_setpoint_c?: string | null;

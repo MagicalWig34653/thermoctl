@@ -51,7 +51,6 @@ from thermoctl.domain.fault_notice import (
     emergency_entered_notice,
     emergency_resolved_notice,
     notice_enabled,
-    notification_audit_action,
     sensor_notice,
     stuck_sensor_notice,
     window_alarm_notice,
@@ -95,6 +94,7 @@ from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
 from thermoctl.services.meross_discovery import save_devices as save_meross_devices
 from thermoctl.services.meross_session import MerossSessionCache, ensure_transport
+from thermoctl.services.notice_routing import notice_deliverable, notification_audit_action_for
 from thermoctl.services.publishing import (
     PublicationState,
     _send_zone_state,
@@ -148,7 +148,7 @@ def _audit(session: Session, notice: FaultNotice, setting_row: Setting | None) -
     audit.record(
         session,
         source="system",
-        action=notification_audit_action(notice.kind, setting_row),
+        action=notification_audit_action_for(session, notice, setting_row),
         object_type="fault",
         object_id=notice.key,
         summary=notice.title,
@@ -350,7 +350,8 @@ async def _deliver_emergency_notice(
 ) -> None:
     """Sends one Notbetrieb notice and then, and only then, moves its episode on.
 
-    `send=False` is a notice kind that is switched off (`notice_enabled`): nothing
+    `send=False` is a notice that is switched off (`notice_deliverable`: its kind
+    plant-wide, or the zone's own switch): nothing
     goes out, the episode moves on all the same -- as it always did, there is no
     retry loop for a notice that is off on purpose.
 
@@ -754,7 +755,22 @@ async def _shadow_loop(app: FastAPI) -> None:
                 # `setting_row` is `None` before setup finishes (the `setting` row
                 # does not exist yet); fail open in that case rather than silently
                 # dropping a notice nobody has had the chance to configure yet.
-                enabled = setting_row is None or notice_enabled(notice.kind, setting_row)
+                # The zone's own switch (`zone.fault_notifications_enabled`, resolved
+                # per notice in `services/notice_routing.py`) comes on top of the
+                # plant-wide one and gates exactly the same thing: this delivery.
+                # An emergency episode moves on either way (below), and Home
+                # Assistant is not asked at all.
+                try:
+                    with session_scope(app.state.session_factory) as gate_session:
+                        enabled = notice_deliverable(gate_session, notice, setting_row)
+                except Exception:
+                    # Fail-open: a lookup that breaks must never swallow a fault
+                    # notice (nor abort the notices still to go out this cycle).
+                    log.exception(
+                        "Zonen-Schalter der Meldung nicht lesbar -- sie wird zugestellt",
+                        extra={"schluessel": notice.key},
+                    )
+                    enabled = True
                 emergency = emergency_dispatches.get(notice.key)
                 if emergency is not None:
                     # The episode moves to its final state only after the send

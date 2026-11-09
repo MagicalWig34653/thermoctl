@@ -61,6 +61,7 @@ BOOST = "boost"
 VACATION = "vacation"
 SENSOR_FAILURE_DEFAULTS = "sensor_failure_defaults"
 SENSOR_FAILURE_POLICY = "sensor_failure_policy"
+FAULT_NOTIFICATIONS = "fault_notifications"
 OVERRIDE_CANCEL = "override_cancel"
 VACATION_CANCEL = "vacation_cancel"
 FORCE_DRY_RUN = "force_dry_run"
@@ -73,6 +74,7 @@ CHANGE_TYPES: tuple[str, ...] = (
     VACATION,
     SENSOR_FAILURE_DEFAULTS,
     SENSOR_FAILURE_POLICY,
+    FAULT_NOTIFICATIONS,
     OVERRIDE_CANCEL,
     VACATION_CANCEL,
     FORCE_DRY_RUN,
@@ -709,6 +711,39 @@ def save_sensor_failure_policy(
     return Recorded(None, entry.id if entry is not None else None)
 
 
+def set_fault_notifications(
+    session: Session, actor: Actor, zone: Zone, enabled: bool
+) -> Recorded[bool]:
+    """`zone_settings.set_fault_notifications` mit Protokolleintrag. Gibt den neuen
+    Wert zurück; `change_id` ist `None`, wenn der Schalter schon so stand."""
+    with session.begin_nested():
+        before = canonical(zone.fault_notifications_enabled)
+        zone_settings_domain.set_fault_notifications(
+            session,
+            zone,
+            enabled,
+            user_id=actor.user_id,
+            token_id=actor.token_id,
+            source=actor.source,
+        )
+        after = canonical(zone.fault_notifications_enabled)
+        entry = None
+        if before != after:
+            entry = _record(
+                session,
+                actor,
+                change_type=FAULT_NOTIFICATIONS,
+                zone=zone,
+                object_ref=None,
+                summary=(
+                    f"Ausfallbenachrichtigungen der Zone „{zone.display_name}“ "
+                    + ("auf „an“ gestellt" if enabled else "auf „aus“ gestellt")
+                ),
+                changes=[("enabled", before, after)],
+            )
+    return Recorded(zone.fault_notifications_enabled, entry.id if entry is not None else None)
+
+
 # --- Lesen ----------------------------------------------------------------------------------
 
 
@@ -876,6 +911,7 @@ _REVERT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     VACATION: ("vacation.manage",),
     SENSOR_FAILURE_DEFAULTS: ("setting.manage",),
     SENSOR_FAILURE_POLICY: ("zone.manage",),
+    FAULT_NOTIFICATIONS: ("zone.manage",),
     OVERRIDE_CANCEL: ("override.cancel",),
     VACATION_CANCEL: ("vacation.manage",),
     FORCE_DRY_RUN: ("control.disarm",),
@@ -1151,6 +1187,22 @@ def _revert_sensor_failure_policy(ctx: _Context) -> list[Change] | None:
     return [(n, current.get(n), after.get(n)) for n in names]
 
 
+def _revert_fault_notifications(ctx: _Context) -> list[Change] | None:
+    zone = ctx.require_zone()
+    current = {"enabled": canonical(zone.fault_notifications_enabled)}
+    _check_conflicts(current, ctx.fields, ctx.force)
+    actor = ctx.actor
+    zone_settings_domain.set_fault_notifications(
+        ctx.session,
+        zone,
+        ctx.fields[0].before_value == "true",
+        user_id=actor.user_id,
+        token_id=actor.token_id,
+        source=actor.source,
+    )
+    return [("enabled", current["enabled"], canonical(zone.fault_notifications_enabled))]
+
+
 _REVERTERS: dict[str, Callable[[_Context], list[Change] | None]] = {
     CONTROL_PARAMETER: _revert_control_parameter,
     SCHEDULE_POINT: _revert_schedule_point,
@@ -1159,6 +1211,7 @@ _REVERTERS: dict[str, Callable[[_Context], list[Change] | None]] = {
     VACATION: _revert_vacation,
     SENSOR_FAILURE_DEFAULTS: _revert_sensor_failure_defaults,
     SENSOR_FAILURE_POLICY: _revert_sensor_failure_policy,
+    FAULT_NOTIFICATIONS: _revert_fault_notifications,
 }
 
 

@@ -120,6 +120,7 @@ from thermoctl.domain.zone_settings import (
     save_control_parameters,
     save_sensor_failure_parameters,
     sensor_failure_parameters,
+    set_fault_notifications,
     set_parameter,
 )
 from thermoctl.domain.zones import ZoneNameTaken, create_zone, delete_zone, update_zone
@@ -248,6 +249,22 @@ def _replace_sensors(
         add_temperature_source(session, zone_obj, device, actor_id=principal.user_id)
 
 
+def _set_fault_notifications(
+    session: Session, zone_obj: Zone, principal: Principal, enabled: bool | None
+) -> None:
+    """`None` (omitted or `null`) leaves the zone's switch as it is."""
+    if enabled is None:
+        return
+    set_fault_notifications(
+        session,
+        zone_obj,
+        enabled,
+        user_id=principal.user_id,
+        token_id=principal.token_id,
+        source="api",
+    )
+
+
 @router.get("/zones", response_model=list[ZoneResponse])
 def zones(
     session: Annotated[Session, Depends(get_session)],
@@ -272,13 +289,16 @@ def create_zone_view(
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
     _permission(principal, "zone.manage")
-    fields = data.model_dump(exclude={"temperature_source_device_ids"})
+    fields = data.model_dump(
+        exclude={"temperature_source_device_ids", "fault_notifications_enabled"}
+    )
     sensors = _checked_sensors(session, data.temperature_source_device_ids)
     try:
         created = create_zone(session, principal, **fields)
     except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
     _replace_sensors(session, created, principal, sensors)
+    _set_fault_notifications(session, created, principal, data.fault_notifications_enabled)
     return created
 
 
@@ -291,13 +311,16 @@ def save_zone(
 ) -> Zone:
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "zone.manage", zone_id)
-    fields = data.model_dump(exclude={"temperature_source_device_ids"})
+    fields = data.model_dump(
+        exclude={"temperature_source_device_ids", "fault_notifications_enabled"}
+    )
     sensors = _checked_sensors(session, data.temperature_source_device_ids)
     try:
         update_zone(session, zone_obj, principal, **fields)
     except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
     _replace_sensors(session, zone_obj, principal, sensors)
+    _set_fault_notifications(session, zone_obj, principal, data.fault_notifications_enabled)
     return zone_obj
 
 

@@ -1722,3 +1722,78 @@ def test_secrets_are_never_part_of_any_output_model() -> None:
     names.discard("webhook_configured")  # nur das Flag, nie der Wert
     for forbidden in ("password", "passwort", "secret", "token", "webhook", "api_key"):
         assert not any(forbidden in name for name in names), forbidden
+
+
+# -- Raumtechnik: Ausfallbenachrichtigungen ------------------------------------------------
+
+
+def test_parameters_show_the_fault_notification_switch_default_on(
+    client_als: Als, session: Session
+) -> None:
+    _, zone = _anlage(session)
+    body = client_als(ALLES).get(f"/ui-api/rooms/{zone.id}/parameters").json()
+    assert body["fault_notifications_enabled"] is True
+
+
+def _switch_events(session: Session) -> list[str]:
+    return [
+        e.summary
+        for e in _ereignisse(session, "zone_settings")
+        if "Ausfallbenachrichtigungen" in e.summary
+    ]
+
+
+def test_fault_notification_switch_is_saved_audited_and_only_when_sent(
+    client_als: Als, session: Session
+) -> None:
+    _, zone = _anlage(session)
+    client = client_als(ALLES)
+    off = _call(
+        client, "PUT", f"/ui-api/rooms/{zone.id}/parameters", {"fault_notifications_enabled": False}
+    )
+    assert off.status_code == 200, off.text
+    assert off.json()["fault_notifications_enabled"] is False
+    session.refresh(zone)
+    assert zone.fault_notifications_enabled is False
+    assert _switch_events(session) == [
+        f"Ausfallbenachrichtigungen für Zone '{zone.display_name}' auf „aus“ gestellt"
+    ]
+    # Ein anderes Feld allein lässt den Schalter, wie er ist, und protokolliert ihn nicht erneut.
+    other = _call(client, "PUT", f"/ui-api/rooms/{zone.id}/parameters", {"min_on_seconds": 420})
+    assert other.json()["fault_notifications_enabled"] is False
+    assert len(_switch_events(session)) == 1
+    back = _call(
+        client, "PUT", f"/ui-api/rooms/{zone.id}/parameters", {"fault_notifications_enabled": True}
+    )
+    assert back.json()["fault_notifications_enabled"] is True
+    assert len(_switch_events(session)) == 2
+
+
+def test_fault_notification_switch_needs_zone_manage(client_als: Als, session: Session) -> None:
+    _, zone = _anlage(session)
+    client = client_als(LESEN)
+    _fehler(
+        _call(
+            client,
+            "PUT",
+            f"/ui-api/rooms/{zone.id}/parameters",
+            {"fault_notifications_enabled": False},
+        ),
+        403,
+        "forbidden",
+    )
+    session.refresh(zone)
+    assert zone.fault_notifications_enabled is True
+
+
+def test_fault_notification_switch_rejects_a_non_boolean(
+    client_als: Als, session: Session
+) -> None:
+    _, zone = _anlage(session)
+    response = _call(
+        client_als(ALLES),
+        "PUT",
+        f"/ui-api/rooms/{zone.id}/parameters",
+        {"fault_notifications_enabled": "vielleicht"},
+    )
+    assert response.status_code == 422
