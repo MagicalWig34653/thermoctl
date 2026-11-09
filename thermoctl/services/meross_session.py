@@ -174,6 +174,18 @@ def record_rejection(cache: MerossSessionCache, now: datetime, error: MerossErro
     cache.next_backoff = min(cache.next_backoff * BACKOFF_MULTIPLIER, BACKOFF_MAX)
 
 
+def record_network_failure(cache: MerossSessionCache, now: datetime, error: OSError) -> None:
+    """Short backoff after a sign-in that never reached the cloud (DNS, timeout, reset).
+
+    Deliberately not `record_rejection()`: that one escalates towards `BACKOFF_MAX` for
+    an account-side limit, and a network outage is not the account's fault -- waiting
+    thirty minutes after the line is back would only keep the actuators off longer.
+    Always the initial delay, never doubled, so `next_backoff` is left alone.
+    """
+    cache.last_rejection = f"{type(error).__name__}: {error}"
+    cache.retry_after = now + BACKOFF_INITIAL
+
+
 def record_success(cache: MerossSessionCache) -> None:
     """A working sign-in proves the account and the cloud-side limit are fine again.
 
@@ -276,6 +288,22 @@ async def ensure_transport(
         cache.expires_at = None
         cache.invalid = False
         record_rejection(cache, now, exc)
+        return None
+    except OSError as exc:
+        # `urllib.error.URLError` (DNS failure, refused connection) and `TimeoutError`
+        # are `OSError`s and are not wrapped in `MerossError` by the transport. Left
+        # uncaught they escaped into `app.py::_shadow_loop`, which runs this *before*
+        # `cycle()` -- one internet outage then stopped regulation for every zone.
+        log.error(
+            "Meross-Anmeldung nicht erreichbar (Netzfehler) -- Aktoren bleiben "
+            "diesen Zyklus unerreichbar",
+            extra={"grund": f"{type(exc).__name__}: {exc}"},
+        )
+        cache.connection = None
+        cache.http_session = None
+        cache.expires_at = None
+        cache.invalid = False
+        record_network_failure(cache, now, exc)
         return None
 
     cache.connection = connection
