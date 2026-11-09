@@ -52,6 +52,7 @@ from thermoctl.domain.pi_control import (
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
     RESET_REASON_SENSOR_FAILURE,
+    RESET_REASON_TIME_GAP,
     RESET_REASON_VALVE_PROTECTION,
     RESET_REASON_WINDOW_OPEN,
     WINDOW_SECONDS,
@@ -592,6 +593,76 @@ class TestSafeStart:
             row = _row_for(shadow_run.cycle(session, now), zone)
         assert row.effective_controller == "pi"
         assert row.pi_candidate_would_heat is not None
+
+
+class TestTimeGapFreezesTheIntegral:
+    """Entscheidung des Projektinhabers (Vorfall 2026-11-09): eine Zeitluecke
+    (mehr als zwei erwartete Zyklen seit der letzten Auswertung) verwirft den
+    Integralanteil nicht, sondern friert ihn ein -- sichtbar im Protokoll und in
+    `zone_state`. Die Sicherheits-Gates setzen weiterhin zurueck (siehe
+    `TestPrecedenceRulesBeatPi`)."""
+
+    def _build_integral(self, session: Session, zone: Zone) -> tuple[datetime, Decimal]:
+        now = NOW
+        for _ in range(5):
+            shadow_run.cycle(session, now)
+            now += timedelta(seconds=60)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        assert state.pi_integral > 0
+        return now, state.pi_integral
+
+    def test_a_gap_keeps_the_integral_and_says_so(self, session: Session) -> None:
+        zone = _pi_zone(session, "luecke-haelt", measured_c=COLD_C)
+        now, integral = self._build_integral(session, zone)
+
+        now += timedelta(hours=1)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.measured_at = now  # fresh reading: only the gap is under test
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, now), zone)
+
+        assert row.pi_reset_reason == RESET_REASON_TIME_GAP
+        assert row.controller_fallback_reason == RESET_REASON_TIME_GAP
+        assert row.effective_controller == "hysteresis"
+        assert row.pi_integrator_action == INTEGRATOR_HOLD
+        assert row.pi_integral_before == integral
+        assert row.pi_integral_after == integral  # nothing integrated over the gap
+        assert state.pi_integral == integral
+        assert state.pi_window_duty is None  # the window itself does start over
+        assert state.pi_last_evaluated_at == now
+
+    def test_pi_regulates_on_with_the_preserved_integral(self, session: Session) -> None:
+        zone = _pi_zone(session, "luecke-weiter", measured_c=COLD_C)
+        now, integral = self._build_integral(session, zone)
+        now += timedelta(hours=1)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.measured_at = now
+        session.flush()
+        shadow_run.cycle(session, now)  # the gap cycle
+
+        now += timedelta(seconds=60)
+        state.measured_at = now
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, now), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_integral_before == integral
+        assert row.pi_integral_after > integral  # 3K below setpoint: integrates again
+
+    def test_a_first_evaluation_has_no_integral_to_keep(self, session: Session) -> None:
+        zone = _pi_zone(session, "luecke-erst", measured_c=COLD_C)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.pi_last_evaluated_at = None
+        state.pi_integral = Decimal("0.5")
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_TIME_GAP
+        assert row.pi_integrator_action == INTEGRATOR_RESET
+        assert row.pi_integral_after == 0
+        assert state.pi_integral == 0
 
 
 class TestPrecedenceRulesBeatPi:
