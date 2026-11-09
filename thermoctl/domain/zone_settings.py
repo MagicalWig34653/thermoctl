@@ -224,6 +224,42 @@ def set_window_temp_drop_detection(
     )
 
 
+def set_fault_notifications(
+    session: Session,
+    zone: Zone,
+    enabled: bool,
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """The per-zone switch for failure notifications (default on).
+
+    Only the *delivery* of this zone's fault notices (webhook) depends on it --
+    see `Zone.fault_notifications_enabled` and `services/notice_routing.py`. Like
+    `set_window_temp_drop_detection` its own small function with its own audit
+    entry, so web, REST and MCP change it the same way under the same right
+    (`zone.manage`, checked by the adapter) and a change that sets the value it
+    already has writes nothing.
+    """
+    if zone.fault_notifications_enabled == enabled:
+        return
+    zone.fault_notifications_enabled = enabled
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="zone_settings",
+        object_id=str(zone.id),
+        summary=(
+            f"Ausfallbenachrichtigungen für Zone '{zone.display_name}' "
+            + ("auf „an“ gestellt" if enabled else "auf „aus“ gestellt")
+        ),
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
 def save_control_parameters(
     session: Session,
     zone: Zone,

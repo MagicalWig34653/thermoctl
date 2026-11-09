@@ -124,6 +124,7 @@ export interface ParametersDraft {
     min_off_seconds: string;
   };
   window_temp_drop: boolean;
+  fault_notifications: boolean;
   /** `profile_id` und `emergency_setpoint_c`: leer = erbt. */
   sensor_failure: { enabled: boolean; profile_id: string; emergency_setpoint_c: string };
   /** Leer = Ausgleichswert entfernen. */
@@ -153,6 +154,7 @@ export function draftFromParameters(p: RoomParameters): ParametersDraft {
       min_off_seconds: String(p.pi.min_off_seconds),
     },
     window_temp_drop: p.window_temp_drop_detection_enabled,
+    fault_notifications: p.fault_notifications_enabled,
     sensor_failure: {
       enabled: p.sensor_failure.own_enabled,
       profile_id: p.sensor_failure.own_profile_id === null ? '' : String(p.sensor_failure.own_profile_id),
@@ -213,6 +215,9 @@ export function buildParametersPatch(p: RoomParameters, d: ParametersDraft): Par
   }
   if (d.window_temp_drop !== p.window_temp_drop_detection_enabled) {
     patch.window_temp_drop_detection_enabled = d.window_temp_drop;
+  }
+  if (d.fault_notifications !== p.fault_notifications_enabled) {
+    patch.fault_notifications_enabled = d.fault_notifications;
   }
   const sf = p.sensor_failure;
   if (d.sensor_failure.enabled !== sf.own_enabled) patch.sensor_failure_enabled = d.sensor_failure.enabled;

@@ -1,5 +1,6 @@
 """Pure derivation of fault notices from state transitions."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -73,7 +74,38 @@ class FaultNotice:
 NOTICE_KIND_EMERGENCY = NOTICE_KIND_SENSOR_FAULT
 
 
-def notice_enabled(kind: str, settings: Setting) -> bool:
+#: Die Meldungsarten, die zu genau einem Raum gehören und sich deshalb über den
+#: Raum-Schalter `zone.fault_notifications_enabled` abschalten lassen. Bewusst eine
+#: Liste der betroffenen Arten und nicht der ausgenommenen: eine künftige neue Art
+#: bleibt so zugestellt, bis jemand entscheidet, dass sie zu einem Raum gehört.
+#: Nicht darunter: die Brücke (anlagenweit) und die Mietermeldung (ein Mensch hat sie
+#: ausgelöst, sie kommt aus dem Raum, gehört aber nicht zu dessen Störungen).
+ZONE_SCOPED_NOTICE_KINDS = frozenset(
+    {
+        NOTICE_KIND_SENSOR_FAULT,
+        NOTICE_KIND_STUCK_SENSOR,
+        NOTICE_KIND_WINDOW_ALARM,
+        NOTICE_KIND_COMMAND_FAILURE,
+    }
+)
+
+
+def zones_allow_notice(kind: str, zone_flags: Sequence[bool]) -> bool:
+    """Whether the zone switch(es) behind a notice let it through.
+
+    `zone_flags` are the `fault_notifications_enabled` values of the zones the notice
+    belongs to. Fail-open by design: no zone found (empty) delivers -- an undelivered
+    fault is the risk, a surplus message is not. A notice that belongs to several
+    zones (a switching command to a device assigned to more than one room) is held
+    back only when **all** of them are switched off: one room that still wants to
+    hear about it is enough, because the fault hits that room too.
+    """
+    if kind not in ZONE_SCOPED_NOTICE_KINDS or not zone_flags:
+        return True
+    return any(zone_flags)
+
+
+def notice_enabled(kind: str, settings: Setting, zone_flags: Sequence[bool] = ()) -> bool:
     """Whether a notice of this kind should actually be delivered.
 
     The one gate every dispatch path (webhook, and any future channel) is meant to
@@ -81,7 +113,14 @@ def notice_enabled(kind: str, settings: Setting) -> bool:
     over their own path (`services/publishing.py::send_fault_notice`) regardless of
     this switch; see that module's docstring for why the two are deliberately not
     coupled.
+
+    Two switches have to be on: the plant-wide `setting.notify_*` of the kind and,
+    for a zone-scoped kind, the zone's own switch (`zones_allow_notice`).
     """
+    return _plant_enabled(kind, settings) and zones_allow_notice(kind, zone_flags)
+
+
+def _plant_enabled(kind: str, settings: Setting) -> bool:
     if kind == NOTICE_KIND_SENSOR_FAULT:
         return settings.notify_sensor_faults
     if kind == NOTICE_KIND_BRIDGE_FAULT:
@@ -306,7 +345,9 @@ AUDIT_ACTION_NOTIFICATION_SENT = "notification.sent"
 AUDIT_ACTION_NOTIFICATION_SUPPRESSED = "notification.suppressed"
 
 
-def notification_audit_action(kind: str, settings: Setting | None) -> str:
+def notification_audit_action(
+    kind: str, settings: Setting | None, zone_flags: Sequence[bool] = ()
+) -> str:
     """The audit-log action code for a notice about to be handed to `notice_enabled`.
 
     The audit trail exists to be believed. Before this function existed, every
@@ -333,7 +374,9 @@ def notification_audit_action(kind: str, settings: Setting | None) -> str:
     make the audit trail depend on network timing it cannot observe at the
     moment the fault itself is recorded.
     """
-    delivered = settings is None or notice_enabled(kind, settings)
+    delivered = (settings is None or notice_enabled(kind, settings)) and zones_allow_notice(
+        kind, zone_flags
+    )
     return AUDIT_ACTION_NOTIFICATION_SENT if delivered else AUDIT_ACTION_NOTIFICATION_SUPPRESSED
 
 

@@ -80,6 +80,7 @@ def test_listing_zones_respects_the_zone_restriction(session: Session) -> None:
             "display_name": first.display_name,
             "operating_mode": "auto",
             "solar_gain_factor": "0.00",
+            "fault_notifications_enabled": True,
         }
     ]
 
@@ -363,6 +364,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "boost",
         "read_control_parameters",
         "set_control_parameters",
+        "set_fault_notifications",
         "read_control",
         "force_dry_run",
         "move_schedule_point",
@@ -397,6 +399,8 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         zone.id, "hysteresis_k", Decimal("0.4")
     )
     assert changed["change_id"] is not None
+    switched = tools["set_fault_notifications"](zone.id, False)  # type: ignore[operator]
+    assert (switched["zone"], switched["fault_notifications_enabled"]) == (zone.name, False)
     listed = tools["list_changes"](change_type="control_parameter")  # type: ignore[operator]
     assert listed[0]["id"] == changed["change_id"]
     assert tools["revert_change"](changed["change_id"])["status"] == "reverted"  # type: ignore[operator]
@@ -1354,3 +1358,51 @@ def test_a_foreign_value_error_stays_hidden_from_the_client(session: Session, mo
     with pytest.raises(ValueError, match="geheim") as raised:
         tools["temperature_history"](zone.id)  # type: ignore[operator]
     assert not isinstance(raised.value, ToolError)
+
+
+def test_mcp_fault_notification_switch_is_written_audited_and_read_back(session: Session) -> None:
+    from thermoctl.db.models.operations import AuditEvent
+
+    zone = create_zone(session, "meldezone")
+    source(session, "mcp")
+    plaintext = _token(
+        session, "meldeschreiber", [("zone.read", zone.id), ("zone.manage", zone.id)]
+    )
+    assert server.list_zones(session, plaintext)[0]["fault_notifications_enabled"] is True
+
+    result = server.set_fault_notifications(session, plaintext, zone.id, False)
+
+    assert (result["zone"], result["fault_notifications_enabled"]) == (zone.name, False)
+    assert isinstance(result["change_id"], int)
+    assert zone.fault_notifications_enabled is False
+    assert server.list_zones(session, plaintext)[0]["fault_notifications_enabled"] is False
+    entry = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).one()
+    assert entry.summary == (
+        f"Ausfallbenachrichtigungen für Zone '{zone.display_name}' auf „aus“ gestellt"
+    )
+    assert entry.actor_token_id is not None
+    # Derselbe Wert noch einmal: keine zweite Zeile.
+    server.set_fault_notifications(session, plaintext, zone.id, False)
+    remaining = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).all()
+    assert len(remaining) == 1
+
+
+def test_mcp_fault_notification_switch_needs_zone_manage_and_a_visible_zone(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "gesperrt")
+    other = create_zone(session, "fremd")
+    reader = _token(session, "nurleser", [("zone.read", zone.id)])
+    with pytest.raises(Forbidden):
+        server.set_fault_notifications(session, reader, zone.id, False)
+    assert zone.fault_notifications_enabled is True
+    manager_of_other = _token(
+        session, "fremdverwalter", [("zone.read", other.id), ("zone.manage", other.id)]
+    )
+    with pytest.raises(LookupError):
+        server.set_fault_notifications(session, manager_of_other, zone.id, False)
+    assert zone.fault_notifications_enabled is True

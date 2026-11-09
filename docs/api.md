@@ -78,8 +78,12 @@ Recht: `zone.read`. Liefert **nur** die für dieses Token sichtbaren Zonen; ein 
 Zone eingeschränktes Recht ergibt eine einelementige Liste.
 
 ```json
-[{"id": 1, "name": "wohnzimmer", "display_name": "Wohnzimmer"}]
+[{"id": 1, "name": "wohnzimmer", "display_name": "Wohnzimmer", "solar_gain_factor": "0.00",
+  "fault_notifications_enabled": true}]
 ```
+
+`fault_notifications_enabled` ist der Raum-Schalter „Ausfallbenachrichtigungen“ (Vorgabe `true`),
+siehe unten.
 
 ### `GET /api/v1/zones/{zone_id}` — eine Zone
 
@@ -101,6 +105,19 @@ reine Fühler mit Temperaturmessung, kein Thermostat). Fehlt das Feld oder ist e
 bleiben die Fühler unverändert; eine Liste ersetzt sie vollständig, `[]` löst alle. Ein
 unbekanntes, doppeltes oder ungeeignetes Gerät wird mit `422` abgelehnt, ohne dass etwas
 geschrieben wird.
+
+`fault_notifications_enabled` (Wahrheitswert) legt fest, ob die Ausfallbenachrichtigungen dieser
+Zone gelten (`true`) oder entfallen (`false`). Fehlt das Feld oder ist es `null`, bleibt der Schalter unverändert (beim Anlegen:
+an). Er braucht kein eigenes Recht; wer die Zone mit `zone.manage` ändern darf, darf ihn
+umlegen. Ein Wert, der kein Wahrheitswert ist, wird mit `422` abgelehnt. Er betrifft **nur die
+Zustellung** (Webhook) der Störungsmeldungen dieser Zone — Sensorstörung, Notbetrieb, festhängender
+Messwert, Fenster vergessen offen und gescheiterter Schaltbefehl an ein Gerät dieser Zone. Die
+Störung selbst bleibt in der Oberfläche, im Schaltprotokoll und im Home-Assistant-Problemsensor
+sichtbar; das Audit-Log verzeichnet die unterdrückte Meldung weiter, als `notification.suppressed`.
+Anlagenweite Meldungen (Brücke/Broker) und Problemmeldungen aus einer Wohnung bleiben unberührt;
+die anlagenweiten Schalter unter Meldungen gelten zusätzlich (beide müssen an sein). Gehört ein Gerät
+zu mehreren Zonen, wird die Meldung zu seinem Schaltbefehl nur unterdrückt, wenn **alle** seine
+Zonen abgeschaltet sind.
 
 ### Modi und Sollwerte
 

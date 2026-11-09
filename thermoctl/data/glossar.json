@@ -212,7 +212,7 @@
       "id": "meldungen",
       "term": "Meldungen",
       "short": "Hinweise, die thermoctl bei Störungen an ein Ziel wie einen Webhook schicken kann.",
-      "explanation": "Es gibt sechs Arten, die sich einzeln wählen lassen: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Die Auswahl steht in den Regelvorgaben unter Meldungen; wohin eine Meldung geht, steht unter Schnittstellen.",
+      "explanation": "Es gibt sechs Arten, die sich einzeln wählen lassen: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Die Auswahl steht in den Regelvorgaben unter Meldungen; wohin eine Meldung geht, steht unter Schnittstellen. Je Raum lassen sich die Meldungen zu dessen Störungen zusätzlich abschalten (Raumtechnik, Gruppe Benachrichtigungen); dann entfällt nur die Benachrichtigung, die Störung bleibt sichtbar.",
       "synonyms": ["Störungsmeldungen", "Benachrichtigungen", "Webhook", "Testmeldung"],
       "area": "Betrieb",
       "see_also": ["festhaengender-messwert", "fenster-alarm", "mqtt-broker"]

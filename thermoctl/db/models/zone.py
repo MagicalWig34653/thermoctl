@@ -107,6 +107,16 @@ class Zone(TimestampMixin, Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
 
+    # Whether fault notices about this zone (sensor, Notbetrieb, stuck reading,
+    # forgotten window, failed switching command) are delivered over the webhook.
+    # Default on: existing zones keep the behaviour they always had. Only the
+    # *delivery* is affected -- the fault stays visible in the interface, the audit
+    # trail and the Home Assistant problem sensor (`domain/fault_notice.py`,
+    # `services/notice_routing.py`). Plant-wide faults and tenant reports ignore it.
+    fault_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+
     # How strongly this zone profits from sunshine, 0 (not at all, e.g. a north-facing
     # room) to 1 (strongly, e.g. a room with roof windows). Default 0 -- off, like the
     # rest of the solar setback feature until an operator explicitly configures it.

@@ -35,6 +35,7 @@ export function parameters(over: Partial<RoomParameters> = {}): RoomParameters {
       limits: {},
     },
     window_temp_drop_detection_enabled: false,
+    fault_notifications_enabled: true,
     sensor_failure: {
       own_enabled: true,
       own_profile_id: null,

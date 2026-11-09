@@ -213,12 +213,12 @@ Presets stehen im Code (`thermoctl/domain/token_presets.py`), nicht in der Daten
 
 ## Die Werkzeuge
 
-27 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+28 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
 |---|---|---|
-| `list_zones()` | `zone.read` | Name, Anzeigename, Betriebsart und Sonnenprofil je sichtbarer Zone |
+| `list_zones()` | `zone.read` | Name, Anzeigename, Betriebsart, Sonnenprofil und Schalter „Ausfallbenachrichtigungen“ (`fault_notifications_enabled`) je sichtbarer Zone |
 | `zone_state(zone_id)` | `zone.read` | Ist-Temperatur, Messzeitpunkt, Sensorzustand |
 | `explain_setpoint(zone_id)` | `zone.read` | Sollwert **und Begründung**, aus derselben Funktion, die auch regelt |
 | `read_schedule(zone_id)` | `zone.read` | Schaltpunkte mit Wochentag, Minute im Tag und Modusnamen |
@@ -238,6 +238,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `cancel_vacation()` | `vacation.manage` | beendet den Urlaub vorzeitig |
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
 | `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
+| `set_fault_notifications(zone_id, enabled)` | `zone.manage` | setzt die Ausfallbenachrichtigungen einer Zone auf an oder aus (nur die Zustellung; die Störung bleibt sichtbar) |
 | `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
 | `force_dry_run(reason)` | `control.disarm` | nimmt die Regelung in den Trockenlauf zurück |
 | `move_schedule_point(zone_id, point_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
@@ -350,7 +351,7 @@ Regelentscheidung von Hand zusammenzusuchen.
 
 Jedes schreibende Werkzeug (`set_control_parameters`, `move_schedule_point`, `override`,
 `cancel_override`, `boost`, `vacation`, `cancel_vacation`, `force_dry_run`,
-`set_sensor_failure_defaults`, `set_sensor_failure_policy`) schreibt in derselben Transaktion
+`set_sensor_failure_defaults`, `set_sensor_failure_policy`, `set_fault_notifications`) schreibt in derselben Transaktion
 einen Eintrag ins Änderungsprotokoll: wer (Nutzer **und** Token), wann, welche Art, welche
 Zone, und je geändertem Feld Vorher und Nachher. Die Antwort des Werkzeugs trägt dazu den
 Schlüssel `change_id`; `null` heißt, dass nichts geändert wurde und deshalb auch kein Eintrag
@@ -413,6 +414,7 @@ dagegen liegt der Eintrag zusätzlich im `audit.read`-Bereich des Aufrufers):
 | `vacation` | `vacation` | Urlaub beenden | `vacation.manage` |
 | `sensor_failure_defaults` | `set_sensor_failure_defaults` | Profil und Notsollwert auf die Vorher-Werte | `setting.manage` |
 | `sensor_failure_policy` | `set_sensor_failure_policy` | Zonen-Einstellung auf die Vorher-Werte | `zone.manage` (Zone), zusätzlich `device.manage`, wenn Ausgleichswerte betroffen sind |
+| `fault_notifications` | `set_fault_notifications` | Schalter auf den Vorher-Wert | `zone.manage` (Zone) |
 | `override_cancel`, `vacation_cancel` | `cancel_override`, `cancel_vacation` | **nicht zurücknehmbar** | — |
 | `force_dry_run` | `force_dry_run` | **nicht zurücknehmbar** | — |
 
@@ -440,7 +442,8 @@ dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage be
 Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht.
 
 Schreibende Werkzeuge für Zonen und Sollwerte gibt es nicht. Regelparameter sind die
-bewusste Ausnahme: `set_control_parameters` setzt genau einen benannten Parameter innerhalb
+bewusste Ausnahme (dazu der Schalter `set_fault_notifications`, der nur die Zustellung von
+Störungsmeldungen einer Zone betrifft): `set_control_parameters` setzt genau einen benannten Parameter innerhalb
 der von der Domäne vorgegebenen Grenzen und verlangt `zone.manage`. Wer eine Zone umbaut
 oder Sollwerte pflegt, tut das in der Oberfläche oder über die REST-Schnittstelle, wo eine
 Person daneben sitzt.

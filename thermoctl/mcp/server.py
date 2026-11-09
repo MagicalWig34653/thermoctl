@@ -208,9 +208,33 @@ def list_zones(session: Session, plaintext: str) -> list[dict[str, object]]:
             "display_name": zone.display_name,
             "operating_mode": zone.operating_mode.code,
             "solar_gain_factor": str(zone.solar_gain_factor.quantize(Decimal("0.01"))),
+            "fault_notifications_enabled": zone.fault_notifications_enabled,
         }
         for zone in zones
     ]
+
+
+def set_fault_notifications(
+    session: Session, plaintext: str, zone_id: int, enabled: bool
+) -> dict[str, object]:
+    """Sets the failure notifications of one zone to on or off.
+
+    `zone.manage`, like every other lasting change to a zone. Only the *delivery* of
+    this zone's fault notices (webhook) is affected; the fault itself stays visible
+    in the interface, the audit trail and Home Assistant. Plant-wide faults and
+    tenant reports are not covered by this switch.
+    """
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    require(principal, "zone.manage", zone_id)
+    recorded = change_log_domain.set_fault_notifications(
+        session, _actor(principal, token), zone, enabled
+    )
+    return {
+        "zone": zone.name,
+        "fault_notifications_enabled": recorded.result,
+        "change_id": recorded.change_id,
+    }
 
 
 def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
@@ -1279,6 +1303,12 @@ def _register_tools(
         """Sets one control parameter of a visible zone within its limits."""
         with session_scope(factory) as session:
             return set_control_parameters(session, current(), zone_id, name, value)
+
+    @server.tool(name="set_fault_notifications")
+    def mcp_set_fault_notifications(zone_id: int, enabled: bool) -> dict[str, object]:
+        """Sets a visible zone's failure notifications to on or off (delivery only)."""
+        with session_scope(factory) as session:
+            return set_fault_notifications(session, current(), zone_id, enabled)
 
     @server.tool(name="read_control")
     def mcp_read_control() -> dict[str, object]:

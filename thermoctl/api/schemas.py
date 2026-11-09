@@ -17,6 +17,9 @@ class ZoneResponse(BaseModel):
     name: str
     display_name: str
     solar_gain_factor: Decimal
+    # Whether this zone's fault notices are delivered (webhook). The fault itself stays
+    # visible either way.
+    fault_notifications_enabled: bool
 
 
 class WriteZone(BaseModel):
@@ -36,6 +39,9 @@ class WriteZone(BaseModel):
     # default is 0, so a caller that does not know about solar setback switches it
     # off for the zone rather than silently enabling it.
     solar_gain_factor: Decimal = Field(default=Decimal(0), ge=0, le=1)
+    # Switch for this zone's failure notifications. Omitted or `null` leaves it as it is
+    # (on POST: on).
+    fault_notifications_enabled: bool | None = None
 
 
 class ModeResponse(BaseModel):
