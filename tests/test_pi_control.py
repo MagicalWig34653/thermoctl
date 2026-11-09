@@ -1052,11 +1052,15 @@ class TestTimeGapFreezesIntegral:
         assert result.integrator_action == INTEGRATOR_RESET
         assert result.state.integral == 0
 
-    def test_a_context_change_inside_a_gap_still_resets_the_integral(self) -> None:
+    def test_a_context_change_inside_a_gap_keeps_the_integral(self) -> None:
+        # A context change resets nothing (owner's decision, 2026-11-09), so it cannot
+        # undo the freeze either: both rules say "keep I".
         now = _at()
         state = _running_state(now, integral="0.4", context="schedule:a")
         result = pi_cycle(state, _cycle(now + timedelta(hours=1), context="schedule:b"))
-        assert result.state.integral == 0
+        assert result.state.integral == Decimal("0.4")
+        assert result.integrator_action == INTEGRATOR_HOLD
+        assert result.state.setpoint_context_key == "schedule:b"
 
 
 class TestPiCycleSwitched:
