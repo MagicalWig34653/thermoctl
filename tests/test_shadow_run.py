@@ -1128,6 +1128,70 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
 
 
 @pytest.mark.anyio
+async def test_the_shadow_loop_still_runs_cycle_when_the_meross_sign_in_hits_a_network_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Internet outage regression: the Meross sign-in (`ensure_transport`, before
+    `cycle()`) raised `URLError`, the loop's outer `except` swallowed it and `cycle()`
+    never ran -- no regulation for any zone, Meross or not."""
+    import urllib.error
+
+    from thermoctl.services.meross_session import MerossSessionCache
+
+    engine, fabrik = _own_database(tmp_path, "meross-netz")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.commit()
+
+    class _DownTransport:
+        calls = 0
+
+        async def post_json(self, url: str, body: object, headers: object) -> object:
+            _DownTransport.calls += 1
+            raise urllib.error.URLError("Temporary failure in name resolution")
+
+    async def _no_publication(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(app_modul, "publication_cycle", _no_publication)
+    monkeypatch.setattr(
+        app_modul,
+        "get_settings",
+        lambda: Settings(meross_email="a@b.de", meross_password="geheim"),  # type: ignore[arg-type]
+    )
+    cache = MerossSessionCache()
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=object(),
+            meross_transport=_DownTransport(),
+            meross_session_cache=cache,
+            publication_state=object(),
+        )
+    )
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    assert _DownTransport.calls == 1
+    assert cache.retry_after is not None
+    with fabrik() as http_session:
+        assert http_session.query(ShadowDecision).count() == 1  # cycle() ran
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
 async def test_the_shadow_loop_survives_a_missing_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

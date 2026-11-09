@@ -4,6 +4,8 @@ No test here ever touches the network (CLAUDE.md) -- `sign_in` runs against a fa
 `JsonTransport` double, the same convention `tests/test_meross.py` uses.
 """
 
+import socket
+import urllib.error
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -303,3 +305,55 @@ async def test_meross_sign_in_runs_without_an_open_database_session(tmp_path: An
     assert not open_sessions
     assert network_saw_open_session is False
     assert transport.calls == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.URLError(socket.gaierror(-3, "Temporary failure in name resolution")),
+        TimeoutError("timed out"),
+        ConnectionResetError("reset"),
+    ],
+)
+async def test_a_network_failure_during_sign_in_returns_none_and_backs_off(
+    error: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Internet outage (2026-11-09): the DNS failure arrives as `URLError`, not as
+    `MerossError`, escaped `ensure_transport()` and aborted the whole shadow cycle --
+    for every zone. It must end as `None` like a rejection, with the initial backoff
+    so the next cycles do not hammer the cloud."""
+    transport = _FakeJsonTransport(error)
+    cache = MerossSessionCache(connection=None)
+
+    with caplog.at_level("ERROR"):
+        result = await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+
+    assert result is None
+    assert cache.connection is None
+    assert cache.http_session is None
+    assert "Meross" in caplog.text
+    assert "geheim" not in caplog.text
+    assert cache.retry_after == NOW + BACKOFF_INITIAL
+    assert cache.last_rejection is not None
+
+    again = await ensure_transport(
+        _settings_with_credentials(), transport, cache, NOW + timedelta(seconds=1)
+    )
+    assert again is None
+    assert transport.calls == 1  # the backoff answered, no second attempt
+
+
+@pytest.mark.anyio
+async def test_a_network_failure_never_escalates_the_backoff_beyond_the_initial_delay() -> None:
+    """An outage is not the account's fault: repeated network failures must not climb
+    towards `BACKOFF_MAX` (30 minutes) and keep Meross off long after the line is back."""
+    err = urllib.error.URLError("down")
+    transport = _FakeJsonTransport(err, err, err)
+    cache = MerossSessionCache()
+    now = NOW
+    for _ in range(3):
+        assert await ensure_transport(_settings_with_credentials(), transport, cache, now) is None
+        assert cache.retry_after == now + BACKOFF_INITIAL
+        now = now + BACKOFF_INITIAL
+    assert transport.calls == 3
