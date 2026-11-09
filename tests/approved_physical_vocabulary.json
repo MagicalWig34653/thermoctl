@@ -30,6 +30,7 @@
       "- **Ein gesetzter Ventilschutz-Marker hob die Mindestschaltdauern auch dann noch auf,",
       "- **Fenster: Frostschutz schlägt das offene Fenster, EIN/AUS-Aktoren schalten nicht",
       "- **Im Container läuft eine Migration beim Start von selbst** (Ventilschutz je Zone samt",
+      "- **Im Zweifel wird zugestellt.** Ist ein Gerät keinem Raum als Aktor zugeordnet oder lässt sich die Zuordnung nicht lesen, kommt die Meldung wie bisher. Hängt ein Gerät an mehreren Räumen, entfällt sie nur, wenn alle diese Räume abgeschaltet sind.",
       "- **Nichts schaltet sich von selbst ein.** PI bleibt je Zone aus.",
       "- **Nichts schaltet sich von selbst ein.** PI ist je Zone aus, bis jemand es einschaltet.",
       "- **Nur für gewöhnliche Schaltaktoren.** Thermostatventile und selbstregelnde Ventile",
@@ -671,6 +672,9 @@
     "thermoctl/services/meross_session.py": [
       "Meross-Anmeldung abgelehnt -- Aktoren bleiben diesen Zyklus unerreichbar",
       "Meross-Anmeldung nicht erreichbar (Netzfehler) -- Aktoren bleiben diesen Zyklus unerreichbar"
+    ],
+    "thermoctl/services/notice_routing.py": [
+      "actuator"
     ],
     "thermoctl/services/publishing.py": [
       "Aktor an nicht verdrahteter Anbindung wird nicht geschaltet",

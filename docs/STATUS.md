@@ -2,12 +2,12 @@
 
 Letzte Aktualisierung: 2026-11-09. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **Letzte Freigabe:** 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel): Tag `v0.22.2`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.1.
+- **Letzte Freigabe:** 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `d4a8e1b73c52` (Laufindizes `shadow_decision`); 0.22.2 bringt keine Migration.
+- **Migrationskopf:** `e9b4c27a1f60` (`zone.fault_notifications_enabled`).
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
@@ -309,6 +309,11 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   primären Instanz veröffentlicht. Entitäten u. a.: Außentemperatur, `state/window_open_by_temperature`,
   `state/override_active`, Befehl `command/cancel_override`; Störungen getrennt pro Art (`sensor:`, `fenster:`,
   `notbetrieb:`-Schlüssel). Wer den Webhook stilllegt, verliert den Problemsensor in Home Assistant nicht.
+- **Schalter je Raum** (`zone.fault_notifications_enabled`, Vorgabe an, Recht `zone.manage`; UI, REST, MCP `set_fault_notifications`): unterdrückt nur die
+  Webhook-Zustellung der Störungsmeldungen des Raums (Sensor, Notbetrieb samt Entwarnung, festhängender Messwert, Fenster-Alarm, Schaltbefehl);
+  Anzeige, Audit (`suppressed`) und Home Assistant bleiben. Auflösung Meldung → Räume in `services/notice_routing.py`, fail-open (nicht auffindbar =
+  zustellen); Gerät in mehreren Räumen: nur unterdrückt, wenn alle abgeschaltet sind. Mitten in einer Episode umgelegt: jede Meldung wird einzeln
+  zum Versandzeitpunkt entschieden (Entwarnung ohne Störungsmeldung oder umgekehrt möglich, ohne Merker). Noch nicht an der Anlage abgenommen.
 - Sechs Meldungsarten sind anlagenweit einzeln abschaltbar (Sensorstörung, Brücke/Broker weg, Schaltbefehl
   gescheitert, festhängender Messwert, Fenster-Alarm, Mieter-Problemmeldung), ab Werk an. Der Testknopf („send_test")
   schickt eine gekennzeichnete Meldung über denselben Weg (Abstand 10 s) und zeigt den Zustellzustand; das Audit
