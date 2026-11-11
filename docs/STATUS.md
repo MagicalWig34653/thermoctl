@@ -129,7 +129,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   **Der Integralanteil I bleibt dabei erhalten** (eingefroren, nicht integriert; auch bei Neustart und Update, Hysterese-Haltephase eingeschlossen) und
   wird nur auf 0 gesetzt, wenn die Zone mehr als 24 Stunden keine Heizanforderung hatte (`integral_expired_without_heating`, Grund
   `keine_heizaktivitaet_24h`, geprüft in jedem PI-Zyklus aus der `shadow_decision`-Historie; ohne Heizzeile zählt die älteste Zeile als Bezug, eine
-  neue Zone ohne Zeile behält nichts zu verwerfen). Nur wenn PI für die Zone ausgeschaltet oder ungeeignet wird, wird I weiterhin gelöscht.
+  für eine neue Zone ohne Zeile gibt es nichts zu verwerfen). Nur wenn PI für die Zone deaktiviert oder ungeeignet wird, wird I weiterhin gelöscht.
   Ebenfalls erhalten bleibt I bei jedem
   Wechsel des Sollwertkontexts (Zeitplan-Moduswechsel, Beginn/Ende von Übersteuerung, Boost, Urlaub; auch bei anderer Temperatur;
   Modulator und Haltezeit der Phase laufen weiter) und bei einer Zeitlücke (mehr als zwei Zyklen Abstand: `angehalten`, nicht über
