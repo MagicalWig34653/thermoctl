@@ -9,6 +9,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration, keine neuen Optionen.** Die Änderungen betreffen die PI-Regelung und die Oberfläche.
+- **PI-Regelung:** Der Integralanteil bleibt bei Fenster, Frostschutz, Sensorausfall, Ventilschutz, Neustart und Update erhalten und wird nur noch nach mehr als 24 Stunden ohne Heizanforderung auf 0 gesetzt (Grund `keine_heizaktivitaet_24h` im Schaltprotokoll). Der Modulator beginnt in diesen Fällen wie bisher neu, der sichere Anlauf bleibt.
+
+### Neu
+
+- **Verbindungsanzeige.** Nach zwei Abfragen ohne Antwort des Servers (Netzfehler, Zeitüberschreitung, 502/503/504) zeigt die Oberfläche ein Banner „Verbindung unterbrochen – Anzeige veraltet seit hh:mm" und sperrt alle Bedienelemente mit Schreibwirkung, auch im Kiosk. Alle 10 Sekunden wird die Verbindung geprüft, das Banner verschwindet von selbst. Ein einzelner Fehler eines Endpunkts (gewöhnliche 500, 401, 403, 404) löst es nicht aus.
+
+### Behoben
+
+- **Betriebsseite:** Regler und Ergebnis stehen lesbar statt als Rohcode, die doppelte Statuszeile der Notbetriebskarte ist beschriftet, und über den Zustandskarten steht eine Gesamtzeile, ob geschaltet wird.
+- **Startseite am Handy:** Die Kennzahl-Titel brechen nicht mehr mitten im Wort.
+- **Navigation am Handy:** Die Seitenleiste ist deckend, der Inhalt scheint nicht mehr durch.
+
+---
+
 ## 0.23.0 — 2026-11-09
 
 ### Beim Upgrade zu wissen
