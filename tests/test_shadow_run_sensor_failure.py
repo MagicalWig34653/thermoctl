@@ -543,6 +543,34 @@ def test_pi_stays_neutral_while_an_emergency_stage_is_active(session: Session) -
     assert row1.pi_integrator_action is not None
 
 
+def test_pi_integral_is_carried_not_reset_during_an_emergency_stage(session: Session) -> None:
+    """Entscheidung des Projektinhabers (2026-11): auch der Notbetrieb nimmt den
+    letzten Integralwert mit, statt ihn zu verwerfen."""
+    zone, _wall, trv, _relais = _setup_zone(session)
+    zone.pi_enabled = True
+    zone.pi_gain_per_k = Decimal("0.25")
+    zone.pi_integral_time_minutes = 180
+    zone.pi_min_on_seconds = 60
+    zone.pi_min_off_seconds = 60
+    session.flush()
+
+    t0 = NOW
+    state = _wall_state(session, zone, temperature_c=Decimal("19.0"), at=t0)
+    state.pi_last_control_armed = False
+    state.pi_last_evaluated_at = t0 - timedelta(seconds=60)
+    state.pi_integral = Decimal("0.5")
+    _trv_measurement(session, trv, value=Decimal("22.0"), at=t0)
+    session.flush()
+    shadow_run.cycle(session, t0)
+
+    t1 = t0 + timedelta(seconds=100)
+    _trv_measurement(session, trv, value=Decimal("22.5"), at=t1)
+    row1 = _row_for(shadow_run.cycle(session, t1), zone)
+
+    assert row1.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
+    assert state.pi_integral == Decimal("0.5")
+
+
 # --- Notbetrieb ohne jede Aktorzuordnung -----------------------------------------
 
 

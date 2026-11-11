@@ -35,6 +35,7 @@ from thermoctl.domain.pi_control import (
     MODULATOR_REASON_TASTGRAD_VORRANG,
     NEUTRAL_MODULATOR_STATE,
     NEUTRAL_PI_STATE,
+    NO_HEATING_RESET_AFTER,
     REMAINDER_LIMIT_S,
     RESET_REASON_ARMING,
     RESET_REASON_FROST,
@@ -49,6 +50,7 @@ from thermoctl.domain.pi_control import (
     ModulatorState,
     PiCycleInput,
     PiState,
+    integral_expired_without_heating,
     pi_arithmetic,
     pi_cycle,
     pi_dt,
@@ -1527,3 +1529,82 @@ def test_a_reading_only_valve_is_skipped_like_a_self_regulating_one() -> None:
 
     assert pi_eligible([reading_only, meross_switch], **kwargs).eligible is True
     assert pi_eligible([reading_only], **kwargs).eligible is False
+
+
+# --------------------------------------------------------------------------- #
+# Integralwert uebernehmen statt zuruecksetzen; Ruecksetzung nur nach 24 h ohne
+# Heizaktivitaet (Entscheidung des Projektinhabers, 2026-11).
+# --------------------------------------------------------------------------- #
+
+
+class TestResetCarriesTheIntegral:
+    def test_default_still_resets_to_zero(self) -> None:
+        assert reset_pi_state(RESET_REASON_FROST, now=_at()).integral == 0
+
+    def test_a_given_integral_is_carried_over_and_the_rest_stays_neutral(self) -> None:
+        state = reset_pi_state(
+            RESET_REASON_WINDOW_OPEN, now=_at(minute=5), integral=Decimal("0.4"),
+            await_next_boundary=True,
+        )
+        assert state.integral == Decimal("0.4")
+        assert state.modulator == NEUTRAL_MODULATOR_STATE
+        assert state.setpoint_context_key is None
+        assert state.last_reset_reason == RESET_REASON_WINDOW_OPEN
+        assert state.awaiting_boundary_until == _at(minute=15)
+
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [("1.7", "1"), ("-0.2", "0"), ("0", "0"), ("1", "1")],
+    )
+    def test_the_carried_integral_is_clamped_to_zero_one(self, given: str, expected: str) -> None:
+        state = reset_pi_state(RESET_REASON_FROST, now=_at(), integral=Decimal(given))
+        assert state.integral == Decimal(expected)
+
+
+class TestIntegralExpiredWithoutHeating:
+    NOW = _at(day=3)
+
+    def _expired(
+        self,
+        *,
+        last_heating_at: datetime | None,
+        earliest: datetime | None = None,
+        heating_now: bool = False,
+    ) -> bool:
+        return integral_expired_without_heating(
+            now=self.NOW,
+            last_heating_at=last_heating_at,
+            earliest_decision_at=earliest,
+            heating_now=heating_now,
+        )
+
+    def test_the_limit_is_24_hours(self) -> None:
+        assert NO_HEATING_RESET_AFTER == timedelta(hours=24)
+
+    def test_just_under_24_hours_keeps_the_integral(self) -> None:
+        last = self.NOW - NO_HEATING_RESET_AFTER + timedelta(seconds=1)
+        assert self._expired(last_heating_at=last) is False
+
+    def test_exactly_24_hours_keeps_the_integral(self) -> None:
+        assert self._expired(last_heating_at=self.NOW - NO_HEATING_RESET_AFTER) is False
+
+    def test_more_than_24_hours_resets(self) -> None:
+        last = self.NOW - NO_HEATING_RESET_AFTER - timedelta(seconds=1)
+        assert self._expired(last_heating_at=last) is True
+
+    def test_heating_in_this_cycle_keeps_the_integral(self) -> None:
+        last = self.NOW - timedelta(days=5)
+        assert self._expired(last_heating_at=last, heating_now=True) is False
+
+    def test_no_history_at_all_has_nothing_to_reset(self) -> None:
+        assert self._expired(last_heating_at=None, earliest=None) is False
+
+    def test_history_without_any_heating_counts_from_its_start(self) -> None:
+        old = self.NOW - timedelta(days=2)
+        recent = self.NOW - timedelta(hours=3)
+        assert self._expired(last_heating_at=None, earliest=old) is True
+        assert self._expired(last_heating_at=None, earliest=recent) is False
+
+    def test_the_latest_heating_wins_over_the_start_of_history(self) -> None:
+        last = self.NOW - timedelta(hours=2)
+        assert self._expired(last_heating_at=last, earliest=self.NOW - timedelta(days=9)) is False
