@@ -125,7 +125,12 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   Hysterese begonnen hat, hält deren Mindestdauer, egal wann und wie PI danach übernimmt; eine von PI begonnene Phase
   folgt PI's eigenen, weicheren Mindestdauern. Welcher Regler eine Phase begann, folgt aus der `shadow_decision`-
   Historie. Bei Sensorausfall, Frostschutz, Aus-Modus, Wiederanlauf und (bei gemischten Zonen) offenem Fenster ist PI
-  ausgesetzt und setzt zurück; die Begründung nennt dann PI's eigene Werte. **Der Integralanteil I bleibt dagegen erhalten** bei jedem
+  ausgesetzt: der Modulator (Fensterrest, Tastgrad, Haltezeit) beginnt neu, der sichere Anlauf bleibt; die Begründung nennt dann PI's eigene Werte.
+  **Der Integralanteil I bleibt dabei erhalten** (eingefroren, nicht integriert; auch bei Neustart und Update, Hysterese-Haltephase eingeschlossen) und
+  wird nur auf 0 gesetzt, wenn die Zone mehr als 24 Stunden keine Heizanforderung hatte (`integral_expired_without_heating`, Grund
+  `keine_heizaktivitaet_24h`, geprüft in jedem PI-Zyklus aus der `shadow_decision`-Historie; ohne Heizzeile zählt die älteste Zeile als Bezug, eine
+  neue Zone ohne Zeile behält nichts zu verwerfen). Nur wenn PI für die Zone ausgeschaltet oder ungeeignet wird, wird I weiterhin gelöscht.
+  Ebenfalls erhalten bleibt I bei jedem
   Wechsel des Sollwertkontexts (Zeitplan-Moduswechsel, Beginn/Ende von Übersteuerung, Boost, Urlaub; auch bei anderer Temperatur;
   Modulator und Haltezeit der Phase laufen weiter) und bei einer Zeitlücke (mehr als zwei Zyklen Abstand: `angehalten`, nicht über
   die Lücke integriert, der Modulator beginnt neu; ohne vorherige Auswertung I = 0). Es bleibt die Begrenzung (Anti-Windup). Offen:
