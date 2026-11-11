@@ -4,6 +4,7 @@
   import { createAppearance, type Theme } from '$lib/appearance.svelte';
   import { formatTemperature } from '$lib/rooms/decimal';
   import SourceLink from '$lib/components/shell/SourceLink.svelte';
+  import { OFFLINE_HINT, bannerTextSince } from '$lib/connection';
   import { createKioskClient } from './client';
   import { createKiosk } from './controller.svelte';
   import { ageText, clockText, heatText, INVALID_TEXT, overrideText } from './logic';
@@ -151,7 +152,7 @@
           <button
             type="button"
             class="kiosk-step kiosk-btn"
-            disabled={busy}
+            disabled={busy || kiosk.offline}
             onclick={() => kiosk.step(room, 'down')}
             aria-label={`Sollwert ${room.name} um 0,5 Grad senken`}>−</button
           >
@@ -164,7 +165,7 @@
           <button
             type="button"
             class="kiosk-step kiosk-btn"
-            disabled={busy}
+            disabled={busy || kiosk.offline}
             onclick={() => kiosk.step(room, 'up')}
             aria-label={`Sollwert ${room.name} um 0,5 Grad anheben`}>+</button
           >
@@ -179,7 +180,7 @@
       {#if room.actions.boost || room.actions.cancel_override}
         <div class="mt-auto flex flex-col gap-2">
           {#if room.actions.boost}
-            <button type="button" class="kiosk-touch kiosk-btn px-4" disabled={busy} onclick={() => kiosk.boost(room)}>
+            <button type="button" class="kiosk-touch kiosk-btn px-4" disabled={busy || kiosk.offline} onclick={() => kiosk.boost(room)}>
               Nächste Schaltung vorziehen
             </button>
           {/if}
@@ -187,7 +188,7 @@
             <button
               type="button"
               class="kiosk-touch kiosk-btn px-4"
-              disabled={busy}
+              disabled={busy || kiosk.offline}
               onclick={() => kiosk.cancelOverride(room)}
             >
               Übersteuerung aufheben
@@ -246,6 +247,7 @@
   </header>
 
   <div class="sr-only" role="status" aria-live="polite">{kiosk.announcement}</div>
+  <div class="sr-only" role="status" aria-live="polite">{kiosk.offline ? OFFLINE_HINT : ''}</div>
 
   {#if kiosk.status === 'loading'}
     <p class="mx-auto max-w-[110rem] px-4 py-10 text-lg text-muted-foreground sm:px-6" role="status">Lade …</p>
@@ -269,12 +271,10 @@
       </button>
     </section>
   {:else if data}
-    {#if kiosk.offline && kiosk.notice}
-      <p
-        class="mx-auto mb-4 max-w-[110rem] rounded-xl border border-border bg-muted px-4 py-3 text-sm sm:mx-6"
-        role="status"
-      >
-        {kiosk.notice}
+    {#if kiosk.offline}
+      <p class="kiosk-offline mx-4 mb-4 max-w-[110rem] rounded-xl px-5 py-4 text-xl font-semibold sm:mx-6" data-testid="kiosk-offline">
+        {bannerTextSince(`${clockText(kiosk.lastOk ?? data.now, data.timezone)} Uhr`)}.
+        <span class="block text-base font-normal">{OFFLINE_HINT}: Bedienen ist gesperrt, bis die Verbindung wieder steht.</span>
       </p>
     {/if}
     {#if data.rooms.length === 0}
@@ -336,6 +336,11 @@
 </main>
 
 <style>
+  .kiosk-offline {
+    background: var(--destructive);
+    color: var(--background);
+    border: 2px solid var(--foreground);
+  }
   .kiosk-grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
     list-style: none;

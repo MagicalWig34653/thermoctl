@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { createApi, runtimePrefix } from '$lib/api';
+  import { createProber } from '$lib/connection';
+  import { createConnection } from '$lib/connection.svelte';
   import { createAppearance } from '$lib/appearance.svelte';
   import { provideApp } from '$lib/context';
   import { buildVisibleAreas } from '$lib/navigation';
@@ -22,17 +24,30 @@
   const prefix = runtimePrefix();
   const router = createRouter(prefix);
   const appearance = createAppearance();
+  const connection = createConnection();
   const api = createApi({
     fetch: window.fetch.bind(window),
     prefix,
     cookies: () => document.cookie,
     onUnauthorized: (reason) => session.expire(reason),
+    onReachability: (reachable) => connection.report(reachable),
+    // Gesperrt wird nur in der angemeldeten Ansicht; Start und Anmeldung bleiben bedienbar.
+    isOffline: () => connection.down && session.status === 'ready',
   });
   const session = createSession(api);
-  provideApp({ prefix, api, router, session, appearance });
+  provideApp({ prefix, api, router, session, appearance, connection });
 
   onMount(() => {
     void session.load();
+  });
+
+  // Solange die Verbindung unterbrochen ist, selbst alle ~10 s lesen: Auch eine Seite ohne eigene
+  // Abfrage soll nicht gesperrt stehen bleiben. Der Abruf meldet sein Ergebnis über `api`.
+  $effect(() => {
+    if (!connection.down || session.status !== 'ready') return;
+    const prober = createProber({ probe: () => api.get('/ui-api/bootstrap') });
+    prober.start();
+    return () => prober.stop();
   });
 
   const areas = $derived(buildVisibleAreas(session.bootstrap?.navigation ?? []));
