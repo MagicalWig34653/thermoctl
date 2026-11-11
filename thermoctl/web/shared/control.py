@@ -6,6 +6,7 @@ from thermoctl.domain.pi_control import (
     RESET_REASON_CONTEXT_CHANGE,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
+    RESET_REASON_NO_HEATING,
     RESET_REASON_SENSOR_FAILURE,
     RESET_REASON_TIME_GAP,
     RESET_REASON_VALVE_PROTECTION,
@@ -27,6 +28,7 @@ PI_FALLBACK_LABELS: dict[str, str] = {
     RESET_REASON_TIME_GAP: "Eine Zeitlücke seit der letzten Auswertung.",
     RESET_REASON_ARMING: "Die Anlage wurde gerade scharf geschaltet.",
     RESET_REASON_INVALID_STATE: "Der PI-Zustand war ungültig oder fehlte.",
+    RESET_REASON_NO_HEATING: "Seit mehr als 24 Stunden gab es keine Wärmeanforderung.",
 }
 
 

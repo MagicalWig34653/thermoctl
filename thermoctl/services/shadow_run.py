@@ -49,10 +49,12 @@ from thermoctl.domain.control_loop import (
 from thermoctl.domain.fault import NO_SOURCE, OK, VERALTET
 from thermoctl.domain.number_text import difference_text, percent_text
 from thermoctl.domain.pi_control import (
+    INTEGRATOR_HOLD,
     INTEGRATOR_RESET,
     RESET_REASON_ARMING,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
+    RESET_REASON_NO_HEATING,
     RESET_REASON_SENSOR_FAILURE,
     RESET_REASON_VALVE_PROTECTION,
     RESET_REASON_WINDOW_OPEN,
@@ -61,6 +63,7 @@ from thermoctl.domain.pi_control import (
     PiCycleInput,
     PiCycleOutput,
     PiState,
+    integral_expired_without_heating,
     pi_cycle,
     pi_eligible,
     reset_pi_state,
@@ -1149,7 +1152,8 @@ def _pi_gate_reason(
     frost_effective: bool,
     sensor_failure_emergency_active: bool = False,
 ) -> str | None:
-    """Which of section 4's PI-resetting precedence rules governs this cycle, if
+    """Which of section 4's PI-gating precedence rules (modulator reset, integral
+    carried over) governs this cycle, if
     any. `None` means none of them do -- exactly "wo die gewöhnliche Regelung
     heizen würde" (rule 6's territory, including the plain "stay off" case rule 6
     falls through to when rule 7 does not apply either): PI computes a real
@@ -1334,7 +1338,8 @@ def _write_reset_state(row: ZoneState, reset_state: PiState) -> None:
     """Persists an out-of-band reset (section 4's precedence table, or the safe
     arming/invalid-state wait) -- unlike `_write_pi_state`, always unconditionally
     clears the switch-timing columns, matching `reset_pi_state()`'s own neutral
-    modulator.
+    modulator. The integral is *not* cleared: `reset_state.integral` is the stored
+    value carried over (or 0 after the 24 h rule, see `_pi_outcome`).
 
     `pi_awaiting_boundary_until` is the one exception: a section-4 gate reset
     (window/frost/sensor/valve -- every call here except the safe-start wait
@@ -1387,10 +1392,35 @@ def _write_reset_state(row: ZoneState, reset_state: PiState) -> None:
     row.pi_last_reset_reason = reset_state.last_reset_reason
 
 
+def _heating_history(session: Session, zone_id: int) -> tuple[datetime | None, datetime | None]:
+    """`(newest heating decision, oldest decision)` of the zone, both aware UTC.
+
+    Two single index accesses on `(zone_id, would_heat, decided_at, id)` /
+    `(zone_id, ...)`, never a walk over the history. The oldest decision is only
+    looked up when there is no heating decision at all: it is then the reference
+    `integral_expired_without_heating()` counts from (see there).
+    """
+    last_heating = session.scalar(
+        select(ShadowDecision.decided_at)
+        .where(ShadowDecision.zone_id == zone_id, ShadowDecision.would_heat.is_(True))
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+        .limit(1)
+    )
+    if last_heating is not None:
+        return _aware(last_heating), None
+    earliest = session.scalar(
+        select(ShadowDecision.decided_at)
+        .where(ShadowDecision.zone_id == zone_id)
+        .order_by(ShadowDecision.decided_at, ShadowDecision.id)
+        .limit(1)
+    )
+    return None, _aware(earliest)
+
+
 def _neutralize_pi_state(row: ZoneState) -> None:
     """The full wipe section 5 requires when PI is off or ineligible for this zone
     -- deliberately not `_write_reset_state()` with `reset_pi_state()`'s output,
-    which still records a timestamp and a reason: "neutralisiert" means a later
+    which still records a timestamp, a reason and the integral: "neutralisiert" means a later
     activation starts exactly as clean as a zone that has never run PI, including
     `pi_last_control_armed`, so the safe arming wait (section 4's closing
     paragraph) applies again in full the next time this zone is enabled.
@@ -1547,6 +1577,24 @@ def _pi_outcome(
         fields["controller_fallback_reason"] = PI_FALLBACK_INELIGIBLE
         return decision.heating, f"PI-Rückfall: {eligibility.reason}", fields
 
+    # Integralwert (Entscheidung des Projektinhabers, 2026-11): Fenster, Frostschutz,
+    # Sensorausfall, Ventilschutz, Neustart/Update und die Hysterese-Haltephase
+    # uebernehmen den gespeicherten Wert (eingefroren, nicht integriert). Verworfen
+    # wird er nur nach mehr als 24 h ohne Heizaktivitaet -- in jedem Zyklus geprueft,
+    # auch im Gate und beim Neustart. Ohne gespeicherten Wert gibt es nichts zu verwerfen.
+    stored_integral = state.pi_integral
+    integral_dropped = False
+    if stored_integral > 0:
+        last_heating_at, earliest_decision_at = _heating_history(session, zone.id)
+        integral_dropped = integral_expired_without_heating(
+            now=now,
+            last_heating_at=last_heating_at,
+            earliest_decision_at=earliest_decision_at,
+            heating_now=decision.heating,
+        )
+    carried_integral = Decimal(0) if integral_dropped else stored_integral
+    carry_action = INTEGRATOR_RESET if integral_dropped else INTEGRATOR_HOLD
+
     armed = bool(settings.control_armed)
     previous_armed = state.pi_last_control_armed
     state.pi_last_control_armed = armed
@@ -1561,10 +1609,15 @@ def _pi_outcome(
         # `_hysteresis_phase_still_holding`'s own docstring for why a one-time
         # check here was not enough).
         reason = RESET_REASON_INVALID_STATE if previous_armed is None else RESET_REASON_ARMING
-        _write_reset_state(state, reset_pi_state(reason, now=now, await_next_boundary=True))
+        _write_reset_state(
+            state,
+            reset_pi_state(
+                reason, now=now, await_next_boundary=True, integral=carried_integral
+            ),
+        )
         fields["controller_fallback_reason"] = reason
-        fields["pi_reset_reason"] = reason
-        fields["pi_integrator_action"] = INTEGRATOR_RESET
+        fields["pi_reset_reason"] = RESET_REASON_NO_HEATING if integral_dropped else reason
+        fields["pi_integrator_action"] = carry_action
         return (
             decision.heating,
             f"PI-Rückfall: {reason}, wartet auf die nächste Fenstergrenze.",
@@ -1607,9 +1660,9 @@ def _pi_outcome(
         sensor_failure_emergency_active=sensor_failure_emergency_active,
     )
     if gate is not None:
-        _write_reset_state(state, reset_pi_state(gate, now=now))
-        fields["pi_reset_reason"] = gate
-        fields["pi_integrator_action"] = INTEGRATOR_RESET
+        _write_reset_state(state, reset_pi_state(gate, now=now, integral=carried_integral))
+        fields["pi_reset_reason"] = RESET_REASON_NO_HEATING if integral_dropped else gate
+        fields["pi_integrator_action"] = carry_action
         return decision.heating, None, fields
 
     # General invariant (project owner, second security review, 2026-09-27):
@@ -1620,10 +1673,13 @@ def _pi_outcome(
     # this, not the inapplicable hysteresis rule and not PI's own minimum).
     if _hysteresis_phase_still_holding(situation, phase_started_by):
         _write_reset_state(
-            state, reset_pi_state(PI_FALLBACK_HYSTERESIS_MINIMUM, now=now)
+            state,
+            reset_pi_state(PI_FALLBACK_HYSTERESIS_MINIMUM, now=now, integral=carried_integral),
         )
-        fields["pi_reset_reason"] = PI_FALLBACK_HYSTERESIS_MINIMUM
-        fields["pi_integrator_action"] = INTEGRATOR_RESET
+        fields["pi_reset_reason"] = (
+            RESET_REASON_NO_HEATING if integral_dropped else PI_FALLBACK_HYSTERESIS_MINIMUM
+        )
+        fields["pi_integrator_action"] = carry_action
         return (
             decision.heating,
             "PI hält: die aktuelle Phase hat unter Hysterese begonnen und deren "
@@ -1635,6 +1691,8 @@ def _pi_outcome(
     # fallthrough, which is behaviourally the same "stay off" rule 6 itself would
     # give -- see `_pi_gate_reason`'s docstring) -- PI computes a real candidate.
     assert situation.measured_c is not None  # the sensor gate above already excludes this
+    if integral_dropped:
+        state.pi_integral = carried_integral
     pi_state = _load_pi_state(state)
     context_key = _pi_setpoint_context_key(setpoint, override, vacation)
     calibrated_c = situation.measured_c + parameter.temperature_offset_k
@@ -1672,6 +1730,10 @@ def _pi_outcome(
     fields["pi_integrator_action"] = output.integrator_action
     fields["pi_reset_reason"] = output.state.last_reset_reason
     fields["pi_candidate_would_heat"] = output.heating
+    if integral_dropped:
+        fields["pi_integral_before"] = stored_integral
+        fields["pi_integrator_action"] = INTEGRATOR_RESET
+        fields["pi_reset_reason"] = RESET_REASON_NO_HEATING
 
     if not output.pi_available:
         # A time gap, or still waiting out an earlier safe-start boundary --

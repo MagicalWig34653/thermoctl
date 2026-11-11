@@ -17,6 +17,9 @@ actual `ControllerState` row and decides when to call which function below:
   not accumulate anything for it (window open, frost protection, sensor failure, a
   running valve-protection cycle, or a corrupted/missing PI state, or the moment a
   dry run turns armed): `reset_pi_state()`, with the reason code that names the rule.
+  It resets the modulator and hold time and *carries the integral over* (frozen, not
+  integrated); only `integral_expired_without_heating()` drops it (> 24 h without
+  heating).
   A caller does **not** need a separate function for "override begins/ends" or
   "boost begins/ends" -- see the module docstring of `pi_cycle()` for why those are
   already covered by the ordinary setpoint-context reset in `pi_cycle()` itself.
@@ -58,6 +61,14 @@ RESET_REASON_CONTEXT_CHANGE = "sollwertkontext_wechsel"
 RESET_REASON_TIME_GAP = "zeitluecke"
 RESET_REASON_ARMING = "scharfschaltung"
 RESET_REASON_INVALID_STATE = "ungueltiger_zustand"
+# The one reset left that drops a stored integral: more than `NO_HEATING_RESET_AFTER`
+# without any heating (see `integral_expired_without_heating()`).
+RESET_REASON_NO_HEATING = "keine_heizaktivitaet_24h"
+
+# Decision of the project owner (2026-11): window, frost protection, sensor failure,
+# valve protection and a restart/update carry the integral over instead of clearing
+# it; it is cleared only after this long without any heating.
+NO_HEATING_RESET_AFTER = timedelta(hours=24)
 
 # --- What happened to the integrator this cycle (section 4's "Integrator" column). ---
 INTEGRATOR_CONTINUE = "weiter"
@@ -322,8 +333,16 @@ def reset_pi_state(
     *,
     now: datetime | None = None,
     await_next_boundary: bool = False,
+    integral: Decimal = Decimal(0),
 ) -> PiState:
-    """"Zurücksetzen" from section 4: `I = 0`, remainder = 0, no adopted duty.
+    """"Zurücksetzen" from section 4: remainder = 0, no adopted duty, no hold time
+    -- and `I` taken over from `integral` (clamped to [0, 1]; default 0 = the
+    classic reset, used only where nothing is stored).
+
+    Since the owner's decision of 2026-11 the callers pass the stored integral here:
+    these gates reset the modulator, never the integral (the integral is not
+    integrated meanwhile, only carried). Dropping it is
+    `integral_expired_without_heating()`'s job alone.
 
     Callers use this directly -- not `pi_cycle()` -- for every precedence rule whose
     own decision already governs `heating` and that must not let PI accumulate
@@ -332,8 +351,9 @@ def reset_pi_state(
     setpoint change), frost protection (`RESET_REASON_FROST`), sensor failure
     (`RESET_REASON_SENSOR_FAILURE`), and a valve-protection run
     (`RESET_REASON_VALVE_PROTECTION`) -- the caller calls this every cycle the run is
-    active, which *is* "während des Laufs bei null halten": the state stays neutral
-    throughout, not just on the first cycle.
+    active: the modulator stays neutral throughout, not just on the first cycle, while
+    the integral is carried unchanged ("während des Laufs bei null halten" no longer
+    applies to it since 2026-11).
 
     `await_next_boundary=True` is for the arming transition (dry run to armed) and
     for a missing or corrupted PI state, both `RESET_REASON_ARMING` /
@@ -347,13 +367,38 @@ def reset_pi_state(
             raise ValueError("await_next_boundary braucht `now`.")
         awaiting = window_start_for(now) + timedelta(seconds=WINDOW_SECONDS)
     return PiState(
-        integral=Decimal(0),
+        integral=_clamp01(integral),
         last_evaluated_at=now,
         setpoint_context_key=None,
         modulator=NEUTRAL_MODULATOR_STATE,
         awaiting_boundary_until=awaiting,
         last_reset_reason=reason,
     )
+
+
+def integral_expired_without_heating(
+    *,
+    now: datetime,
+    last_heating_at: datetime | None,
+    earliest_decision_at: datetime | None,
+    heating_now: bool,
+) -> bool:
+    """Whether the stored integral is dropped: more than `NO_HEATING_RESET_AFTER`
+    without heating.
+
+    `last_heating_at` is the newest decision that wanted heating. Without one, the
+    reference is `earliest_decision_at` (the zone's oldest remaining decision): a
+    zone whose whole retained history shows no heating for over 24 h has not heated
+    for over 24 h -- this also holds when old heating rows were purged by retention.
+    With no history at all (a new zone) there is nothing to drop. Heating in this
+    very cycle (`heating_now`) always keeps the integral.
+    """
+    if heating_now:
+        return False
+    reference = last_heating_at if last_heating_at is not None else earliest_decision_at
+    if reference is None:
+        return False
+    return now - reference > NO_HEATING_RESET_AFTER
 
 
 @dataclass(frozen=True)
@@ -400,8 +445,10 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
     remainder, frozen duty, running phase and its hold time) carry on unchanged, so
     the minimum-duration invariant cannot be undermined by a context change. The
     integral stays bounded by the anti-windup clamp, whatever the new setpoint.
-    What still resets lives elsewhere: section 4's gates (`reset_pi_state()`),
-    restart/invalid state, and the time gap below.
+    What still resets the modulator lives elsewhere: section 4's gates
+    (`reset_pi_state()`), restart/invalid state, and the time gap below -- none of
+    them drops the integral; only the 24 h rule does
+    (`integral_expired_without_heating()`).
     """
     if state.awaiting_boundary_until is not None and cycle.now < state.awaiting_boundary_until:
         return PiCycleOutput(

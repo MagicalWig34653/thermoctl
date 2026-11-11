@@ -17,6 +17,7 @@ directly on the ORM object, exactly like that file already does.
 import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -48,9 +49,11 @@ from thermoctl.domain.pi_control import (
     INTEGRATOR_HOLD,
     INTEGRATOR_RESET,
     MODULATOR_REASON_HELD,
+    NO_HEATING_RESET_AFTER,
     RESET_REASON_ARMING,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
+    RESET_REASON_NO_HEATING,
     RESET_REASON_SENSOR_FAILURE,
     RESET_REASON_TIME_GAP,
     RESET_REASON_VALVE_PROTECTION,
@@ -547,16 +550,21 @@ class TestSafeStart:
         self, session: Session
     ) -> None:
         zone = _pi_zone(session, "erstlauf", already_running=False)
+        _seed = session.get(ZoneState, zone.id)
+        assert _seed is not None
+        _seed.pi_integral = Decimal("0.5")
+        session.flush()
         row = _row_for(shadow_run.cycle(session, NOW), zone)
 
         assert row.controller_fallback_reason == RESET_REASON_INVALID_STATE
         assert row.pi_reset_reason == RESET_REASON_INVALID_STATE
-        assert row.pi_integrator_action == INTEGRATOR_RESET
+        assert row.pi_integrator_action == INTEGRATOR_HOLD
         assert row.would_heat is True  # the ordinary hysteresis answer, unharmed
         assert row.effective_controller == "hysteresis"
 
         state = session.get(ZoneState, zone.id)
         assert state is not None
+        assert state.pi_integral == Decimal("0.5")  # restart carries the integral
         # `zone_state` columns are naive (implicitly UTC, like everywhere else in
         # this application) -- `window_start_for()` itself demands an aware value.
         expected = window_start_for(NOW_AWARE) + timedelta(seconds=WINDOW_SECONDS)
@@ -671,7 +679,9 @@ class TestPrecedenceRulesBeatPi:
     as the table prescribes -- proven over a real multi-cycle sequence, not a
     single call, because windup only shows up over time."""
 
-    def test_window_open_resets_every_cycle_for_two_hours(self, session: Session) -> None:
+    def test_window_open_gates_pi_for_two_hours_and_keeps_the_integral(
+        self, session: Session
+    ) -> None:
         """A *mixed* zone (owner's decision, 2026-09-06): `_pi_zone()`'s own plain
         switch actuator would, on its own, now make this an EIN/AUS-zone, which an
         open window no longer switches off at all -- see
@@ -681,6 +691,10 @@ class TestPrecedenceRulesBeatPi:
         cautious*, unaffected category, so this test still proves what it always
         did: an open window resets PI every cycle."""
         zone = _pi_zone(session, "fenster-offen", measured_c=COLD_C)
+        _seed = session.get(ZoneState, zone.id)
+        assert _seed is not None
+        _seed.pi_integral = Decimal("0.5")
+        session.flush()
         _assign_actuator(
             session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkörper",
@@ -696,24 +710,24 @@ class TestPrecedenceRulesBeatPi:
             assert row.would_heat is False
             assert row.outcome_code == REASON_CODE_WINDOW_OPEN
             assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
-            assert row.pi_integrator_action == INTEGRATOR_RESET
+            assert row.pi_integrator_action == INTEGRATOR_HOLD
             now += timedelta(seconds=60)
 
         state = session.get(ZoneState, zone.id)
         assert state is not None
-        assert state.pi_integral == Decimal("0")
+        assert state.pi_integral == Decimal("0.5")
         assert state.pi_time_balance_seconds == Decimal("0")
 
-        # And once it closes, PI starts from a genuinely fresh window -- no debt
-        # from the two hours the window was open.
+        # And once it closes, PI starts from a genuinely fresh window (no debt from
+        # the two hours the window was open) but with the carried integral.
         state.window_open = False
         session.flush()
         now += timedelta(seconds=60)
         row = _row_for(shadow_run.cycle(session, now), zone)
         assert row.effective_controller == "pi"
-        assert row.pi_integral_before == Decimal("0")
+        assert row.pi_integral_before == Decimal("0.5")
 
-    def test_the_window_resume_delay_also_resets_pi_not_just_the_open_window(
+    def test_the_window_resume_delay_also_gates_pi_not_just_the_open_window(
         self, session: Session
     ) -> None:
         """A mixed zone, for the same reason as the test above: an EIN/AUS-only
@@ -778,10 +792,14 @@ class TestPrecedenceRulesBeatPi:
         assert row.would_heat is False
         assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
 
-    def test_frost_protection_mode_resets_every_cycle_it_is_effective(
+    def test_frost_protection_mode_gates_pi_every_cycle_it_is_effective_and_keeps_the_integral(
         self, session: Session
     ) -> None:
         zone = _pi_zone(session, "frostschutz", measured_c=Decimal("10.0"))
+        _seed = session.get(ZoneState, zone.id)
+        assert _seed is not None
+        _seed.pi_integral = Decimal("0.5")
+        session.flush()
         # Switch operating mode to 'off' -- `resolved_setpoint()` then always
         # answers with the frost-protection setpoint, section 4's "Frostschutz als
         # Betriebsart" case. Assigning the relationship object itself (not just
@@ -794,19 +812,20 @@ class TestPrecedenceRulesBeatPi:
         for _ in range(30):
             row = _row_for(shadow_run.cycle(session, now), zone)
             assert row.pi_reset_reason == RESET_REASON_FROST
-            assert row.pi_integrator_action == INTEGRATOR_RESET
+            assert row.pi_integrator_action == INTEGRATOR_HOLD
             now += timedelta(seconds=60)
 
         state = session.get(ZoneState, zone.id)
         assert state is not None
-        assert state.pi_integral == Decimal("0")
+        assert state.pi_integral == Decimal("0.5")
 
-    def test_sensor_failure_resets_and_stale_readings_do_not_resume_into_pi(
+    def test_sensor_failure_gates_pi_and_keeps_the_integral(
         self, session: Session
     ) -> None:
         zone = _pi_zone(session, "sensorausfall", measured_c=COLD_C)
         state = session.get(ZoneState, zone.id)
         assert state is not None
+        state.pi_integral = Decimal("0.5")
         state.temperature_c = None
         state.sensor_status_id = sensor_status_of(session, "keine_quelle").id
         session.flush()
@@ -814,7 +833,8 @@ class TestPrecedenceRulesBeatPi:
         row = _row_for(shadow_run.cycle(session, NOW), zone)
         assert row.would_heat is False
         assert row.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
-        assert row.pi_integrator_action == INTEGRATOR_RESET
+        assert row.pi_integrator_action == INTEGRATOR_HOLD
+        assert state.pi_integral == Decimal("0.5")
 
     def test_a_stale_sensor_gates_pi_even_when_a_minimum_duration_block_masks_it(
         self, session: Session
@@ -873,7 +893,13 @@ class TestPrecedenceRulesBeatPi:
                 # cycle (t=120s, i=2) the review reproduced `would_heat=True` on.
                 assert pi_row.effective_controller == "hysteresis"
                 assert pi_row.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
-                assert pi_row.pi_integrator_action == INTEGRATOR_RESET
+                assert pi_row.pi_integrator_action == INTEGRATOR_HOLD
+                pi_state = session.get(ZoneState, pi_zone.id)
+                assert pi_state is not None
+                assert pi_state.pi_integral > 0  # kept from cycle 0, not dropped
+                if i == 1:
+                    carried = pi_state.pi_integral
+                assert pi_state.pi_integral == carried  # frozen, not integrated
 
     def test_window_governed_frost_override_gates_pi_even_when_a_minimum_duration_block_masks_it(
         self, session: Session
@@ -898,7 +924,7 @@ class TestPrecedenceRulesBeatPi:
         rule 1 returns before rule 5 (or anything else) ever runs.
         """
         zone = _pi_zone(session, "fenster-frost-block", measured_c=Decimal("15.0"))
-        # Mixed zone, same reason as `test_window_open_resets_every_cycle_for_two_hours`
+        # Mixed zone, same reason as the two-hour window test above
         # above: a plain switch-only zone is `on_off_actuators_only`, which exempts
         # it from rule 3 (and this test) entirely.
         _assign_actuator(
@@ -908,6 +934,7 @@ class TestPrecedenceRulesBeatPi:
         state = session.get(ZoneState, zone.id)
         assert state is not None
         state.window_open = True
+        state.pi_integral = Decimal("0.5")
         session.flush()
 
         now = NOW
@@ -915,7 +942,8 @@ class TestPrecedenceRulesBeatPi:
             row = _row_for(shadow_run.cycle(session, now), zone)
             assert row.effective_controller == "hysteresis"
             assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
-            assert row.pi_integrator_action == INTEGRATOR_RESET
+            assert row.pi_integrator_action == INTEGRATOR_HOLD
+            assert state.pi_integral == Decimal("0.5")
             if i >= 1:
                 # The actual masking risk: `decide()` itself answers
                 # `gesperrt_mindestdauer` here (held_for_s < 300s), not the
@@ -924,10 +952,14 @@ class TestPrecedenceRulesBeatPi:
                 assert row.outcome_code == control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION
             now += timedelta(seconds=60)
 
-    def test_a_valve_protection_run_holds_pi_at_zero_for_its_whole_duration(
+    def test_a_valve_protection_run_gates_pi_for_its_whole_duration_and_keeps_the_integral(
         self, session: Session
     ) -> None:
         zone = _pi_zone(session, "ventilschutz", measured_c=WARM_C)
+        _seed = session.get(ZoneState, zone.id)
+        assert _seed is not None
+        _seed.pi_integral = Decimal("0.5")
+        session.flush()
         zone.valve_protection_enabled = True
         zone.valve_protection_interval_days = 1
         zone.valve_protection_duration_minutes = 10
@@ -942,22 +974,21 @@ class TestPrecedenceRulesBeatPi:
 
         assert all(row.would_heat for row in rows)
         assert all(row.pi_reset_reason == RESET_REASON_VALVE_PROTECTION for row in rows)
-        assert all(row.pi_integrator_action == INTEGRATOR_RESET for row in rows)
+        assert all(row.pi_integrator_action == INTEGRATOR_HOLD for row in rows)
 
         state = session.get(ZoneState, zone.id)
         assert state is not None
-        assert state.pi_integral == Decimal("0")
+        assert state.pi_integral == Decimal("0.5")
 
-        # After the run: PI resumes without the old (zero) integral being treated
-        # as anything but a fresh start -- and without the protection's on-state
-        # being mistaken for regular heating history. `pi_reset_reason` itself
+        # After the run: PI resumes with the carried integral -- and without the
+        # protection's on-state being mistaken for regular heating history. `pi_reset_reason` itself
         # legitimately keeps naming the valve-protection run for a while longer --
         # it is "the last reset's reason", and nothing resets again on this cycle
         # (no setpoint-context change) -- so this checks the two things section 4
-        # actually promises instead: PI is deciding again, from a fresh integral.
+        # actually promises instead: PI is deciding again, from the carried integral.
         row = _row_for(shadow_run.cycle(session, now), zone)
         assert row.effective_controller == "pi"
-        assert row.pi_integral_before == Decimal("0")
+        assert row.pi_integral_before == Decimal("0.5")
 
     def test_the_pi_minimum_duration_holds_the_integrator_pi_still_governs(
         self, session: Session
@@ -2078,3 +2109,306 @@ class TestPiReasonText:
         assert row.effective_controller == "pi"
         assert "Abweichung" in row.reason and "Fehler" not in row.reason
         assert re.search(r"Tastgrad \d+,\d %", row.reason)
+
+
+class TestIntegralIsCarriedNotReset:
+    """Entscheidung des Projektinhabers (2026-11): Fenster, Frostschutz, Sensorausfall,
+    Ventilschutz, Neustart/Scharfschaltung und die Hysterese-Haltephase setzen den
+    Integralwert nicht mehr zurueck, sondern uebernehmen den letzten Wert. Alles
+    uebrige am Zuruecksetzen (neutraler Modulator, sicherer Anlauf) bleibt."""
+
+    I_STORED = Decimal("0.5")
+
+    def _seeded(self, session: Session, name: str, **kwargs: Any) -> tuple[Zone, ZoneState]:
+        zone = _pi_zone(session, name, **kwargs)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.pi_integral = self.I_STORED
+        # Reste, die ein Gate sonst neutralisiert (Modulator).
+        state.pi_window_duty = Decimal("0.4")
+        state.pi_time_balance_seconds = Decimal("12")
+        state.pi_last_switch_at = NOW - timedelta(minutes=3)
+        state.pi_last_switch_heating = True
+        session.flush()
+        return zone, state
+
+    def _assert_carried(self, state: ZoneState, row: ShadowDecision) -> None:
+        assert state.pi_integral == self.I_STORED
+        assert row.pi_integrator_action == INTEGRATOR_HOLD
+        assert state.pi_window_duty is None
+        assert state.pi_time_balance_seconds == 0
+        assert state.pi_last_switch_at is None
+        assert state.pi_last_switch_heating is None
+
+    def test_an_open_window_keeps_the_integral_for_two_hours(self, session: Session) -> None:
+        zone, state = self._seeded(session, "fenster-i", measured_c=COLD_C)
+        _assign_actuator(
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
+            suffix="-heizkörper",
+        )
+        state.window_open = True
+        session.flush()
+        now = NOW
+        for _ in range(120):
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
+            self._assert_carried(state, row)
+            now += timedelta(seconds=60)
+
+        # Nach dem Fenster regelt PI mit dem erhaltenen Wert weiter.
+        state.window_open = False
+        session.flush()
+        now += timedelta(seconds=60)
+        row = _row_for(shadow_run.cycle(session, now), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_integral_before == self.I_STORED
+
+    def test_frost_protection_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._seeded(session, "frost-i", measured_c=Decimal("10.0"))
+        zone.operating_mode = operating_mode(session, "off")
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_FROST
+        self._assert_carried(state, row)
+
+    def test_sensor_failure_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._seeded(session, "sensor-i", measured_c=COLD_C)
+        state.temperature_c = None
+        state.sensor_status_id = sensor_status_of(session, "keine_quelle").id
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
+        self._assert_carried(state, row)
+
+    def test_a_valve_protection_run_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._seeded(session, "ventil-i", measured_c=WARM_C)
+        zone.valve_protection_enabled = True
+        zone.valve_protection_interval_days = 1
+        zone.valve_protection_duration_minutes = 10
+        session.flush()
+        now = NOW
+        for _ in range(10):
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            assert row.pi_reset_reason == RESET_REASON_VALVE_PROTECTION
+            assert state.pi_integral == self.I_STORED
+            assert row.pi_integrator_action == INTEGRATOR_HOLD
+            now += timedelta(minutes=1)
+        row = _row_for(shadow_run.cycle(session, now), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_integral_before == self.I_STORED
+
+    def test_the_window_resume_delay_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._seeded(session, "nachlauf-i", measured_c=COLD_C)
+        _assign_actuator(
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
+            suffix="-heizkörper",
+        )
+        sensor = Device(
+            integration_id=integration(session).id,
+            external_id=f"{zone.name}-fenster",
+            display_name=f"{zone.name}-fenster",
+        )
+        session.add(sensor)
+        session.flush()
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id, device_id=sensor.id,
+                device_role_id=role(session, "window_contact").id,
+            )
+        )
+        for value, ago in (("false", timedelta(minutes=30)), ("true", timedelta(seconds=30))):
+            session.add(
+                Measurement(
+                    device_id=sensor.id,
+                    capability_id=capability(session, "contact").id,
+                    value_text=value,
+                    measured_at=NOW - ago,
+                    received_at=NOW - ago,
+                )
+            )
+        zone.window_resume_delay_seconds = 300
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
+        self._assert_carried(state, row)
+
+    def test_arming_keeps_the_integral_and_still_waits_for_the_boundary(
+        self, session: Session
+    ) -> None:
+        zone, state = self._seeded(session, "arming-i")
+        settings = session.get(Setting, 1)
+        assert settings is not None
+        settings.control_armed = True
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.controller_fallback_reason == RESET_REASON_ARMING
+        self._assert_carried(state, row)
+        expected = window_start_for(NOW_AWARE) + timedelta(seconds=WINDOW_SECONDS)
+        assert state.pi_awaiting_boundary_until == expected.replace(tzinfo=None)
+        assert row.effective_controller == "hysteresis"
+
+    def test_an_invalid_state_restart_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._seeded(session, "neustart-i", already_running=True)
+        state.pi_last_control_armed = None
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.controller_fallback_reason == RESET_REASON_INVALID_STATE
+        self._assert_carried(state, row)
+        assert state.pi_awaiting_boundary_until is not None
+
+    def test_the_integral_survives_a_restart_from_the_database_alone(
+        self, session: Session
+    ) -> None:
+        """Neustart/Update: der Prozess behaelt nichts im Speicher, der Zustand
+        liegt in `zone_state`. Frischer Zustand (Neustart-Pfad), Fenstergrenze
+        abwarten, danach regelt PI mit dem gespeicherten Wert weiter."""
+        zone, state = self._seeded(session, "update-i", measured_c=COLD_C)
+        state.pi_last_control_armed = None
+        session.flush()
+        now = NOW
+        shadow_run.cycle(session, now)  # Neustart-Zyklus
+        session.expire_all()  # nichts aus dem Prozess wiederverwenden
+        boundary = NOW + timedelta(seconds=WINDOW_SECONDS)
+        while now < boundary:
+            now += timedelta(seconds=60)
+            stored = session.get(ZoneState, zone.id)
+            assert stored is not None and stored.pi_integral == self.I_STORED
+            stored.measured_at = now
+            session.flush()
+            row = _row_for(shadow_run.cycle(session, now), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_integral_before == self.I_STORED
+
+    def test_the_hysteresis_hold_phase_keeps_the_integral_and_pi_resumes_with_it(
+        self, session: Session
+    ) -> None:
+        zone, state = self._seeded(
+            session, "haltephase-i", measured_c=Decimal("20.9"), pi_min_on=60, pi_min_off=60
+        )
+        state.pi_last_control_armed = None
+        session.flush()
+        shadow_run.cycle(session, NOW + timedelta(minutes=1))
+        started_at = NOW + timedelta(minutes=13)
+        state.temperature_c = COLD_C
+        session.flush()
+        assert _row_for(shadow_run.cycle(session, started_at), zone).would_heat is True
+
+        deadline = started_at + timedelta(seconds=300)
+        now = started_at + timedelta(minutes=1)
+        saw_hold = False
+        while now < deadline:
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            if row.pi_reset_reason == PI_FALLBACK_HYSTERESIS_MINIMUM:
+                saw_hold = True
+                assert state.pi_integral == self.I_STORED
+                assert row.pi_integrator_action == INTEGRATOR_HOLD
+                assert state.pi_last_switch_at is None
+            now += timedelta(minutes=1)
+        assert saw_hold
+        row = _row_for(shadow_run.cycle(session, deadline), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_integral_before == self.I_STORED
+
+
+class TestIntegralDroppedAfter24HoursWithoutHeating:
+    """Die einzige verbleibende Ruecksetzung des Integralwerts: mehr als 24 h ohne
+    Heizanforderung (juengste `shadow_decision` mit `would_heat`)."""
+
+    def _decision(
+        self, session: Session, zone: Zone, at: datetime, *, would_heat: bool
+    ) -> None:
+        session.add(
+            ShadowDecision(
+                zone_id=zone.id,
+                decided_at=at,
+                would_heat=would_heat,
+                setpoint_reason="seed",
+                outcome_code="aus",
+                reason="seed",
+                effective_controller="hysteresis",
+                requested_controller="hysteresis",
+            )
+        )
+        session.flush()
+
+    def _zone(self, session: Session, name: str, **kwargs: Any) -> tuple[Zone, ZoneState]:
+        zone = _pi_zone(session, name, **kwargs)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.pi_integral = Decimal("0.5")
+        session.flush()
+        return zone, state
+
+    def test_just_under_24_hours_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._zone(session, "knapp-unter", measured_c=WARM_C)
+        self._decision(
+            session, zone, NOW - NO_HEATING_RESET_AFTER + timedelta(minutes=1), would_heat=True
+        )
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason != RESET_REASON_NO_HEATING
+        assert row.pi_integral_before == Decimal("0.5")
+
+    def test_just_over_24_hours_resets_with_its_own_reason(self, session: Session) -> None:
+        zone, state = self._zone(session, "knapp-ueber", measured_c=WARM_C)
+        self._decision(
+            session, zone, NOW - NO_HEATING_RESET_AFTER - timedelta(minutes=1), would_heat=True
+        )
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_NO_HEATING
+        assert row.pi_integrator_action == INTEGRATOR_RESET
+        assert row.pi_integral_before == Decimal("0.5")
+        assert state.pi_integral == Decimal("0")
+
+    def test_a_heating_cycle_itself_counts_as_activity(self, session: Session) -> None:
+        zone, state = self._zone(session, "heizt-jetzt", measured_c=COLD_C)
+        self._decision(session, zone, NOW - timedelta(days=3), would_heat=True)
+        self._decision(session, zone, NOW - timedelta(hours=1), would_heat=False)
+        # Die juengste Heizanforderung ist 3 Tage alt, aber dieser Zyklus heizt.
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.would_heat is True
+        assert row.pi_reset_reason != RESET_REASON_NO_HEATING
+        assert row.pi_integral_before == Decimal("0.5")
+
+    def test_the_check_also_applies_inside_a_gate(self, session: Session) -> None:
+        zone, state = self._zone(session, "gate-24h", measured_c=COLD_C)
+        state.temperature_c = None
+        state.sensor_status_id = sensor_status_of(session, "keine_quelle").id
+        self._decision(session, zone, NOW - timedelta(days=2), would_heat=True)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_NO_HEATING
+        assert row.pi_integrator_action == INTEGRATOR_RESET
+        assert state.pi_integral == Decimal("0")
+
+    def test_a_restart_after_a_long_pause_resets(self, session: Session) -> None:
+        zone, state = self._zone(session, "neustart-24h", measured_c=WARM_C)
+        state.pi_last_control_armed = None
+        self._decision(session, zone, NOW - timedelta(days=10), would_heat=True)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.controller_fallback_reason == RESET_REASON_INVALID_STATE
+        assert row.pi_reset_reason == RESET_REASON_NO_HEATING
+        assert state.pi_integral == Decimal("0")
+
+    def test_history_without_any_heating_counts_from_its_oldest_row(
+        self, session: Session
+    ) -> None:
+        """Retention: sind alle aelteren Heizzeilen geloescht, bleibt die aelteste
+        Zeile der Zone als Bezug -- keine Zeile heizt, und die ist laenger als 24 h her."""
+        zone, state = self._zone(session, "ohne-heizzeile", measured_c=WARM_C)
+        self._decision(session, zone, NOW - timedelta(days=30), would_heat=False)
+        self._decision(session, zone, NOW - timedelta(hours=2), would_heat=False)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason == RESET_REASON_NO_HEATING
+        assert state.pi_integral == Decimal("0")
+
+    def test_a_new_zone_without_history_has_nothing_to_reset(self, session: Session) -> None:
+        zone, state = self._zone(session, "neue-zone", measured_c=WARM_C)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason != RESET_REASON_NO_HEATING
+        assert row.pi_integral_before == Decimal("0.5")
+
+    def test_a_young_history_without_heating_keeps_the_integral(self, session: Session) -> None:
+        zone, state = self._zone(session, "junge-historie", measured_c=WARM_C)
+        self._decision(session, zone, NOW - timedelta(hours=5), would_heat=False)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.pi_reset_reason != RESET_REASON_NO_HEATING
+        assert row.pi_integral_before == Decimal("0.5")
