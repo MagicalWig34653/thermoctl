@@ -16,6 +16,12 @@
 .dash-tile[data-w='3'] {
   grid-column: span 6;
 }
+/* Schmales Telefon: zwei Kennzahlen nebeneinander brechen Titel mitten im Wort. */
+@container (max-width: 420px) {
+  .dash-tile[data-w='3'] {
+    grid-column: span 12;
+  }
+}
 @container (min-width: 560px) {
   .dash-tile[data-w='3'],
   .dash-tile[data-w='4'],

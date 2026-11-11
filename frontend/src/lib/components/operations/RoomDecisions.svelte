@@ -3,7 +3,7 @@
   import { useApp } from '$lib/context';
   import { formatCelsius } from '$lib/rooms/decimal';
   import { formatInstant } from '$lib/rooms/logic';
-  import { actuatorCycle, decisionEffect, sensorTimeoutText } from '$lib/operations/logic';
+  import { actuatorCycle, controllerLabel, decisionEffect, outcomeLabel, sensorTimeoutText } from '$lib/operations/logic';
   import type { Operation } from '$lib/operations/types';
   import Notice from '$lib/components/rooms/Notice.svelte';
 
@@ -41,9 +41,9 @@
               {#if d.planned_setpoint_c !== null}<dt class="text-muted-foreground">Plan</dt><dd class="m-0 tabular-nums">{formatCelsius(d.planned_setpoint_c)}</dd>{/if}
               {#if d.solar_setback_k !== null}<dt class="text-muted-foreground">Sonnenabsenkung</dt><dd class="m-0 tabular-nums">{d.solar_setback_k.replace('.', ',')} K</dd>{/if}
               <dt class="text-muted-foreground">Regler</dt>
-              <dd class="m-0">{d.effective_controller}{d.requested_controller !== d.effective_controller ? ` (gewünscht: ${d.requested_controller})` : ''}</dd>
+              <dd class="m-0">{controllerLabel(d.effective_controller)}{d.requested_controller !== d.effective_controller ? ` (gewünscht: ${controllerLabel(d.requested_controller)})` : ''}</dd>
               {#if d.controller_fallback_label}<dt class="text-muted-foreground">Rückfall</dt><dd class="m-0">{d.controller_fallback_label}</dd>{/if}
-              <dt class="text-muted-foreground">Ergebniscode</dt><dd class="m-0 font-mono text-xs">{d.outcome_code}</dd>
+              <dt class="text-muted-foreground">Ergebnis</dt><dd class="m-0">{outcomeLabel(d.outcome_code)}</dd>
             </dl>
           {:else}
             <p class="mb-3 text-sm text-muted-foreground">Noch keine Entscheidung.</p>
@@ -83,7 +83,7 @@
                           <dd class="m-0">{c.cycle}</dd>
                         {/if}
                       </dl>
-                      <div class="mt-1 text-muted-foreground">{actuator.handover_status_text} {actuator.restore_status_text}</div>
+                      <div class="mt-1 text-muted-foreground">Übergabe: {actuator.handover_status_text}. Rückstellung: {actuator.restore_status_text}.</div>
                     </li>
                   {/each}
                 </ul>

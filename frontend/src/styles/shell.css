@@ -18,6 +18,10 @@
 /* Schublade auf schmalen Anzeigen: die Leiste liegt außerhalb und gleitet ein. */
 @media (max-width: 1023px) {
   .app-sidebar {
+    /* Deckend: sonst scheint der Seiteninhalt hinter der Schublade durch. */
+    background: var(--sidebar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     transform: translateX(-100%);
     visibility: hidden;
     transition:

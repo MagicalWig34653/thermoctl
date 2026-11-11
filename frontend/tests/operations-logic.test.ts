@@ -5,7 +5,7 @@ import {
   armOutcome, buildParametersPatch, buildSensorFailureBody, decisionEffect, defaultsPayload, displayDetailValue,
   draftFromParameters, errorAt, fromInput, generalError, inheritanceNote, localParameterErrors, opsFailure,
   operationHeadline, outsideLimit, patchedFields, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
-  SENDING_LATCH_NOTE, subtractDecimal, switchingTable, wearRatioSentence, formatCount, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
+  SENDING_LATCH_NOTE, controllerLabel, outcomeLabel, switchingSummary, subtractDecimal, switchingTable, wearRatioSentence, formatCount, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
 } from '../src/lib/operations/logic.ts';
 import { actuation, ARMED_NO_RESTART, LIVE, parameters, settings } from './operations-fixture.ts';
 
@@ -406,4 +406,24 @@ test('PI-Warnung: RoomTechnik bindet sie ein, mit Verweis auf den Relaisverschle
   assert.match(warning, /\/auswertung\/verschleiss/);
   assert.match(warning, /Kessel oder Verdichter/);
   assert.doesNotMatch(warning, /262/);
+});
+
+test('Gesamtzeile folgt aus decisionEffect: schaltet nur, wenn es ausgeführt wird', () => {
+  for (const a of [actuation(), ARMED_NO_RESTART, LIVE, { ...LIVE, cluster_standby: true }]) {
+    assert.equal(switchingSummary(a).switching, decisionEffect(a).executes);
+  }
+  assert.equal(switchingSummary(actuation()).text, 'Es wird NICHT geschaltet: Trockenlauf.');
+  assert.match(switchingSummary(ARMED_NO_RESTART).text, /^Es wird NICHT geschaltet: .*Neustart/);
+  assert.match(switchingSummary({ ...LIVE, cluster_standby: true }).text, /Standby/);
+  assert.match(switchingSummary(LIVE).text, /^Es wird geschaltet/);
+});
+
+test('Reglername und Ergebnis sind lesbar, unbekannte Codes bleiben roh', () => {
+  assert.equal(controllerLabel('hysteresis'), 'Hysterese-Regler');
+  assert.equal(controllerLabel('pi'), 'PI-Regler');
+  assert.equal(controllerLabel('neu_x'), 'neu_x');
+  assert.equal(outcomeLabel('aus'), 'Aus');
+  assert.equal(outcomeLabel('heizen'), 'Heizen');
+  assert.equal(outcomeLabel('gesperrt_mindestdauer'), 'Gesperrt (Mindestdauer)');
+  assert.equal(outcomeLabel('neu_x'), 'neu_x');
 });

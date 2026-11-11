@@ -3,7 +3,7 @@
   import { useApp } from '$lib/context';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { createOperationResource } from '$lib/operations/operation.svelte';
-  import { operationHeadline } from '$lib/operations/logic';
+  import { operationHeadline, switchingSummary } from '$lib/operations/logic';
   import type { ArmedResult } from '$lib/operations/types';
   import ArmPanel from './ArmPanel.svelte';
   import OpsPage from './OpsPage.svelte';
@@ -29,6 +29,7 @@
     {#if resource.failure}<Notice tone="warn">Aktualisierung fehlgeschlagen: {resource.failure.message} Angezeigt wird der letzte bekannte Stand.</Notice>{/if}
     <section aria-labelledby="state-title" >
       <h2 id="state-title" class="ops-h2-bare">Zustand</h2>
+      <p class="mb-3 text-base font-medium" data-testid="switching-summary">{switchingSummary(page.operation.actuation).text}</p>
       <StateCards actuation={page.operation.actuation} />
     </section>
     <section aria-labelledby="explain-title" class="max-w-[820px]" data-testid="headline">
