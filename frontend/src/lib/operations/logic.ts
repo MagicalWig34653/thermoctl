@@ -509,6 +509,36 @@ export function decisionEffect(a: OperationActuation): { executes: boolean; text
   return { executes: true, text: 'Wird an die Aktoren gesendet.' };
 }
 
+/** Gesamtaussage über den vier Zustandskarten. Gleiche Quelle wie „Entscheidungen je Raum“:
+ *  `decisionEffect` entscheidet, ob geschaltet wird und warum nicht. */
+export function switchingSummary(a: OperationActuation): { switching: boolean; text: string } {
+  const effect = decisionEffect(a);
+  if (effect.executes) return { switching: true, text: 'Es wird geschaltet: Entscheidungen werden an die Aktoren gesendet.' };
+  const reason = effect.text.replace(/^Wird nicht ausgeführt: /, '').replace(/\.$/, '');
+  return { switching: false, text: `Es wird NICHT geschaltet: ${reason}.` };
+}
+
+const CONTROLLER_LABELS: Record<string, string> = { hysteresis: 'Hysterese-Regler', pi: 'PI-Regler' };
+
+/** Lesbarer Reglername; ein unbekannter Code bleibt roh sichtbar. */
+export const controllerLabel = (code: string): string => CONTROLLER_LABELS[code] ?? code;
+
+const OUTCOME_LABELS: Record<string, string> = {
+  heizen: 'Heizen',
+  aus: 'Aus',
+  unveraendert: 'Unverändert',
+  gesperrt_mindestdauer: 'Gesperrt (Mindestdauer)',
+  fenster_offen: 'Fenster offen',
+  frostschutz_sensorausfall: 'Frostschutz (Sensorausfall)',
+  frostschutz_trotz_fenster_offen: 'Frostschutz trotz offenem Fenster',
+  keine_quelle: 'Keine Messquelle',
+  ventilschutz: 'Ventilschutz',
+  notbetrieb_rueckkehr_start: 'Rückkehr aus dem Notbetrieb beginnt',
+};
+
+/** Lesbares Ergebnis der Entscheidung; ein unbekannter Code bleibt roh sichtbar. */
+export const outcomeLabel = (code: string): string => OUTCOME_LABELS[code] ?? code;
+
 export interface ArmOutcome {
   tone: 'success' | 'warn' | 'info';
   text: string;
