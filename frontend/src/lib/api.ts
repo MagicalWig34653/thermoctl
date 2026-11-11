@@ -7,6 +7,8 @@
 // Schreibende Aufrufe werden NIE automatisch wiederholt: Eine zweite Ausführung nach
 // einem unklaren Ergebnis könnte etwas an der Heizung doppelt auslösen.
 
+import { OFFLINE_WRITE_MESSAGE, classifyFailure } from './connection';
+
 export const CSRF_COOKIE = 'thermoctl_csrf';
 export const CSRF_HEADER = 'X-CSRF-Token';
 
@@ -40,6 +42,11 @@ export interface ApiDeps {
   onUnauthorized?: (reason: 'unauthorized' | 'stale') => void;
   /** Höchstdauer je Aufruf in ms (Vorgabe 30 s); danach Abbruch mit klarer Fehlermeldung. */
   timeoutMs?: number;
+  /** Meldet nach jedem Aufruf, ob der Server geantwortet hat (Erfolg oder jede Fehlerantwort)
+   *  oder nicht (Netzfehler, Zeitüberschreitung, 5xx). Grundlage der Verbindungsanzeige. */
+  onReachability?: (reachable: boolean) => void;
+  /** Steht die Verbindung, wird nichts Schreibendes gesendet (Lesen bleibt erlaubt). */
+  isOffline?: () => boolean;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -98,6 +105,7 @@ function fallbackDetail(response: Response): string {
 
 export function createApi(deps: ApiDeps) {
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    if (!SAFE.has(method) && deps.isOffline?.()) throw new ApiError('network', 0, OFFLINE_WRITE_MESSAGE);
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -105,7 +113,13 @@ export function createApi(deps: ApiDeps) {
       controller.abort();
     }, deps.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     try {
-      return await perform<T>(method, path, body, controller.signal, () => timedOut);
+      const result = await perform<T>(method, path, body, controller.signal, () => timedOut);
+      deps.onReachability?.(true);
+      return result;
+    } catch (error) {
+      const outcome = classifyFailure(error);
+      if (outcome !== 'ignore') deps.onReachability?.(outcome === 'up');
+      throw error;
     } finally {
       clearTimeout(timer);
     }

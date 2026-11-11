@@ -13,7 +13,9 @@
     toggleGroup,
   } from '$lib/nav-menu';
   import { appHref, type Route } from '$lib/paths';
+  import { OFFLINE_HINT } from '$lib/connection';
   import { useApp } from '$lib/context';
+  import ConnectionBanner from './ConnectionBanner.svelte';
   import { Button } from '$lib/components/ui/button';
   import SettingsSearch from './SettingsSearch.svelte';
   import AppearanceDialog from './AppearanceDialog.svelte';
@@ -25,7 +27,7 @@
     title,
     children,
   }: { areas: VisibleArea[]; route: Route; title: string; children: Snippet } = $props();
-  const { prefix, router, session } = useApp();
+  const { prefix, router, session, connection } = useApp();
 
   let drawer = $state(false);
   let mobile = $state(false);
@@ -288,13 +290,22 @@
     >
   </header>
 
+  <ConnectionBanner />
+
   <main
     id="content"
     bind:this={content}
     tabindex="-1"
     class="mx-auto w-full max-w-6xl px-4 py-6 outline-none sm:px-7 sm:py-8"
   >
-    {@render children()}
+    <!-- Ohne Verbindung sind alle Bedienelemente des Inhalts gesperrt (ein gesperrter Rahmen sperrt alles darin). -->
+    <fieldset
+      disabled={connection.down}
+      class="m-0 min-w-0 border-0 p-0"
+      title={connection.down ? OFFLINE_HINT : undefined}
+    >
+      {@render children()}
+    </fieldset>
   </main>
   <footer class="mx-auto w-full max-w-6xl px-4 pb-6 text-xs text-muted-foreground sm:px-7">
     thermoctl steht unter der AGPL-3.0. <SourceLink />
