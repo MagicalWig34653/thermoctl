@@ -23,6 +23,7 @@ from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.sensor_failure import ZoneSensorFailureState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.ui_profile import WebUiProfile
 
@@ -183,3 +184,23 @@ def seed_outdoor_measurement(
     session.add(measurement)
     session.flush()
     return measurement
+
+
+def create_emergency_zone(session: Session, name: str, source_name: str) -> Zone:
+    """A schedule zone currently running on a substitute source ("Ersatzquelle").
+
+    The banner on the room page then names `source_name` -- a long, unbroken device name
+    is the worst case for line wrapping. Only the persisted state is written
+    (`ZoneSensorFailureState`); the banner text is built from it by the server.
+    """
+    zone = create_schedule_zone(session, name)
+    device = create_device(session, source_name)
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=zone.id,
+            stage="ersatzquelle",
+            active_source_device_id=device.id,
+        )
+    )
+    session.flush()
+    return zone

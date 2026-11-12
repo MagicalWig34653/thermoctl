@@ -43,7 +43,7 @@
     />
     {#if unit}<span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground" aria-hidden="true">{unit}</span>{/if}
     </div>
-    <Button type="button" variant="ghost" size="sm" class="min-h-10" disabled={disabled || !isOwn} onclick={() => (value = '')} aria-label={`${param.limit.label}: Eigenwert entfernen, Wert erben`}>Erben</Button>
+    <Button type="button" variant="ghost" size="sm" class="min-h-10" disabled={disabled || !isOwn} onclick={() => (value = '')} aria-label={`${param.limit.label}: Eigenwert entfernen, Wert erben`} title="Eigenwert entfernen: Der Raum übernimmt wieder den Wert der Anlage.">Erben</Button>
   </div>
   <p id={`${id}-note`} class="mt-1 mb-0 text-xs text-muted-foreground">
     Wirksam: <strong class="text-foreground">{toInput(param.effective)}{unit ? ` ${unit}` : ''}</strong> · {inheritanceNote(param.source, param.inherited)}

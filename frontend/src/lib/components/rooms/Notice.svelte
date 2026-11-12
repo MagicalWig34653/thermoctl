@@ -28,5 +28,5 @@
   {:else}
     <Info size={16} class="mt-0.5 shrink-0" aria-hidden="true" />
   {/if}
-  <div class="min-w-0">{@render children()}</div>
+  <div class="min-w-0 [overflow-wrap:anywhere]">{@render children()}</div>
 </div>

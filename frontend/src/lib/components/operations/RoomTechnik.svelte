@@ -30,7 +30,7 @@
   // Kein Zugriff (403) oder nicht sichtbar (404): Der Abschnitt entfällt, es ist kein Fehler.
   let unavailable = $state(false);
   let localErrors = $state<Record<string, string>>({});
-  let openGroups = $state<Record<string, boolean>>({ control: true });
+  let openGroups = $state<Record<string, boolean>>({});
 
   async function load() {
     loading = true;
@@ -125,7 +125,16 @@
         <Button variant="outline" size="sm" onclick={load}>Erneut laden</Button>
       </div>
     {:else if params && draft}
-      <p class="mb-3 text-sm text-muted-foreground">Regelwerte dieses Raums. Leere Felder erben den Wert der Anlage. Eingeklappte Gruppen behalten ungespeicherte Eingaben.</p>
+      <p class="mb-3 text-sm text-muted-foreground" data-testid="inherit-explanation">
+        Regelwerte dieses Raums. <strong class="font-semibold text-foreground">Erbt</strong> heißt: Das Feld ist leer, der Raum übernimmt den Wert der Anlage (oder die Vorgabe, wenn die Anlage keinen setzt).
+        <strong class="font-semibold text-foreground">Eigenwert</strong> gilt nur für diesen Raum; <strong class="font-semibold text-foreground">Erben</strong> entfernt ihn wieder.
+        Eingeklappte Gruppen behalten ungespeicherte Eingaben.
+      </p>
+
+      <div class="mb-3 space-y-2" data-testid="rt-notify">
+        <ToggleRow id={idOf('fault_notifications_enabled')} label="Ausfallbenachrichtigungen" description="Meldet Störungen dieses Raums nach außen. Ausgeschaltet entfällt nur die Benachrichtigung; die Störung bleibt in der Oberfläche und im Schaltprotokoll sichtbar; Home Assistant wird davon nicht berührt." bind:checked={draft.fault_notifications} error={err('fault_notifications_enabled')} />
+        <p class="mb-0 text-sm text-muted-foreground">Gilt für Sensorstörung, Notbetrieb, festhängenden Messwert, offenes Fenster und gescheiterte Schaltbefehle. Anlagenweite Meldungen und Mieter-Meldungen bleiben davon unberührt; der anlagenweite Schalter in den Anlageneinstellungen gilt zusätzlich.</p>
+      </div>
 
       <div class="space-y-2">
         <details class="rounded-lg border" bind:open={openGroups.control}>
@@ -205,14 +214,6 @@
               {#if err('sensor_failure_profile_id')}<p class="mt-1 mb-0 text-sm text-destructive">{err('sensor_failure_profile_id')}</p>{/if}
             </div>
             <NumField id={idOf('sensor_failure_emergency_setpoint_c')} label="Notsollwert" unit="°C" help="emergency_setpoint" bind:value={draft.sensor_failure.emergency_setpoint_c} placeholder={toInput(params.sensor_failure.effective_emergency_setpoint_c)} hint={`Leer = erbt. Wirksam: ${toInput(params.sensor_failure.effective_emergency_setpoint_c)} °C`} error={err('sensor_failure_emergency_setpoint_c')} />
-          </div>
-        </details>
-
-        <details class="rounded-lg border" bind:open={openGroups.notify}>
-          <summary class="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold">{@render groupHead('Benachrichtigungen', 'notify')}</summary>
-          <div class="space-y-4 px-3 pt-1 pb-4">
-            <ToggleRow id={idOf('fault_notifications_enabled')} label="Ausfallbenachrichtigungen" description="Meldet Störungen dieses Raums nach außen. Ausgeschaltet entfällt nur die Benachrichtigung; die Störung bleibt in der Oberfläche und im Schaltprotokoll sichtbar; Home Assistant wird davon nicht berührt." bind:checked={draft.fault_notifications} error={err('fault_notifications_enabled')} />
-            <p class="mb-0 text-sm text-muted-foreground">Gilt für Sensorstörung, Notbetrieb, festhängenden Messwert, offenes Fenster und gescheiterte Schaltbefehle. Anlagenweite Meldungen und Mieter-Meldungen bleiben davon unberührt; der anlagenweite Schalter in den Anlageneinstellungen gilt zusätzlich.</p>
           </div>
         </details>
 
