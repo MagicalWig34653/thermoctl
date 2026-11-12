@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { BookOpen, ChevronDown, ChevronRight, LogOut, Palette, PanelLeft, UserRound } from '@lucide/svelte';
   import { AREA_ICONS } from '$lib/icons';
   import type { VisibleArea } from '$lib/navigation';
@@ -36,6 +36,8 @@
   let appearanceOpen = $state(false);
   let content = $state<HTMLElement | null>(null);
   let logoutError = $state<string | null>(null);
+  let sidebarEl = $state<HTMLElement | null>(null);
+  let trigger = $state<HTMLElement | null>(null);
 
   const activeAreaId = $derived(
     route.kind === 'home' || route.kind === 'room'
@@ -108,6 +110,24 @@
     content?.focus({ preventScroll: true });
   });
 
+  // Fokusführung der Schublade (nur Handy): beim Öffnen in die Schublade, beim Schließen zurück auf
+  // den Auslöser -- außer der Fokus liegt schon woanders (Ansichtswechsel setzt ihn auf den Inhalt).
+  let drawerWas = false;
+  $effect(() => {
+    const open = drawer;
+    if (open === drawerWas) return;
+    drawerWas = open;
+    void tick().then(() => {
+      if (open) {
+        if (sidebarEl?.contains(document.activeElement)) return;
+        sidebarEl?.querySelector<HTMLElement>('input, a[href], button:not([disabled])')?.focus();
+      } else {
+        const active = document.activeElement;
+        if (!active || active === document.body || sidebarEl?.contains(active)) trigger?.focus();
+      }
+    });
+  });
+
   $effect(() => {
     document.title = `thermoctl · ${title}`;
   });
@@ -134,6 +154,7 @@
 <a
   href="#content"
   class="fixed top-[-100px] z-[100] bg-background p-3 focus:top-0"
+  inert={mobile && drawer}
   onclick={(e) => {
     e.preventDefault();
     content?.focus();
@@ -144,6 +165,7 @@
   id="app-sidebar"
   class="app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-sidebar px-3 py-4"
   data-open={drawer}
+  bind:this={sidebarEl}
   inert={mobile && !drawer}
 >
   <a
@@ -260,7 +282,8 @@
   ></button>
 {/if}
 
-<div class="lg:ml-64">
+<!-- Bei offener Schublade (Handy) ist der Seiteninhalt inert: Tab bleibt in der Schublade. -->
+<div class="lg:ml-64" inert={mobile && drawer}>
   <header
     class="app-topbar sticky top-0 z-20 flex h-[60px] items-center justify-between gap-3 border-b px-4 sm:px-7"
   >
@@ -268,6 +291,7 @@
       <Button
         variant="ghost"
         size="icon"
+        bind:ref={trigger}
         class="lg:hidden"
         aria-label={drawer ? 'Navigation schließen' : 'Navigation öffnen'}
         aria-expanded={drawer}
