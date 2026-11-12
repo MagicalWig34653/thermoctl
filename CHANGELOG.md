@@ -20,8 +20,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 - **Verbindungsanzeige.** Nach zwei Abfragen ohne Antwort des Servers (Netzfehler, Zeitüberschreitung, 502/503/504) zeigt die Oberfläche ein Banner „Verbindung unterbrochen – Anzeige veraltet seit hh:mm" und sperrt alle Bedienelemente mit Schreibwirkung, auch im Kiosk. Alle 10 Sekunden wird die Verbindung geprüft, das Banner verschwindet von selbst. Ein einzelner Fehler eines Endpunkts (gewöhnliche 500, 401, 403, 404) löst es nicht aus.
 
+- **Wochenplan:** Direkt unter dem Plan steht der Link „Zeit per Formular anlegen“, der zum Formular springt und es fokussiert.
+- **Anmeldung:** Dauert die Prüfung länger als 1 Sekunde, erklärt die Seite die absichtliche Verzögerung (Server und Drosselung unverändert).
+
 ### Behoben
 
+- **Mobile Navigation:** Bei geöffneter Schublade ist der Seiteninhalt für die Tastatur gesperrt; der Fokus geht in die Schublade und beim Schließen zurück auf den Auslöser.
+- **Startseite, Kennzahl-Kacheln:** Jede Kennzahl hat ein eigenes Symbol; das Warndreieck erscheint nur bei tatsächlichen Auffälligkeiten, nicht bei fehlender Außentemperaturquelle.
 - **Betriebsseite:** Regler und Ergebnis stehen lesbar statt als Rohcode, die doppelte Statuszeile der Notbetriebskarte ist beschriftet, und über den Zustandskarten steht eine Gesamtzeile, ob geschaltet wird.
 - **Startseite am Handy:** Die Kennzahl-Titel brechen nicht mehr mitten im Wort.
 - **Navigation am Handy:** Die Seitenleiste ist deckend, der Inhalt scheint nicht mehr durch.
