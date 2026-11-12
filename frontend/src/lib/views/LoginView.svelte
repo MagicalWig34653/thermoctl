@@ -4,6 +4,7 @@
   import { appHref } from '$lib/paths';
   import { fetchPasskeysOffered, passkeyLogin, passkeyLoginMessage } from '$lib/auth/login';
   import { requestedReturnTo, targetHref } from '$lib/auth/target';
+  import { scheduleSlowHint } from '$lib/auth/slow-hint';
   import { loadSetupStatus } from '$lib/setup/client';
   import { KeyRound } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
@@ -19,6 +20,7 @@
   let pending = $state(false);
   let passkeysOffered = $state(false);
   let hint = $state<string | null>(null);
+  let slowHint = $state<string | null>(null);
 
   // Nur ein Wunsch aus der Adresse; ob er gilt, sagt der Server (`target` in den Antworten).
   const returnTo = $derived(requestedReturnTo(router.search));
@@ -51,7 +53,13 @@
     pending = true;
     error = null;
     hint = null;
-    const result = await session.login(username.trim(), password, returnTo);
+    const cancelSlowHint = scheduleSlowHint((message) => (slowHint = message));
+    let result: Awaited<ReturnType<typeof session.login>>;
+    try {
+      result = await session.login(username.trim(), password, returnTo);
+    } finally {
+      cancelSlowHint();
+    }
     pending = false;
     password = '';
     if (result.error !== null) {
@@ -125,6 +133,11 @@
           bind:value={password}
           aria-invalid={error ? 'true' : undefined}
         />
+      </div>
+      <div aria-live="polite">
+        {#if slowHint}
+          <p class="mt-4 text-sm text-muted-foreground" data-testid="slow-login-hint">{slowHint}</p>
+        {/if}
       </div>
       {#if error}
         <p class="mt-4 text-sm text-destructive" role="alert">{error}</p>
