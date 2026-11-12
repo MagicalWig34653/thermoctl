@@ -80,10 +80,15 @@
 {#if session.status === 'loading'}
   <p class="p-6 text-muted-foreground" role="status">Lade …</p>
 {:else if session.status === 'error'}
-  <main class="mx-auto max-w-md p-6">
-    <h1>Keine Verbindung</h1>
-    <p class="text-muted-foreground" role="alert">{session.failure}</p>
-    <Button onclick={() => session.load()}>Erneut versuchen</Button>
+  <main class="mx-auto flex min-h-dvh max-w-md flex-col justify-center p-4 sm:p-6" data-testid="session-error">
+    <div class="rounded-xl border bg-card p-5 shadow-sm sm:p-6">
+      <h1 class="mb-2">Keine Verbindung</h1>
+      <p class="mb-1 text-destructive" role="alert">{session.failure}</p>
+      <p class="mb-4 text-sm text-muted-foreground">
+        Prüfe die Netzwerkverbindung und versuche es gleich noch einmal. Es wurde nichts geändert.
+      </p>
+      <Button onclick={() => session.load()}>Erneut versuchen</Button>
+    </div>
   </main>
 {:else if session.status === 'anonymous'}
   <LoginView />
@@ -104,12 +109,12 @@
     {:else if route.kind === 'unavailable'}
       <MessageView
         title="Nicht verfügbar"
-        text="Diese Seite ist für dein Konto nicht sichtbar. Ob etwas erlaubt ist, entscheidet der Server bei jedem Zugriff."
+        text="Diese Seite ist für dein Konto nicht freigegeben. Brauchst du sie, frage die Person, die die Anlage verwaltet, nach dem passenden Recht."
       />
     {:else if route.kind === 'login'}
       <MessageView title="Bereits angemeldet" text="Du bist angemeldet." />
     {:else}
-      <MessageView title="Seite nicht gefunden" text="Diese Adresse gibt es in der Oberfläche nicht." />
+      <MessageView title="Seite nicht gefunden" text="Diese Adresse gibt es nicht. Prüfe sie auf Tippfehler oder öffne die Seite über das Menü." />
     {/if}
   </Shell>
 {/if}

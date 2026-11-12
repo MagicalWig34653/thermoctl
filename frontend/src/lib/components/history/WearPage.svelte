@@ -55,7 +55,7 @@
   {#if data.devices.length === 0}
     <p class="text-muted-foreground" role="status">
       Keine geschalteten Geräte im Zeitraum. Die Auswertung beginnt mit dem ersten erfolgreich befohlenen Zustand als Ausgangslage.
-      <a class="underline" href={appHref(prefix, '/auswertung/ereignisse')}>Schaltprotokoll ansehen</a>
+      <a class="underline" href={appHref(prefix, '/auswertung/ereignisse')}>Schaltprotokoll unter „Ereignisse“ ansehen</a>
     </p>
   {:else}
     <div class="overflow-x-auto rounded-xl border">
@@ -118,7 +118,7 @@
       Die Jahreszahl ist der Tagesdurchschnitt des gewählten Zeitraums mal 365; der heutige Tag ist noch unvollständig.
       „Ausgeführt“ bestätigt nur den erfolgreich gesendeten Befehl, nicht die körperliche Bewegung des Relais.
       Der erste bekannte Zustand ist eine Ausgangslage und kein gezählter Wechsel.
-      <a class="underline" href={appHref(prefix, '/auswertung/ereignisse')} data-testid="wear-log-link">Schaltprotokoll ansehen</a>
+      <a class="underline" href={appHref(prefix, '/auswertung/ereignisse')} data-testid="wear-log-link">Schaltprotokoll unter „Ereignisse“ ansehen</a>
     </p>
   {/if}
 {/if}

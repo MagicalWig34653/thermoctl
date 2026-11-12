@@ -197,9 +197,15 @@
   <p class="text-muted-foreground" role="status">Raum wird geladen …</p>
 {:else if !room || !ui || !data}
   <div class="max-w-xl space-y-3">
-    <h1>{page.failure?.kind === 'not_found' ? 'Raum nicht gefunden' : 'Raum nicht verfügbar'}</h1>
-    <Notice tone="error">{page.failure?.message ?? 'Der Raum konnte nicht geladen werden.'}</Notice>
-    {#if page.failure?.kind !== 'not_found'}
+    {#if page.failure?.kind === 'not_found'}
+      <h1>Raum nicht gefunden</h1>
+      <p class="text-muted-foreground" data-testid="room-not-found">
+        Diesen Raum gibt es nicht (mehr), oder er ist für dein Konto nicht sichtbar. Alle Räume stehen in der Übersicht.
+      </p>
+      <Button href={appHref(prefix, '/')} variant="outline">Zur Übersicht</Button>
+    {:else}
+      <h1>Raum nicht verfügbar</h1>
+      <Notice tone="error">{page.failure?.message ?? 'Der Raum konnte nicht geladen werden.'}</Notice>
       <Button variant="outline" onclick={() => page.refresh()}>Erneut versuchen</Button>
     {/if}
   </div>

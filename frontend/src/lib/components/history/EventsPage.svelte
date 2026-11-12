@@ -6,7 +6,7 @@
   import { formatInstant } from '$lib/rooms/logic';
   import DeviceCommandsPanel from '$lib/components/devices/DeviceCommandsPanel.svelte';
   import { createQuery } from '$lib/history/query.svelte';
-  import { AUDIT_TEXT_MAX, auditQuery, buildQuery, classifyRevertError, type RevertOutcome } from '$lib/history/reports';
+  import { AUDIT_TEXT_MAX, auditQuery, buildQuery, emptyListText, classifyRevertError, type RevertOutcome } from '$lib/history/reports';
   import type { Audit, Change, Changes, RevertResult } from '$lib/history/types';
 
   const { api, prefix } = useApp();
@@ -165,7 +165,13 @@
   {:else}
     {#if audit.failure}<div class="mb-3"><Notice tone={audit.failure.kind === 'validation' ? 'error' : 'warn'}>{audit.failure.message}</Notice></div>{/if}
     {#if data.entries.length === 0}
-      <p class="text-muted-foreground" role="status">Keine Einträge für diese Filter.</p>
+      <p class="text-muted-foreground" role="status" data-testid="audit-empty">
+        {emptyListText(
+          [fromDate, toDate, user, actionCode, zoneId, objectText, source, text],
+          'Im Audit-Protokoll steht noch nichts.',
+          'Keine Einträge für diese Filter. Lockere oder entferne einen Filter.',
+        )}
+      </p>
     {:else}
       <div class="mb-2 flex justify-end">
         <a class="text-sm underline underline-offset-4" href={csvHref} download data-testid="audit-csv">Als CSV herunterladen</a>
@@ -237,7 +243,13 @@
   {:else}
     {#if changes.failure}<div class="mb-3"><Notice tone="warn">Aktualisieren fehlgeschlagen: {changes.failure.message}</Notice></div>{/if}
     {#if data.entries.length === 0}
-      <p class="text-muted-foreground" role="status">Keine Änderungen für diese Filter.</p>
+      <p class="text-muted-foreground" role="status" data-testid="changes-empty">
+        {emptyListText(
+          [fromDate, toDate, changeType, source, hideReverted],
+          'Es gibt noch keine Änderungen, die sich zurücknehmen ließen.',
+          'Keine Änderungen für diese Filter. Lockere oder entferne einen Filter.',
+        )}
+      </p>
     {:else}
       <ul class="m-0 grid list-none gap-3 p-0" data-testid="changes-list">
         {#each data.entries as c (c.id)}

@@ -168,6 +168,13 @@ test('toFailure bildet jeden Fehlerweg auf eine Art ab', () => {
   assert.equal(toFailure(new Error('boom')).kind, 'server');
 });
 
+test('toFailure: Netzfehler beim Lesen behauptet keine unklare Änderung', () => {
+  const net = toFailure(new ApiError('network', 0, 'fetch failed'), 'read');
+  assert.equal(net.kind, 'network');
+  assert.match(net.message, /nichts geändert/);
+  assert.doesNotMatch(net.message, /Änderung angekommen/);
+});
+
 test('shouldReload nur bei geändertem Serverzustand', () => {
   assert.equal(shouldReload({ kind: 'conflict', message: '', field: null, code: null }), true);
   assert.equal(shouldReload({ kind: 'validation', message: '', field: null, code: null }), false);

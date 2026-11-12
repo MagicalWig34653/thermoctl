@@ -12,7 +12,7 @@
 
 <section class="rounded-xl border bg-card p-5 sm:p-6">
   <p class="text-muted-foreground">
-    Diese Seite gibt es nicht, oder Sie dürfen sie nicht öffnen.
+    Diese Seite gibt es nicht, oder sie ist für dein Konto nicht freigegeben.
   </p>
   <a
     class="inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm hover:bg-muted"

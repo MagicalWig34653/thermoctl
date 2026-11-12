@@ -184,7 +184,7 @@
       }
     } catch (error) {
       if (mine !== generation) return;
-      failure = toFailure(error);
+      failure = toFailure(error, 'read');
     } finally {
       if (mine === generation) loading = false;
     }

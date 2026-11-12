@@ -350,7 +350,7 @@ Beleg-Kürzel: `lib/` = `frontend/src/lib/`, `comp/` = `frontend/src/lib/compone
 | Heizzeit (`statistics.html`, `tenant_heating_time.html`) | Zeiträume, Balken je Tag, Gesamt, Tabelle | vorhanden | `comp/history/HeatingTime.svelte` (7/30/90 Tage) |
 | | „Heizdauer, kein Energie- oder Kostenmesser“, Trockenlauf-Hinweis | vorhanden | `history/wording.ts` (`HEATING_TIME_SCOPE`, `HEATING_TIME_DRY_RUN`) |
 | | Leerzustand „keine Heizanforderung“ mit Verweis auf Schnittstellen | bewusst anders | Hinweis „Tage ohne Messzeilen erscheinen als 0“ statt Ursachenerklärung |
-| Relaisverschleiß (`relay_wear.html`, `report_views.py`) | Kennzahlen je Gerät, Stufe, Lebensdauer | vorhanden | `comp/history/WearPage.svelte`: Tageswerte je Gerät (aufklappbar, `wear-days`), „% der angenommenen Lebensdauer je Jahr“, Definition Schaltspiel, Link „Schaltprotokoll ansehen“ |
+| Relaisverschleiß (`relay_wear.html`, `report_views.py`) | Kennzahlen je Gerät, Stufe, Lebensdauer | vorhanden | `comp/history/WearPage.svelte`: Tageswerte je Gerät (aufklappbar, `wear-days`), „% der angenommenen Lebensdauer je Jahr“, Definition Schaltspiel, Link „Schaltprotokoll unter „Ereignisse“ ansehen“ |
 | Zeitplan Verwaltung (`schedule.html`, `schedule.js`, `schedule_views.py`) | Wochenraster: Anlegen, Verschieben, Ränder ziehen, Modus ändern, Löschen | vorhanden | `comp/schedule/ScheduleEditor.svelte`, `WeekGrid.svelte`, `Inspector.svelte` |
 | | Tastatur im Raster | vorhanden (erweitert) | `lib/schedule/keyboard.ts` (Pfeile, Alt+Pfeile, Entf, Strg+Z/Umschalt) – die Alt-Seite hatte nur Zeiger |
 | | „Zeit malen“ (Werkzeug, Tag, Von, Bis, bis 24:00, 15-min-Raster) | bewusst anders | Ziehen mit Pinsel „Neue Zeit mit“ und Inspektor mit exakten Zeiten (±15) statt Formular |

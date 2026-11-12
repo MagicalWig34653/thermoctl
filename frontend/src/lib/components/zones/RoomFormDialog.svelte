@@ -47,7 +47,7 @@
       values = valuesOf(result.room, result.operating_modes[0]?.code ?? '');
     } catch (error) {
       if (mine !== generation) return;
-      loadFailure = toFailure(error);
+      loadFailure = toFailure(error, 'read');
     } finally {
       if (mine === generation) loading = false;
     }

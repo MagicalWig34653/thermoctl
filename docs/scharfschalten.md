@@ -115,7 +115,7 @@ seltener, weil sich eine Ein/Aus- oder Sollwert-Entscheidung nur selten ändert.
 
 ## 4. Wie man das Schaltprotokoll liest
 
-Unter `Einstellungen → Schaltprotokoll`, mit Filtern nach Zeitraum, Zone und Ergebnis.
+Unter `Auswertung → Ereignisse → Schaltprotokoll`, mit Filtern nach Zeitraum, Zone und Ergebnis.
 
 ![Schaltprotokoll mit Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
 
