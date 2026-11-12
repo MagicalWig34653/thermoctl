@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUpRight, Cpu, ExternalLink, Flame, ShieldCheck, StickyNote, Thermometer, TriangleAlert } from '@lucide/svelte';
+  import { ArrowUpRight, CircleCheck, Cpu, ExternalLink, Flame, House, ShieldCheck, StickyNote, Thermometer, TriangleAlert } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { appHref } from '$lib/paths';
@@ -23,6 +23,15 @@
   const title = $derived(tileTitle(tile));
   const dot = { ok: 'bg-emerald-600', warn: 'bg-amber-500', neutral: 'bg-muted-foreground' };
   const chartPeriod = $derived(tile.period_days === 1 ? '24h' : tile.period_days === 7 ? '7d' : '30d');
+
+  // Ein Symbol je Kennzahl; das Warndreieck nur, wenn die Zahl selbst warnt (Auffälligkeiten > 0), nie bei
+  // einer bloß fehlenden Quelle (Außentemperatur) -- das las sich wie ein Fehlalarm.
+  const METRIC_ICONS = {
+    rooms: () => House,
+    heating: () => Flame,
+    issues: (m: { warn?: boolean }) => (m.warn ? TriangleAlert : CircleCheck),
+    outdoor: () => Thermometer,
+  } as const;
 </script>
 
 {#if tile.kind === 'room'}
@@ -37,7 +46,7 @@
   {/if}
 {:else if tile.kind === 'metric'}
   {@const m = metricValue(tile.metric ?? 'rooms', data)}
-  <TileCard title={tile.title.trim() || m.title} icon={m.available ? Thermometer : TriangleAlert} testid="tile-metric">
+  <TileCard title={tile.title.trim() || m.title} icon={METRIC_ICONS[tile.metric ?? 'rooms'](m)} testid="tile-metric">
     <div class="text-4xl leading-none font-semibold tracking-tight tabular-nums">{m.value}</div>
     <p class="m-0 text-xs text-muted-foreground">{m.note}</p>
   </TileCard>

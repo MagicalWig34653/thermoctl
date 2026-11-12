@@ -12,6 +12,8 @@ export interface MetricValue {
   value: string;
   note: string;
   available: boolean;
+  /** true nur, wenn die Zahl selbst eine Warnung ist (Auffälligkeiten > 0); steuert das Warnsymbol. */
+  warn?: boolean;
 }
 
 /** Außentemperatur der Kennzahl. Ein veralteter Wert oder fehlende Quelle sind eigene Texte statt einer
@@ -42,7 +44,7 @@ export function metricValue(metric: Metric, data: Rooms): MetricValue {
     }
     case 'issues': {
       const n = data.rooms.filter((r) => roomStatus(r).attention || r.emergency !== null).length;
-      return { title, value: String(n), note: n === 0 ? 'Keine Auffälligkeiten' : n === 1 ? 'Raum mit Störung oder Fenster' : 'Räume mit Störung oder Fenster', available: true };
+      return { title, value: String(n), note: n === 0 ? 'Keine Auffälligkeiten' : n === 1 ? 'Raum mit Störung oder Fenster' : 'Räume mit Störung oder Fenster', available: true, warn: n > 0 };
     }
     default:
       return outdoorValue(title, data.outdoor);

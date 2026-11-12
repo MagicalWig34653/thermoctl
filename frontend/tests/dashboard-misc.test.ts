@@ -134,6 +134,9 @@ test('Kennzahlen kommen aus den Serverzuständen der Räume', () => {
   assert.match(metricValue('heating', data).note, /^Räume fordern Wärme an$/);
   assert.match(metricValue('heating', rooms(data.rooms, 'dry_run')).note, /Trockenlauf/);
   assert.equal(metricValue('issues', rooms([room({ id: 1, name: 'A' })])).note, 'Keine Auffälligkeiten');
+  assert.equal(metricValue('issues', rooms([room({ id: 1, name: 'A' })])).warn, false);
+  assert.equal(metricValue('issues', data).warn, true);
+  assert.notEqual(metricValue('outdoor', rooms([room({ id: 1, name: 'A' })])).warn, true);
 });
 
 test('Außentemperatur: nicht erfunden, sondern als nicht verfügbar gekennzeichnet', () => {
