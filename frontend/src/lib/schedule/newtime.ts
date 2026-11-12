@@ -44,3 +44,23 @@ export function rangeIntentOf(
   }
   return { intent: { type: 'paint', weekday, start, end, modeId } };
 }
+
+/** Anker des Formulars „Neue Zeit anlegen“ (Überschrift, per Tastatur fokussierbar). */
+export const NEW_TIME_TARGET_ID = 'newtime-title';
+
+interface FocusTarget {
+  scrollIntoView(options?: { block?: 'start' | 'center' | 'end' | 'nearest' }): void;
+  focus(options?: { preventScroll?: boolean }): void;
+}
+
+/**
+ * Springt zum Formular „Neue Zeit anlegen“ und setzt den Fokus auf dessen Überschrift (Screenreader lesen
+ * dann das Formular an). Liefert false, wenn das Formular nicht im Dokument steht (z. B. ohne Bearbeitungsrecht).
+ */
+export function jumpToNewTimeForm(find: (id: string) => FocusTarget | null): boolean {
+  const target = find(NEW_TIME_TARGET_ID);
+  if (!target) return false;
+  target.scrollIntoView({ block: 'start' });
+  target.focus({ preventScroll: true });
+  return true;
+}

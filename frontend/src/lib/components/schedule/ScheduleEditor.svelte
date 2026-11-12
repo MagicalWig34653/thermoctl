@@ -12,6 +12,7 @@
   import { formatCelsius } from '$lib/rooms/decimal';
   import CopyPanel from './CopyPanel.svelte';
   import NewTimePanel from './NewTimePanel.svelte';
+  import { jumpToNewTimeForm } from '$lib/schedule/newtime';
   import DayTimesPanel from './DayTimesPanel.svelte';
   import SetupDialog from './SetupDialog.svelte';
   import { planIsEmpty } from '$lib/schedule/daytimes';
@@ -171,6 +172,19 @@
         <span>Der Plan ist ein Ring: Jeder Zeitbereich gilt bis zum nächsten.</span>
         <span role="status" aria-live="polite" data-testid="status">{editor.busy ? 'Wird gespeichert …' : editor.status}</span>
       </div>
+      {#if plan.can_edit}
+        <p class="mt-2 mb-0 text-sm">
+          <button
+            type="button"
+            class="min-h-11 rounded-md px-1 text-primary underline underline-offset-4"
+            data-testid="new-time-jump"
+            onclick={() => jumpToNewTimeForm((id) => document.getElementById(id))}
+          >
+            Zeit per Formular anlegen
+          </button>
+          <span class="text-muted-foreground">– statt zu ziehen, mit Tag und Uhrzeit.</span>
+        </p>
+      {/if}
       <p class="mt-2 mb-0 text-xs text-muted-foreground" data-testid="tz-hint">
         Zeiten gelten in der Ortszeit der Anlage ({zoneLabel(plan.timezone)}). Bei der Umstellung auf Sommer- oder Winterzeit
         ordnet der Server die Schaltzeiten zu.

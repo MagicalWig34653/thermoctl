@@ -2,7 +2,27 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { requestOf } from '../src/lib/schedule/client.ts';
 import { describeIntent, ghostOf, isNoop, selectionAfter } from '../src/lib/schedule/intents.ts';
-import { pointIntentOf, rangeIntentOf } from '../src/lib/schedule/newtime.ts';
+import { jumpToNewTimeForm, NEW_TIME_TARGET_ID, pointIntentOf, rangeIntentOf } from '../src/lib/schedule/newtime.ts';
+
+test('Sprung zum Formular: scrollt zur Überschrift und fokussiert sie', () => {
+  const calls: string[] = [];
+  const asked: string[] = [];
+  const target = {
+    scrollIntoView: (o?: { block?: string }) => calls.push(`scroll:${o?.block}`),
+    focus: (o?: { preventScroll?: boolean }) => calls.push(`focus:${o?.preventScroll}`),
+  };
+  const found = jumpToNewTimeForm((id) => {
+    asked.push(id);
+    return target;
+  });
+  assert.equal(found, true);
+  assert.deepEqual(asked, [NEW_TIME_TARGET_ID]);
+  assert.deepEqual(calls, ['scroll:start', 'focus:true']);
+});
+
+test('Sprung zum Formular: ohne Formular im Dokument passiert nichts', () => {
+  assert.equal(jumpToNewTimeForm(() => null), false);
+});
 
 test('Schaltpunkt: Tag, Uhrzeit und Modus werden zur Absicht point', () => {
   assert.deepEqual(pointIntentOf(3, '06:30', 2), { intent: { type: 'point', weekday: 3, minute: 390, modeId: 2 } });

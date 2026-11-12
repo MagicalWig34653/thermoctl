@@ -4,7 +4,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { DAY_NAMES, WEEKDAYS } from '$lib/schedule/geometry';
   import type { Intent } from '$lib/schedule/intents';
-  import { pointIntentOf, rangeIntentOf, type NewTimeField } from '$lib/schedule/newtime';
+  import { NEW_TIME_TARGET_ID, pointIntentOf, rangeIntentOf, type NewTimeField } from '$lib/schedule/newtime';
   import type { Plan } from '$lib/schedule/types';
 
   // Neue Zeit ohne Zeiger anlegen: Schaltpunkt (Tag, Uhrzeit, Modus) oder Zeitraum (Tag, Von, Bis, Modus).
@@ -80,7 +80,7 @@
 </script>
 
 <section aria-labelledby="newtime-title" class="rounded-xl border bg-card p-4" data-testid="new-time">
-  <h2 id="newtime-title" class="mb-1 text-lg">Neue Zeit anlegen</h2>
+  <h2 id={NEW_TIME_TARGET_ID} tabindex="-1" class="mb-1 scroll-mt-20 text-lg outline-none">Neue Zeit anlegen</h2>
   <p class="m-0 mb-3 text-sm text-muted-foreground">
     Ohne Zeiger: einen einzelnen Schaltpunkt oder einen ganzen Zeitraum innerhalb eines Tages eintragen. Der Modus gilt
     ab dem Beginn bis zum nächsten Schaltpunkt.
