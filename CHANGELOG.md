@@ -9,6 +9,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Behoben
+
+- **Zu kleine Touch-Ziele am Handy.** Auf Geräten mit grobem Zeiger (`@media (pointer: coarse)`) sind
+  Knöpfe, Tabs, Eingabefelder, Auswahlfelder samt Beschriftung, Schalter und alleinstehende Links jetzt
+  mindestens 44 px hoch (vorher 13 bis 40 px, etwa Raumliste, Wochenpläne, Raumseite, Konto). Zentral in
+  `frontend/src/styles/touch.css`; am Desktop ändert sich nichts. Links im Fließtext bleiben bewusst
+  Zeilenhöhe. Neuer Browsertest `browser_tests/test_touch_targets.py` misst auf vier Seiten bei 390 px.
+
+---
+
 ## 0.23.0 — 2026-11-09
 
 ### Beim Upgrade zu wissen

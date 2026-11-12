@@ -1,0 +1,50 @@
+/* Touch-Ziele: auf Geräten mit grobem Zeiger (Handy, Tablet) sind alle Bedienelemente
+   mindestens 44 px hoch (WCAG 2.5.5 / Apple HIG). Zentral statt je Komponente; am Desktop
+   (feiner Zeiger) bleibt das Layout unverändert.
+
+   Die Mindesthöhen stehen bewusst außerhalb der Tailwind-Ebenen: Ungeschichtetes CSS schlägt jede
+   Utility-Klasse (`h-8`, `min-h-10`), sonst müsste jede Komponente einzeln angepasst werden.
+   Ausgenommen sind nur Links im Fließtext (`p a`): Dort ist Zeilenhöhe typografisch gewollt.
+   Messung und Ausnahmen: browser_tests/test_touch_targets.py. */
+@media (pointer: coarse) {
+  button,
+  select,
+  textarea,
+  [role='tab'],
+  [role='button'],
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='hidden']),
+  a[href]:not(p a) {
+    min-height: 44px;
+  }
+
+  /* Reine Symbolknöpfe (size-6 u. ä.) brauchen auch die Breite. */
+  button[class*='size-'] {
+    min-width: 44px;
+  }
+
+  /* Ein Link mit Mindesthöhe muss seinen Inhalt mittig setzen, sonst klebt der Text oben.
+     In der Basisebene, damit ausdrückliche Display-Klassen (block, grid ...) gewinnen. */
+  @layer base {
+    a[href]:not(p a) {
+      display: inline-flex;
+      align-items: center;
+    }
+  }
+
+  /* Native Auswahlfelder: größere Fläche, die Beschriftung (label) trägt die 44 px. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+  label:has(> input[type='checkbox'], > input[type='radio']) {
+    min-height: 44px;
+  }
+
+  /* Schalter und Kontrollkästchen (Bits UI): die Trefferfläche reicht über ein Pseudoelement
+     über die sichtbare Kontur hinaus, damit diese gleich bleibt. */
+  [data-slot='switch']::after,
+  [data-slot='checkbox']::after {
+    inset-block: -14px;
+  }
+}

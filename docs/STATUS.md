@@ -3,6 +3,9 @@
 Letzte Aktualisierung: 2026-11-09. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **Unveröffentlicht:** Touch-Ziele am Handy: unter `@media (pointer: coarse)` alle Bedienelemente mindestens 44 px hoch,
+  zentral in `frontend/src/styles/touch.css` (ungeschichtet, schlägt Utility-Klassen); Fließtextlinks (`p a`) ausgenommen.
+  Messung: `browser_tests/test_touch_targets.py` (Räume, Wochenpläne, Raum, Konto bei 390 px).
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
