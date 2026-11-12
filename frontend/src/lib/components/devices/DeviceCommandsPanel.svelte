@@ -5,6 +5,7 @@
   import Notice from '$lib/components/rooms/Notice.svelte';
   import { createDevicesClient } from '$lib/devices/client';
   import { createQuery } from '$lib/history/query.svelte';
+  import { emptyListText } from '$lib/history/reports';
   import { formatInstant } from '$lib/rooms/logic';
   import { commandKind, type CommandKind } from '$lib/devices/commands';
 
@@ -59,7 +60,13 @@
   {@const data = log.data}
   {#if log.failure}<div class="mb-3"><Notice tone={log.failure.kind === 'validation' ? 'error' : 'warn'}>{log.failure.message}</Notice></div>{/if}
   {#if !data.entries.length}
-    <p class="text-muted-foreground" role="status">Keine Befehle für diese Filter.</p>
+    <p class="text-muted-foreground" role="status" data-testid="commands-empty">
+      {emptyListText(
+        [fromDate, toDate, zone, outcome],
+        'Im Schaltprotokoll steht noch kein Befehl.',
+        'Keine Befehle für diese Filter. Lockere oder entferne einen Filter.',
+      )}
+    </p>
   {:else}
     <div class="overflow-x-auto rounded-xl border">
       <table class="w-full min-w-[48rem] border-collapse text-sm" data-testid="commands-table">

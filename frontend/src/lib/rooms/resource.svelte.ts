@@ -33,7 +33,7 @@ export function createResource<T>(load: () => Promise<T>) {
       accept(value);
     } catch (error) {
       if (mine !== generation) return;
-      failure = toFailure(error);
+      failure = toFailure(error, 'read');
     } finally {
       if (mine === generation) loading = false;
     }

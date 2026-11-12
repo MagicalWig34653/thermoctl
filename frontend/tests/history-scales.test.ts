@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { formatClock, temperatureScale, temperatureTickLabel, timeTicks, zoneOffsetMs } from '../src/lib/history/scales.ts';
 import { tooltipPlacement } from '../src/lib/history/tooltip.ts';
 import { createLimiter } from '../src/lib/history/limiter.ts';
-import { AUDIT_TEXT_MAX, auditObjectFilter, auditQuery, auditSearchText, buildQuery, classifyRevertError, formatDuration, wearLabel } from '../src/lib/history/reports.ts';
+import { AUDIT_TEXT_MAX, auditObjectFilter, emptyListText, auditQuery, auditSearchText, buildQuery, classifyRevertError, formatDuration, wearLabel } from '../src/lib/history/reports.ts';
 import { ApiError } from '../src/lib/api.ts';
 
 test('temperatureScale: Achse umschließt alle Werte, Marken in gleichen Schritten', () => {
@@ -203,4 +203,10 @@ test('auditQuery: Filter kodiert, leere entfallen, Seite nur wenn gesetzt', () =
   assert.equal(auditQuery({ ...emptyFilter, text: ' 100% & _ ', zoneId: '3', source: 'web' }, 2),
     '?object=zone%3A3&source=web&q=100%25+%26+_&page=2');
   assert.equal(auditQuery({ ...emptyFilter, actionCode: 'zone.updated' }), '?action_code=zone.updated');
+});
+
+test('emptyListText: ohne Filter keine „für diese Filter“-Meldung, mit Filter der Lockern-Hinweis', () => {
+  assert.equal(emptyListText(['', '', '', false], 'leer', 'gefiltert'), 'leer');
+  assert.equal(emptyListText(['', '2026-01-01', '', false], 'leer', 'gefiltert'), 'gefiltert');
+  assert.equal(emptyListText(['', '', '', true], 'leer', 'gefiltert'), 'gefiltert');
 });

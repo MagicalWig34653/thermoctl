@@ -52,6 +52,12 @@ export function auditQuery(filter: AuditFilter, page?: number): string {
   });
 }
 
+/** Text einer leeren Liste: Ohne gesetzten Filter ist sie schlicht leer (`whenEmpty`), mit Filter
+ *  hilft der Hinweis, ihn zu lockern. „Keine … für diese Filter“ ohne Filter wäre irreführend. */
+export function emptyListText(filters: readonly (string | boolean)[], whenEmpty: string, whenFiltered: string): string {
+  return filters.some((value) => value !== '' && value !== false) ? whenFiltered : whenEmpty;
+}
+
 /** 5400 wird zu „1 Std. 30 Min.“; unter einer Minute „< 1 Min.“; 0 „0 Min.“. */
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0 Min.';

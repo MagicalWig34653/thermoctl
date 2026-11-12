@@ -42,7 +42,7 @@
       const result = await client.deleteImpact(zoneId);
       if (mine === generation) impact = result;
     } catch (error) {
-      if (mine === generation) loadFailure = toFailure(error);
+      if (mine === generation) loadFailure = toFailure(error, 'read');
     } finally {
       if (mine === generation) loading = false;
     }

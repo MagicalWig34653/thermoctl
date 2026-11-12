@@ -402,7 +402,7 @@ gemeldete Gesundheitswerte sind `null`, Zuordnungen und Fähigkeiten gegebenenfa
 
 ### `GET /api/v1/device-commands` — Schaltprotokoll lesen
 
-Recht: `audit.read` — dasselbe wie unter „Einstellungen → Schaltprotokoll" in der
+Recht: `audit.read` — dasselbe wie unter „Auswertung → Ereignisse → Schaltprotokoll" in der
 Oberfläche. Das Recht ist raumbezogen: anlagenweit vergeben zeigt es das Protokoll der
 ganzen Anlage (auch Einträge ohne Raum, etwa eines gelöschten Raums); nur für bestimmte
 Räume vergeben, zeigt es ausschließlich die Einträge dieser Räume (Befehle, Notbetriebs-

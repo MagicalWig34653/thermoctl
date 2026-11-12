@@ -20,6 +20,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 - **Verbindungsanzeige.** Nach zwei Abfragen ohne Antwort des Servers (Netzfehler, Zeitüberschreitung, 502/503/504) zeigt die Oberfläche ein Banner „Verbindung unterbrochen – Anzeige veraltet seit hh:mm" und sperrt alle Bedienelemente mit Schreibwirkung, auch im Kiosk. Alle 10 Sekunden wird die Verbindung geprüft, das Banner verschwindet von selbst. Ein einzelner Fehler eines Endpunkts (gewöhnliche 500, 401, 403, 404) löst es nicht aus.
 
+- **Fehler- und Leerzustände verständlicher.** Eine Seite ohne Recht erklärt, was zu tun ist („nicht freigegeben“, Person fragen, die die Anlage verwaltet), statt „entscheidet der Server“ zu sagen. Ein unbekannter Raum sagt „nicht gefunden“ nur einmal und führt zur Übersicht. Der Verbindungsfehler beim Start ist eine gestaltete, zentrierte Karte mit Hinweis. Beim Lesen meldet ein Netzfehler „Es wurde nichts geändert“ statt einer unklaren Änderung. Leere Listen unter „Ereignisse“ (Änderungen, Audit-Protokoll, Schaltprotokoll) sagen „für diese Filter“ nur noch bei gesetztem Filter. Benennung: „Ereignisse“ ist die Seite, „Schaltprotokoll“ eine ihrer drei Ansichten; veraltete Verweise „Einstellungen → Schaltprotokoll“ in `docs/` stehen jetzt richtig.
 - **Wochenplan:** Direkt unter dem Plan steht der Link „Zeit per Formular anlegen“, der zum Formular springt und es fokussiert.
 - **Anmeldung:** Dauert die Prüfung länger als 1 Sekunde, erklärt die Seite die absichtliche Verzögerung (Server und Drosselung unverändert).
 

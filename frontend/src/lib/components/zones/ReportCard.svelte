@@ -33,7 +33,7 @@
     try {
       options = await client.reportOptions();
     } catch (error) {
-      loadFailure = toFailure(error);
+      loadFailure = toFailure(error, 'read');
     } finally {
       loading = false;
     }

@@ -277,10 +277,16 @@ export interface Failure {
   code: string | null;
 }
 
+/** Netzfehler beim Schreiben: Ob die Änderung ankam, ist unklar. Beim Lesen wurde nichts geändert. */
+export const NETWORK_WRITE_MESSAGE =
+  'Der Server ist nicht erreichbar. Ob die Änderung angekommen ist, ist unklar – bitte den Zustand prüfen, bevor du es erneut versuchst.';
+export const NETWORK_READ_MESSAGE =
+  'Der Server ist nicht erreichbar. Es wurde nichts geändert. Sobald die Verbindung wieder steht, lässt sich die Seite neu laden.';
+
 /** Bildet jeden Fehler eines Aufrufs auf einen sichtbaren Zustand ab. Der Servertext wird
  *  übernommen (er ist für Menschen geschrieben); das Raster darunter entscheidet nur über
  *  Art und Ton. Es gibt keine automatische Wiederholung. */
-export function toFailure(error: unknown): Failure {
+export function toFailure(error: unknown, mode: 'read' | 'write' = 'write'): Failure {
   if (error instanceof ApiError) {
     const base = { message: error.message, field: error.field, code: error.code };
     if (error.kind === 'unauthorized' || error.stale) {
@@ -290,7 +296,7 @@ export function toFailure(error: unknown): Failure {
       return {
         ...base,
         kind: 'network',
-        message: 'Der Server ist nicht erreichbar. Ob die Änderung angekommen ist, ist unklar – bitte den Zustand prüfen, bevor du es erneut versuchst.',
+        message: mode === 'read' ? NETWORK_READ_MESSAGE : NETWORK_WRITE_MESSAGE,
       };
     }
     if (error.kind === 'client') return { ...base, kind: 'server' };
