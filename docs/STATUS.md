@@ -9,7 +9,7 @@ Letzte Aktualisierung: 2026-11-09. Diese Datei sagt, was **jetzt** gilt. Verlauf
   `MagicalWig34653/thermoctl-addon`).
 - **Migrationskopf:** `e9b4c27a1f60` (`zone.fault_notifications_enabled`).
 - **Unveröffentlicht (lokal auf `main`, nicht gepusht, kein Tag):** PI behält den Integralanteil bei Gates und Neustart (Reset nur nach mehr als 24 h ohne Heizanforderung); Verbindungsanzeige mit Schreibsperre in App und Kiosk; vier kleine Anzeigefehler (Betriebsseite, Startseite und Navigation am Handy). Details: `CHANGELOG.md`, Abschnitt „Unveröffentlicht". Vorgeschlagen als 0.23.1.
-- **Browsertests (`browser_tests/`):** `test_ingress_prefix` (zwei Tests) ist schon vor diesen Änderungen rot: sie suchen den Link „Geräte", die Navigation hat inzwischen Gruppen (Testfehler, nicht Oberfläche).
+- **Browsertests (`browser_tests/`):** 18 von 18 grün (2026-11-12, lokal; laufen nicht in der CI). Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
