@@ -9,6 +9,7 @@
 @import './styles/dashboard.css';
 @import './styles/devices.css';
 @import './styles/glow.css';
+@import './styles/touch.css';
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant data-horizontal (&[data-orientation="horizontal"]);

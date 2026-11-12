@@ -30,6 +30,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Betriebsseite:** Regler und Ergebnis stehen lesbar statt als Rohcode, die doppelte Statuszeile der Notbetriebskarte ist beschriftet, und über den Zustandskarten steht eine Gesamtzeile, ob geschaltet wird.
 - **Startseite am Handy:** Die Kennzahl-Titel brechen nicht mehr mitten im Wort.
 - **Navigation am Handy:** Die Seitenleiste ist deckend, der Inhalt scheint nicht mehr durch.
+- **Zu kleine Touch-Ziele am Handy.** Auf Geräten mit grobem Zeiger (`@media (pointer: coarse)`) sind
+  Knöpfe, Tabs, Eingabefelder, Auswahlfelder samt Beschriftung, Schalter und alleinstehende Links jetzt
+  mindestens 44 px hoch (vorher 13 bis 40 px, etwa Raumliste, Wochenpläne, Raumseite, Konto). Zentral in
+  `frontend/src/styles/touch.css`; am Desktop ändert sich nichts. Links im Fließtext bleiben bewusst
+  Zeilenhöhe. Neuer Browsertest `browser_tests/test_touch_targets.py` misst auf vier Seiten bei 390 px.
 
 ---
 
