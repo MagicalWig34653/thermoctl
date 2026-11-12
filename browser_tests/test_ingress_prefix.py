@@ -30,6 +30,17 @@ def _collect_failed(page: Page) -> list[str]:
     return failed
 
 
+def _open_devices(page: Page) -> None:
+    """Öffnet in der Hauptnavigation die einklappbare Gruppe „Geräte" und folgt
+    dem Unterpunkt „Geräte & Zuordnung" (`/app/geraete/liste`)."""
+    nav = page.get_by_role("navigation", name="Hauptnavigation")
+    group = nav.get_by_role("button", name="Geräte", exact=True)
+    if group.get_attribute("aria-expanded") != "true":
+        group.click()
+    expect(group).to_have_attribute("aria-expanded", "true")
+    nav.get_by_role("link", name="Geräte & Zuordnung").click()
+
+
 def test_legacy_path_and_assets_work_under_the_prefix(
     page_with_prefix: Page, live_server_with_prefix: LiveServer
 ) -> None:
@@ -48,7 +59,7 @@ def test_login_navigation_and_logout_stay_under_the_prefix(
     page = admin_page_with_prefix
     failed = _collect_failed(page)
     assert re.search(re.escape(INGRESS_PREFIX) + r"/app", page.url), page.url
-    page.get_by_role("link", name="Geräte").first.click()
+    _open_devices(page)
     expect(page).to_have_url(re.compile(re.escape(INGRESS_PREFIX) + r"/app/geraete"))
     page.get_by_text("Abmelden").first.click()
     expect(page.get_by_label("Benutzername")).to_be_visible()
@@ -61,7 +72,7 @@ def test_direct_access_works_alongside_ingress_on_the_same_instance(
 ) -> None:
     direct = admin_page_direct_via_prefixed_instance
     assert INGRESS_PREFIX not in direct.url
-    direct.get_by_role("link", name="Geräte").first.click()
+    _open_devices(direct)
     expect(direct).to_have_url(re.compile(r"/app/geraete"))
     assert INGRESS_PREFIX not in direct.url
     assert INGRESS_PREFIX in admin_page_with_prefix.url

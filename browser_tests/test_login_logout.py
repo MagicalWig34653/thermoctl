@@ -37,8 +37,12 @@ def test_login_with_wrong_password_shows_an_error_and_stays_on_the_login_page(
 
 
 def test_logout_leads_back_to_the_login_page(admin_page: Page) -> None:
-    admin_page.get_by_text("Abmelden").first.click()
-    expect(admin_page.get_by_label("Benutzername")).to_be_visible()
+    # Gezielt die Schaltfläche (nicht irgendein Text „Abmelden") und erst klicken, wenn die
+    # Oberfläche geladen ist; der Wechsel zur Anmeldung geht über eine Serveranfrage und
+    # bekam unter Last (parallele Läufe) die Standardfrist von 5 s manchmal nicht ein.
+    admin_page.wait_for_load_state("networkidle")
+    admin_page.get_by_role("button", name="Abmelden").click()
+    expect(admin_page.get_by_label("Benutzername")).to_be_visible(timeout=15_000)
     expect(admin_page.get_by_label("Passwort")).to_be_visible()
     # Die Oberfläche zeigt die Anmeldung, ohne in der Sitzung angemeldet zu bleiben.
     expect(admin_page.get_by_text("Abmelden")).to_have_count(0)
