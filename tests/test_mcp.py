@@ -715,7 +715,7 @@ def test_reading_control_parameters_returns_the_limits_as_well(session: Session)
     result = server.read_control_parameters(session, plaintext, zone.id)
 
     parameter = {p["name"]: p for p in result["parameter"]}  # type: ignore[union-attr]
-    assert parameter["hysteresis_k"]["minimum"] == "0.1"
+    assert parameter["hysteresis_k"]["minimum"] == "0.0001"
     assert parameter["hysteresis_k"]["maximum"] == "5.0"
     # And whether the value belongs to this zone or comes from the global default.
     assert parameter["hysteresis_k"]["own_value"] is False

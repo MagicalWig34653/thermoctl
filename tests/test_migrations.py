@@ -1076,7 +1076,7 @@ def test_sensor_failure_upgrade_preserves_installation(
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["e9b4c27a1f60"]
+    assert scripts.get_heads() == ["f7c2a91d4e08"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

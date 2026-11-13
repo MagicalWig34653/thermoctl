@@ -59,7 +59,7 @@ class ControlError(Exception):
 LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "polling_interval_seconds": (Decimal(5), Decimal(3600)),
     "shadow_interval_seconds": (Decimal(5), Decimal(3600)),
-    "default_hysteresis_k": (Decimal("0.1"), Decimal("5.0")),
+    "default_hysteresis_k": (Decimal("0.0001"), Decimal("5.0")),
     "default_min_on_seconds": (Decimal(30), Decimal(7200)),
     "default_min_off_seconds": (Decimal(30), Decimal(7200)),
     "default_sensor_timeout_seconds": (Decimal(60), Decimal(86400)),
@@ -202,6 +202,10 @@ LABELS: dict[str, str] = {
 GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k", "default_solar_setback_max_k"}
 
 
+# Decimal fields stored with four decimal places (`Numeric(6, 4)`).
+FINE_FIELDS = frozenset({"default_hysteresis_k"})
+
+
 def settings(session: Session) -> Setting:
     row = session.get(Setting, 1)
     if row is None:  # pragma: no cover - only on incomplete setup
@@ -233,6 +237,9 @@ def check_number(
         raise ControlError(field, "Bitte eine Zahl angeben.") from exc
     if field in ganzzahlig and value != value.to_integral_value():
         raise ControlError(field, "Bitte eine ganze Zahl angeben.")
+    if field in FINE_FIELDS and value.is_finite() and -value.as_tuple().exponent > 4:  # type: ignore[operator]
+        # Storage keeps four decimal places; refuse instead of rounding silently.
+        raise ControlError(field, "Bitte höchstens vier Nachkommastellen angeben.")
     lower, upper = limits[field]
     if not (lower <= value <= upper):
         raise ControlError(

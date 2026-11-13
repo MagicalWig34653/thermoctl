@@ -148,7 +148,7 @@ def test_parameters_show_own_and_effective_values_separately(
     assert hysteresis["effective"] == "0.70"
     assert hysteresis["inherited"] is False
     assert hysteresis["source"] == "zone"
-    assert hysteresis["limit"]["minimum"] == "0.1"
+    assert hysteresis["limit"]["minimum"] == "0.0001"
     inherited = body["control"]["min_on_seconds"]
     assert inherited["own"] is None
     assert inherited["inherited"] is True
@@ -1027,7 +1027,7 @@ def test_settings_show_every_group_with_limits(client_als: Als, session: Session
     body = client_als(LESEN).get("/ui-api/settings").json()
     assert body["may_edit"] is False
     hysteresis = next(f for f in body["defaults"] if f["name"] == "default_hysteresis_k")
-    assert hysteresis["minimum"] == "0.1" and hysteresis["maximum"] == "5.0"
+    assert hysteresis["minimum"] == "0.0001" and hysteresis["maximum"] == "5.0"
     assert hysteresis["integer"] is False and hysteresis["label"] == "Hysterese (K)"
     assert next(f for f in body["defaults"] if f["name"] == "shadow_interval_seconds")["integer"]
     assert body["timezone"] == "Europe/Berlin"

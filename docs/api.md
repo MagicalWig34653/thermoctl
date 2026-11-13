@@ -189,7 +189,7 @@ Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
 |---|---|---|---|
 | `polling_interval_seconds` | Abfrageintervall (Sekunden) | 5 – 3.600 | 30 |
 | `shadow_interval_seconds` | Regelzyklus (Sekunden) | 5 – 3.600 | 60 |
-| `default_hysteresis_k` | Hysterese (K) | 0,1 – 5,0 | 0,30 |
+| `default_hysteresis_k` | Hysterese (K), Schritt 0,0001 | 0,0001 – 5,0 | 0,30 |
 | `default_min_on_seconds` | Mindest-Einschaltdauer (Sekunden) | 30 – 7.200 | 300 |
 | `default_min_off_seconds` | Mindest-Ausschaltdauer (Sekunden) | 30 – 7.200 | 300 |
 | `default_sensor_timeout_seconds` | Sensor gilt als ausgefallen nach (Sekunden) | 60 – 86.400 | 1.800 |

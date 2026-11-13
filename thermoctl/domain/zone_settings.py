@@ -275,6 +275,7 @@ def save_control_parameters(
         for name in ControlParameters.__dataclass_fields__
     }
     validate_valve_protection(complete)
+    validate_hysteresis(complete["hysteresis_k"])
     validate_pi_parameters(session, zone, complete)
     if zone.sensor_failure_enabled:
         try:
@@ -293,6 +294,28 @@ def save_control_parameters(
         user_id=user_id,
         token_id=token_id,
     )
+
+
+def validate_hysteresis(value: Decimal | int | bool | None) -> None:
+    """Lower bound and precision of a zone's own hysteresis (``None`` = inherited).
+
+    Storage keeps four decimal places, so a finer value would be rounded silently --
+    possibly down to zero, the legacy system's cycling at the setpoint. The upper
+    bound stays advisory in the interface, as before.
+    """
+    if value is None:
+        return
+    description = BY_NAME["hysteresis_k"]
+    number = Decimal(value)
+    if not number.is_finite() or number < description.minimum:
+        raise ParameterOutOfRange(
+            f"{description.label} muss mindestens "
+            f"{description.minimum} {description.unit} betragen."
+        )
+    if number % description.step != 0:
+        raise ParameterOutOfRange(
+            f"{description.label} darf höchstens vier Nachkommastellen haben."
+        )
 
 
 def validate_valve_protection(values: dict[str, Decimal | int | bool | None]) -> None:
@@ -354,7 +377,7 @@ class ParameterDescription:
 # sensor, and more than ten kelvin off is no longer an offset but a broken device.
 PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
-        "hysteresis_k", "Hysterese", "K", Decimal("0.1"), Decimal("5.0"), Decimal("0.1")
+        "hysteresis_k", "Hysterese", "K", Decimal("0.0001"), Decimal("5.0"), Decimal("0.0001")
     ),
     ParameterDescription(
         "min_on_seconds", "Mindest-Einschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10)

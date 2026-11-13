@@ -267,7 +267,7 @@ Siehe auch: [MQTT und Broker](#mqtt-broker), [Home Assistant](#home-assistant)
 
 *Regelung* — Ein Spielraum um den Sollwert, der häufiges Wechseln der Heizanforderung vermeiden soll.
 
-Die Hysterese legt fest, wie weit die Temperatur vom Sollwert abweichen muss, bevor die Hysterese-Regelung ihre Entscheidung wechselt. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen. Weitere Regeln, etwa Mindestschaltdauer und Fensterkontakt, können vorgehen; die Begründung jeder Entscheidung steht auf der Betriebsseite.
+Die Hysterese legt fest, wie weit die Temperatur vom Sollwert abweichen muss, bevor die Hysterese-Regelung ihre Entscheidung wechselt. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen. Einstellbar sind Werte von 0,0001 K bis 5 K in Schritten von 0,0001 K; feinere Angaben werden abgelehnt, nicht gerundet. Weitere Regeln, etwa Mindestschaltdauer und Fensterkontakt, können vorgehen; die Begründung jeder Entscheidung steht auf der Betriebsseite.
 
 Auch: Hysterese (K), Schalthysterese, Hysterese-Regelung
 

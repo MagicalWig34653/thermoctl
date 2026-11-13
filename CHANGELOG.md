@@ -9,14 +9,17 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.24.0 — 2026-11-13
 
 ### Beim Upgrade zu wissen
 
-- **Keine Migration, keine neuen Optionen.** Die Änderungen betreffen die PI-Regelung und die Oberfläche.
+- **Eine Migration** (`f7c2a91d4e08`): die Hysterese-Spalten (`zone.hysteresis_k`, `setting.default_hysteresis_k`, `warm_restart_hysteresis_k` in Profil und Episode) speichern vier statt zwei Nachkommastellen. Bestehende Werte bleiben unverändert; die Migration läuft beim Start von selbst. Beim Zurückstufen werden die Werte auf Hundertstel gerundet, aber nie auf 0 (mindestens 0,01). Keine neuen Optionen.
+- **Hysterese:** Die Raumhysterese ist jetzt strikt auf mindestens 0,0001 K geprüft (vorher nur „nicht negativ“, 0 war möglich und lässt die Regelung am Sollwert in jedem Zyklus wechseln). Ein bestehender Raum mit Eigenwert 0 lässt sich erst nach Eingabe eines Werts ab 0,0001 K wieder speichern; gespeicherte Werte werden nicht verändert.
 - **PI-Regelung:** Der Integralanteil bleibt bei Fenster, Frostschutz, Sensorausfall, Ventilschutz, Neustart und Update erhalten und wird nur noch nach mehr als 24 Stunden ohne Heizanforderung auf 0 gesetzt (Grund `keine_heizaktivitaet_24h` im Schaltprotokoll). Der Modulator beginnt in diesen Fällen wie bisher neu, der sichere Anlauf bleibt.
 
 ### Neu
+
+- **Hysterese bis 0,0001 K einstellbar.** Raumtechnik, Regelvorgaben (Anlage) und die Hysterese beim Wiederanlauf (Notbetrieb) nehmen Werte ab 0,0001 K in Schritten von 0,0001 K an (Obergrenze 5 K, beim Wiederanlauf wie bisher 99,99 K und 0 erlaubt). Feinere Werte (zum Beispiel 0,00009) werden abgelehnt statt gerundet; die Datenbank (SQLite und MariaDB) speichert vier Nachkommastellen. Sehr kleine Werte lassen die Regelung am Sollwert häufiger wechseln.
 
 - **Verbindungsanzeige.** Nach zwei Abfragen ohne Antwort des Servers (Netzfehler, Zeitüberschreitung, 502/503/504) zeigt die Oberfläche ein Banner „Verbindung unterbrochen – Anzeige veraltet seit hh:mm" und sperrt alle Bedienelemente mit Schreibwirkung, auch im Kiosk. Alle 10 Sekunden wird die Verbindung geprüft, das Banner verschwindet von selbst. Ein einzelner Fehler eines Endpunkts (gewöhnliche 500, 401, 403, 404) löst es nicht aus.
 

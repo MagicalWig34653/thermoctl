@@ -24,7 +24,7 @@ export const OPS_TERMS: Record<string, Term> = {
   },
   hysteresis: {
     title: 'Hysterese',
-    text: 'Abstand um den Sollwert, in dem die Regelung nicht umschaltet. Ohne ihn würde sie am Sollwert in jedem Zyklus ein- und ausschalten.',
+    text: 'Abstand um den Sollwert, in dem die Regelung nicht umschaltet. Ohne ihn würde sie am Sollwert in jedem Zyklus ein- und ausschalten. Einstellbar von 0,0001 K bis 5 K; sehr kleine Werte lassen die Regelung am Sollwert häufiger wechseln.',
   },
   min_times: {
     title: 'Mindestzeiten',

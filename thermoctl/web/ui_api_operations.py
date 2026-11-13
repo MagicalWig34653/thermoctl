@@ -156,7 +156,19 @@ def _text(value: Number) -> str:
 
 
 def _num(value: object) -> str:
-    return format(value, "f") if isinstance(value, Decimal) else str(value)
+    """Decimal as plain text: at least two, at most the stored decimal places.
+
+    Hysteresis columns keep four places (`0.7000`); trailing zeros beyond the second
+    place are dropped so the interface still shows `0.70`, while `0.0001` stays intact.
+    """
+    if not isinstance(value, Decimal):
+        return str(value)
+    text = format(value, "f")
+    if "." in text:
+        whole, _, fraction = text.partition(".")
+        if len(fraction) > 2:
+            text = f"{whole}.{fraction.rstrip('0').ljust(2, '0')}"
+    return text
 
 
 # -- Raumtechnik: Ausgabe -----------------------------------------------------------------

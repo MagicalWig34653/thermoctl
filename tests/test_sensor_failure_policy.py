@@ -104,7 +104,7 @@ def test_fallback_uses_oldest_named_profile_and_never_an_arbitrary_one(session):
         ("warm_restart_hysteresis_k", D("-0.01")),
         ("warm_restart_hysteresis_k", D("NaN")),
         ("warm_restart_hysteresis_k", D("100")),
-        ("warm_restart_hysteresis_k", D("0.001")),
+        ("warm_restart_hysteresis_k", D("0.00001")),
         ("name", ""),
         ("name", "x" * 129),
     ],
