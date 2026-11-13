@@ -26,7 +26,9 @@ def room_id(live_server: LiveServer) -> int:
 
 @pytest.fixture()
 def page(browser: Browser, live_server: LiveServer) -> Page:
-    ctx = browser.new_context(base_url=live_server.base_url, viewport={"width": 1280, "height": 900})
+    ctx = browser.new_context(
+        base_url=live_server.base_url, viewport={"width": 1280, "height": 900}
+    )
     page = ctx.new_page()
     page.goto("/login")
     page.get_by_label("Benutzername").fill(live_server.admin_username)
