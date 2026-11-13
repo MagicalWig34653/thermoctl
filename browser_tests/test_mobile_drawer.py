@@ -1,4 +1,4 @@
-"""Mobile Schublade: Fokusfalle, Fokus beim Öffnen/Schließen, Esc (echter Browser, Handy mit Touch)."""
+"""Mobile Schublade: Fokusfalle, Fokus beim Öffnen/Schließen, Esc (echter Browser, Touch)."""
 
 from __future__ import annotations
 

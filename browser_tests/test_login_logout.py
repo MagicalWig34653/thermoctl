@@ -60,7 +60,6 @@ def test_slow_login_explains_the_wait_and_removes_the_note_with_the_answer(
     expect(page.get_by_role("button", name="Anmelden …")).to_be_visible()
     expect(hint).to_be_visible(timeout=3_000)
     expect(hint).to_contain_text("Die Prüfung dauert einen Moment")
-    page.screenshot(path="/tmp/shots/hint-wartend.png")
     expect(page.get_by_role("alert")).to_contain_text(
         "Benutzername oder Passwort falsch", timeout=15_000
     )

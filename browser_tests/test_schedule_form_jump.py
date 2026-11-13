@@ -1,4 +1,4 @@
-"""Wochenplan am Handy: Der Link „Zeit per Formular anlegen“ steht direkt unter dem Plan, im echten Browser."""
+"""Wochenplan am Handy: Der Link „Zeit per Formular anlegen“ steht direkt unter dem Plan."""
 
 from __future__ import annotations
 
