@@ -227,6 +227,7 @@ def validate_profile(values: ProfileValues) -> None:
         values.warm_restart_hysteresis_k,
         Decimal("0"),
         Decimal("99.99"),
+        Decimal("0.0001"),
     )
     for index, point in enumerate(values.curve_points):
         prefix = f"curve_points[{index}]"

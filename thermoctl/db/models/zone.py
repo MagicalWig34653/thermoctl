@@ -82,7 +82,7 @@ class Zone(TimestampMixin, Base):
 
     operating_mode: Mapped[OperatingMode] = relationship(lazy="joined")
 
-    hysteresis_k: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    hysteresis_k: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
     min_on_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     min_off_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sensor_timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)

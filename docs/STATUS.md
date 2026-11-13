@@ -1,14 +1,14 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-09. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-13. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **Letzte Freigabe:** 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **Letzte Freigabe:** 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `e9b4c27a1f60` (`zone.fault_notifications_enabled`).
-- **Unveröffentlicht (lokal auf `main`, nicht gepusht, kein Tag):** PI behält den Integralanteil bei Gates und Neustart (Reset nur nach mehr als 24 h ohne Heizanforderung); Verbindungsanzeige mit Schreibsperre in App und Kiosk; vier kleine Anzeigefehler (Betriebsseite, Startseite und Navigation am Handy); Fokusfalle der Schublade, Wartehinweis bei der Anmeldung, Wochenplan-Formularlink, Kennzahl-Symbole; Fehler- und Leerzustände (verständliche Rechte-/404-/Verbindungstexte, Leerlisten je nach Filter, Browsertest `browser_tests/test_error_states.py`); Touch-Ziele am Handy (unter `@media (pointer: coarse)` alle Bedienelemente mindestens 44 px, `frontend/src/styles/touch.css`, Messung `browser_tests/test_touch_targets.py`); deaktivierte Primärknöpfe lesbar (zentral in `frontend/src/lib/components/ui/button/button.svelte`: gedämpfte Fläche, Umriss, Beschriftung mindestens 3:1 statt halber Deckkraft; Messung `browser_tests/test_disabled_button_contrast.py`); Raumseite (Schalter „Ausfallbenachrichtigungen“ vor den Gruppen, „Erbt/Erben“ erklärt, Raumtechnik-Gruppen eingeklappt, Umbruch langer Wörter in Hinweisen; Messung `browser_tests/test_room_page_layout.py`). Details: `CHANGELOG.md`, Abschnitt „Unveröffentlicht". Vorgeschlagen als 0.23.1.
+- **Migrationskopf:** `f7c2a91d4e08` (Hysterese-Spalten mit vier Nachkommastellen).
+- **Inhalt von 0.24.0 gegenüber 0.23.0:** Hysterese bis 0,0001 K (Migration `f7c2a91d4e08`; Raumwert strikt ab 0,0001 K geprüft); PI behält den Integralanteil bei Gates und Neustart; Verbindungsanzeige mit Schreibsperre; Fehler- und Leerzustände; Touch-Ziele am Handy; lesbare deaktivierte Primärknöpfe; Raumseite (Ausfallschalter, Erben erklärt, Raumtechnik eingeklappt). Einzelheiten: `CHANGELOG.md`, Abschnitt 0.24.0.
 - **Browsertests (`browser_tests/`):** 45 von 45 grün (2026-11-13, lokal; laufen nicht in der CI). Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).

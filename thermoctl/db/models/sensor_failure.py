@@ -45,7 +45,7 @@ class SensorFailureProfile(Base):
     fixed_off_seconds: Mapped[int] = mapped_column(Integer)
     recovery_seconds: Mapped[int] = mapped_column(Integer)
     recovery_samples: Mapped[int] = mapped_column(Integer)
-    warm_restart_hysteresis_k: Mapped[Decimal] = mapped_column(Numeric(4, 2))
+    warm_restart_hysteresis_k: Mapped[Decimal] = mapped_column(Numeric(6, 4))
 
 
 class SensorFailureCurvePoint(Base):
@@ -98,7 +98,7 @@ class SensorFailureEpisode(Base):
     fixed_off_seconds: Mapped[int] = mapped_column(Integer)
     recovery_seconds: Mapped[int] = mapped_column(Integer)
     recovery_samples: Mapped[int] = mapped_column(Integer)
-    warm_restart_hysteresis_k: Mapped[Decimal] = mapped_column(Numeric(4, 2))
+    warm_restart_hysteresis_k: Mapped[Decimal] = mapped_column(Numeric(6, 4))
     emergency_setpoint_c: Mapped[Decimal] = mapped_column(Numeric(5, 2))
     sensor_timeout_seconds: Mapped[int] = mapped_column(Integer)
     source_device_id: Mapped[int | None] = mapped_column(

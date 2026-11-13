@@ -46,7 +46,7 @@ class Setting(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin", nullable=False)
     polling_interval_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     default_hysteresis_k: Mapped[Decimal] = mapped_column(
-        Numeric(4, 2), default=Decimal("0.30"), nullable=False
+        Numeric(6, 4), default=Decimal("0.30"), nullable=False
     )
     default_min_on_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
     default_min_off_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
