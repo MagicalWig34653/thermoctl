@@ -1,38 +1,33 @@
 """Zonenparameter: Felderlisten und Pruefung der Eingaben -- geteilt von den /ui-api-Endpunkten."""
 from decimal import Decimal, InvalidOperation
 
+from thermoctl.domain.zone_settings import (
+    BY_NAME,
+    GROUP_INHERITED,
+    GROUP_PI,
+    GROUP_VALVE_PROTECTION,
+    PARAMETERS,
+)
 from thermoctl.web.forms import FormError
 
-FELDER = (
-    "hysteresis_k",
-    "min_on_seconds",
-    "min_off_seconds",
-    "sensor_timeout_seconds",
-    "temperature_offset_k",
-    "window_resume_delay_seconds",
-    "solar_setback_max_k",
-    "valve_protection_interval_days",
-    "valve_protection_duration_minutes",
-)
+
+def _names(*groups: str) -> tuple[str, ...]:
+    return tuple(p.name for p in PARAMETERS if p.group in groups)
 
 
-GANZZAHLEN = frozenset(FELDER) - {"hysteresis_k", "temperature_offset_k", "solar_setback_max_k"}
-
+# Derived from `domain.zone_settings.PARAMETERS` (field order and group there): a new
+# parameter is entered in one place only.
+ERBENDE_FELDER = _names(GROUP_INHERITED)
+FELDER = _names(GROUP_INHERITED, GROUP_VALVE_PROTECTION)
 
 # PI (Beta), specification section 6/7. Handled like `valve_protection_interval_days`
 # above -- parsed through `check_parameters` (so an empty field means "unchanged", not
 # "inherited": PI is a non-nullable, non-inherited zone field) -- and like
 # `valve_protection_enabled` for the switch itself, which is its own checkbox outside
 # `check_parameters`.
-PI_FELDER = (
-    "pi_gain_per_k",
-    "pi_integral_time_minutes",
-    "pi_min_on_seconds",
-    "pi_min_off_seconds",
-)
+PI_FELDER = _names(GROUP_PI)
 
-
-GANZZAHLEN = GANZZAHLEN | (frozenset(PI_FELDER) - {"pi_gain_per_k"})
+GANZZAHLEN = frozenset(name for name in (*FELDER, *PI_FELDER) if BY_NAME[name].integral)
 
 
 # Not part of `FELDER`: unlike the fields above, an empty value here does not mean
