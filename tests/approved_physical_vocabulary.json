@@ -218,6 +218,12 @@
       "wofür der einfache Betrieb reicht. Swarm lohnt sich, sobald zwei Instanzen wirklich auf",
       "wäre dahin. **Auf einem Swarm mit nur einem Knoten bleibt die zweite Nachbildung mit"
     ],
+    "docs/entflechten-2026-11-13.md": [
+      "`cycle`/`_process_zone` plus PI-Gates, Notbetrieb, Ventilschutz in eigene Module (`services/control_cycle/…`); `shadow_run` bleibt, was der Name",
+      "sagt, oder entfällt. `publishing.py` in Aufzeichnung, Schalten, MQTT-Veröffentlichung trennen. Reine Verschiebung, **kein** Logikumbau im selben Schritt.",
+      "| B10 | `services/shadow_run.py` (2153 Z., 35 Funktionen) | UK | Name „Schattenbetrieb“, enthält aber den scharfen Regelzyklus: PI-Gates (`:1146`), Notbetrieb (`:844`), Ventilschutz (`:1772`), Zonenverarbeitung (`:1869`), Persistenz. Ein Modul, mehrere Änderungsgründe; Name führt in die Irre. |",
+      "| B11 | `services/publishing.py` (1866 Z.) | UK | Aufzeichnen **und** Schalten **und** MQTT-Veröffentlichung in einem Modul (Fan-out 27). |"
+    ],
     "docs/homebridge.md": [
       "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
       "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
