@@ -101,6 +101,7 @@ from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.web.forms import FormError
 from thermoctl.web.shared.control import PI_FALLBACK_LABELS, TEST_COOLDOWN
 from thermoctl.web.shared.zone_parameters import (
+    ERBENDE_FELDER,
     FELDER,
     PI_FELDER,
     check_parameters,
@@ -323,7 +324,7 @@ def _limit(name: str) -> ParameterLimitOut:
 def _parameters(session: Session, principal: Principal, zone: Zone) -> ParametersOut:
     effective: ControlParameters = control_parameters(session, zone)
     control: dict[str, ParameterOut] = {}
-    for name in FELDER[:7]:
+    for name in ERBENDE_FELDER:
         own = getattr(zone, name)
         source: Literal["zone", "plant", "default"]
         if own is not None:

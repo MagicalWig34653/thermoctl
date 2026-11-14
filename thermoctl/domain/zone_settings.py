@@ -365,11 +365,19 @@ class ParameterDescription:
     minimum: Decimal
     maximum: Decimal
     step: Decimal
+    # Which field list of the zone form the parameter belongs to (see the `GROUP_*`
+    # constants below); the web adapter derives its field lists from this.
+    group: str = ""
 
     @property
     def integral(self) -> bool:
         return self.step == self.step.to_integral_value() and self.step >= 1
 
+
+GROUP_INHERITED = "inherited"  # empty zone value = inherited from the plant default
+GROUP_VALVE_PROTECTION = "valve_protection"  # timing fields; the on-off flag is its own field
+GROUP_PI = "pi"  # PI (Beta) fields; the on-off flag is its own field
+GROUP_FLAG = "flag"  # on-off flags, handled outside the numeric field lists
 
 # The bounds match those of the global defaults (`domain/steuerung.GRENZEN`) -- a zone
 # value that the global default would not be allowed to take would be a back door.
@@ -377,25 +385,31 @@ class ParameterDescription:
 # sensor, and more than ten kelvin off is no longer an offset but a broken device.
 PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
-        "hysteresis_k", "Hysterese", "K", Decimal("0.0001"), Decimal("5.0"), Decimal("0.0001")
+        "hysteresis_k", "Hysterese", "K", Decimal("0.0001"), Decimal("5.0"), Decimal("0.0001"),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
-        "min_on_seconds", "Mindest-Einschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10)
+        "min_on_seconds", "Mindest-Einschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
-        "min_off_seconds", "Mindest-Ausschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10)
+        "min_off_seconds", "Mindest-Ausschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
         "sensor_timeout_seconds", "Sensorausfall nach", "s",
         Decimal(60), Decimal(86400), Decimal(30),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
         "temperature_offset_k", "Sensorabgleich", "K",
         Decimal("-10.0"), Decimal("10.0"), Decimal("0.1"),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
         "window_resume_delay_seconds", "Nachlauf nach Fensterschluss", "s",
         Decimal(0), Decimal(3600), Decimal(10),
+        group=GROUP_INHERITED,
     ),
     # No global counterpart under a *different* name here either -- unlike
     # `temperature_offset_k`, this one has one: `setting.default_solar_setback_max_k`.
@@ -403,40 +417,49 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
         Decimal("0.0"), Decimal("10.0"), Decimal("0.1"),
+        group=GROUP_INHERITED,
     ),
     ParameterDescription(
         "valve_protection_enabled", "Ventilschutz eingeschaltet", None,
         Decimal(0), Decimal(1), Decimal(1),
+        group=GROUP_FLAG,
     ),
     ParameterDescription(
         "valve_protection_interval_days", "Ventilschutz-Abstand", "Tage",
         Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS), Decimal(1),
+        group=GROUP_VALVE_PROTECTION,
     ),
     ParameterDescription(
         "valve_protection_duration_minutes", "Ventilschutz-Dauer", "Minuten",
         Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES), Decimal(1),
+        group=GROUP_VALVE_PROTECTION,
     ),
     # Bounds and steps match the spec table exactly (section 7) and the zone's own
     # `CheckConstraint`s in `db/models/zone.py` -- three places would otherwise drift.
     ParameterDescription(
         "pi_enabled", "PI-Regelung (Beta) eingeschaltet", None,
         Decimal(0), Decimal(1), Decimal(1),
+        group=GROUP_FLAG,
     ),
     ParameterDescription(
         "pi_gain_per_k", "PI-Verstärkung Kp (Beta)", "1/K",
         Decimal("0.05"), Decimal("0.50"), Decimal("0.05"),
+        group=GROUP_PI,
     ),
     ParameterDescription(
         "pi_integral_time_minutes", "PI-Nachstellzeit Ti (Beta)", "min",
         Decimal(60), Decimal(720), Decimal(30),
+        group=GROUP_PI,
     ),
     ParameterDescription(
         "pi_min_on_seconds", "PI-Mindest-Einschaltdauer (Beta)", "s",
         Decimal(60), Decimal(300), Decimal(30),
+        group=GROUP_PI,
     ),
     ParameterDescription(
         "pi_min_off_seconds", "PI-Mindest-Ausschaltdauer (Beta)", "s",
         Decimal(60), Decimal(300), Decimal(30),
+        group=GROUP_PI,
     ),
 )
 
