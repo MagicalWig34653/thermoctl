@@ -31,10 +31,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.device import ControllerBinding, Device, ZoneDevice
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.remote_control import boost, set_setpoint
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.zones import set_operating_mode
@@ -85,6 +87,7 @@ def seen_actions(session: Session, device: Device) -> list[Binding]:
                 Measurement.device_id == device.id,
                 Measurement.capability_id == capability_id,
                 Measurement.value_text.is_not(None),
+                not_in_future(utcnow()),
             )
             .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
             .limit(SEEN_ACTIONS)

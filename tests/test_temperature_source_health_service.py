@@ -306,3 +306,24 @@ def test_a_device_not_assigned_as_an_actuator_at_all_is_not_a_candidate(session:
     session.flush()
 
     assert zone_candidates(session, zone, NOW) == []
+
+
+def test_a_stored_future_measurement_does_not_shadow_the_current_one(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "zukunft")
+    trv = create_device(session, "zukunft-trv")
+    _link(session, trv.id, "thermostat")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=trv.id, device_role_id=role(session, "actuator").id,
+            thermostat_mode="self_regulating",
+        )
+    )
+    session.flush()
+    _measurement(session, trv.id, value=Decimal("35.0"), at=datetime(2030, 1, 1))
+    _measurement(session, trv.id, value=Decimal("21.0"), at=NOW)
+
+    result = zone_candidates(session, zone, NOW)
+
+    assert [c.local_temperature_c for c in result] == [Decimal("21.0")]

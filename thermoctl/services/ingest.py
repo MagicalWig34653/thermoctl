@@ -28,6 +28,7 @@ from thermoctl.domain.device_classes import (
     descriptions_from_bridge_list,
 )
 from thermoctl.domain.fault import OK, sensor_state, stuck_reading
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.room_temperature import RoomTemperature, SensorInput, room_temperature
@@ -166,7 +167,7 @@ def _process_state(
         raw_values = {}
     # Read before inserting: afterwards our own new reading would be the most recent
     # one, and the comparison below would compare the message with itself.
-    last_pressed = _last_pressed(session, device.id)
+    last_pressed = _last_pressed(session, device.id, received_at)
     measured_at = readings[0].measured_at
     changed_values: dict[str, object] = {}
     for property_model in session.scalars(
@@ -240,7 +241,7 @@ def _process_state(
     apply_read_channels(session, device, changed_values, received_at)
 
 
-def _last_pressed(session: Session, device_id: int) -> datetime | None:
+def _last_pressed(session: Session, device_id: int, now: datetime) -> datetime | None:
     """When this device last reported a button press -- before this message.
 
     The guard against duplicate execution: Zigbee2MQTT normally sends state messages
@@ -259,6 +260,7 @@ def _last_pressed(session: Session, device_id: int) -> datetime | None:
         .where(
             Measurement.device_id == device_id,
             Measurement.capability_id == capability_id,
+            not_in_future(now),
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
@@ -365,7 +367,7 @@ def zone_sensor_device_ids(session: Session, zone_id: int) -> list[int]:
 
 
 def _latest_temperature(
-    session: Session, device_id: int, temperature: DeviceCapability | None
+    session: Session, device_id: int, temperature: DeviceCapability | None, now: datetime
 ) -> Measurement | None:
     if temperature is None:
         return None
@@ -374,6 +376,7 @@ def _latest_temperature(
         .where(
             Measurement.device_id == device_id,
             Measurement.capability_id == temperature.id,
+            not_in_future(now),
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
@@ -396,7 +399,7 @@ def _zone_room(
     timeout_s: int,
 ) -> _ZoneRoom:
     measurements = {
-        device_id: _latest_temperature(session, device_id, temperature) for device_id in sensor_ids
+        device_id: _latest_temperature(session, device_id, temperature, now) for device_id in sensor_ids
     }
     inputs = [
         SensorInput(
@@ -689,6 +692,7 @@ def _contact_window_open(
             .where(
                 Measurement.device_id == device_id,
                 Measurement.capability_id == contact.id,
+                not_in_future(now),
             )
             .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
             .limit(1)

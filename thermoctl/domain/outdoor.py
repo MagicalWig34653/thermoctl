@@ -28,6 +28,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.domain.device_assignment import TEMPERATURE_SOURCE, check_capability
 from thermoctl.domain.fault import sensor_state
+from thermoctl.domain.measurement_clock import not_in_future
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ def outdoor_reading(session: Session, setting_row: Setting, now: datetime) -> Ou
                 .where(
                     Measurement.device_id == device_id,
                     Measurement.capability_id == temperature.id,
+                    not_in_future(now),
                 )
                 .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
                 .limit(1)

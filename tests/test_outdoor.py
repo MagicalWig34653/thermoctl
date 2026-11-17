@@ -128,3 +128,27 @@ def test_setting_and_clearing_the_source_writes_distinguishable_audit_entries(
         )
     )
     assert [entry.action for entry in entries] == ["assign", "unassign"]
+
+
+def test_a_stored_reading_far_in_the_future_does_not_shadow_the_current_one(
+    session: Session,
+) -> None:
+    row = create_settings(session)
+    row.default_sensor_timeout_seconds = 1800
+    device = _with_temperature_capability(session, "aussenfuehler-zukunft")
+    row.outdoor_temperature_source_device_id = device.id
+    temp = capability(session, "temperature")
+    for value, at in (
+        (Decimal("35"), NOW + timedelta(days=365)),
+        (Decimal("3.2"), NOW - timedelta(minutes=5)),
+    ):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=temp.id, value_numeric=value,
+                measured_at=at, received_at=NOW,
+            )
+        )
+
+    reading = outdoor_reading(session, row, NOW)
+
+    assert reading.temperature_c == Decimal("3.2")

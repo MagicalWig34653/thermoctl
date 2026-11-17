@@ -65,6 +65,11 @@ def _user_with_permission(
     )
 
 
+def holders_of(session: Session, code: str) -> set[int]:
+    """Ids aller Inhaber des anlagenweiten Rechts, inaktive Konten eingeschlossen."""
+    return {u.id for u in _user_with_permission(session, code, only_active=False)}
+
+
 def is_sole_holder(session: Session, user_id: int, code: str = ADMIN_PERMISSION) -> bool:
     """Ob dieser Benutzer der einzige Inhaber des anlagenweiten Rechts ist.
 

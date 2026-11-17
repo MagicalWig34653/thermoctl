@@ -288,3 +288,28 @@ def test_unusable_bindings_are_rejected(session: Session) -> None:
         set_binding(session, device, "single_plus", "setpoint_up", Decimal(0))
     with pytest.raises(ControllerError, match="Nachkommastelle"):
         set_binding(session, device, "single_plus", "setpoint_up", Decimal("0.25"))
+
+
+def test_seen_actions_ignores_a_stored_future_press(session: Session) -> None:
+    from datetime import timedelta
+
+    from tests.helpers import capability
+    from thermoctl.db.base import utcnow
+    from thermoctl.db.models.measurement import Measurement
+
+    _zone, device = _installation(session)
+    action = capability(session, "action")
+    now = utcnow().replace(microsecond=0)  # MariaDB speichert keine Mikrosekunden
+    past = now - timedelta(minutes=10)
+    for at in (now + timedelta(days=365), past):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=action.id, value_text="single",
+                measured_at=at, received_at=now,
+            )
+        )
+    session.flush()
+
+    (seen,) = seen_actions(session, device)
+
+    assert seen.last_seen == past

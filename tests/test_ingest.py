@@ -31,6 +31,7 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.services.ingest import (
     advance_zone_state,
     process_message,
+    zone_room_temperature,
     zone_sensor_device_ids,
 )
 
@@ -230,6 +231,37 @@ def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
     codes = {status.id: status.code for status in session.query(SensorStatus)}
     states = {z.zone_id: codes[z.sensor_status_id] for z in session.query(ZoneState)}
     assert states == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
+
+
+def test_a_measurement_far_in_the_future_does_not_shadow_the_current_one(
+    session: Session,
+) -> None:
+    """Ein Altbestand-Messwert mit Zukunftszeitstempel darf den aktuellen nicht verdraengen."""
+    create_settings(session)
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, "zukunft-zone")
+    _attach(session, zone, device)
+    for value, measured_at in (
+        (Decimal("35"), EMPFANGEN_AM + timedelta(days=365)),
+        (Decimal("20.5"), EMPFANGEN_AM - timedelta(seconds=10)),
+    ):
+        session.add(
+            Measurement(
+                device_id=device.id,
+                capability_id=temperature.id,
+                value_numeric=value,
+                measured_at=measured_at,
+                received_at=EMPFANGEN_AM,
+            )
+        )
+    session.flush()
+
+    room = zone_room_temperature(session, zone, EMPFANGEN_AM, 300)
+
+    assert room.mean == Decimal("20.5")
 
 
 # --- sensor_stuck --------------------------------------------------------------
@@ -1614,3 +1646,45 @@ def test_an_overlong_text_value_is_not_stored_but_the_rest_of_the_message_is(
     warnings = [r for r in caplog.records if "zu lang" in r.getMessage()]
     assert len(warnings) == 1
     assert "A" * (length + 1) not in caplog.text
+
+
+def test_a_stored_future_contact_reading_does_not_shadow_the_current_one(
+    session: Session,
+) -> None:
+    from thermoctl.services.ingest import _contact_window_open
+
+    contact = _capability(session, "contact")
+    device = create_device(session, _device_names()[0])
+    for text, at in (
+        ("false", EMPFANGEN_AM + timedelta(days=365)),
+        ("true", EMPFANGEN_AM - timedelta(seconds=10)),
+    ):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=contact.id, value_text=text,
+                measured_at=at, received_at=EMPFANGEN_AM,
+            )
+        )
+    session.flush()
+
+    assert _contact_window_open(session, [device.id], contact, EMPFANGEN_AM, 300) is False
+
+
+def test_a_stored_future_button_press_does_not_become_the_last_press(
+    session: Session,
+) -> None:
+    from thermoctl.services.ingest import _last_pressed
+
+    action = _capability(session, "action")
+    device = create_device(session, _device_names()[0])
+    past = EMPFANGEN_AM - timedelta(minutes=1)
+    for at in (EMPFANGEN_AM + timedelta(days=365), past):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=action.id, value_text="single",
+                measured_at=at, received_at=EMPFANGEN_AM,
+            )
+        )
+    session.flush()
+
+    assert _last_pressed(session, device.id, EMPFANGEN_AM) == past

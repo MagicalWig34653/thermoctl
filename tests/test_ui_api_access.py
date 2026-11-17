@@ -395,8 +395,11 @@ def test_last_administrator_cannot_be_locked_out_by_any_path(client_als: Als, se
 
 
 def test_a_second_administrator_lifts_the_guard(client_als: Als, session: Session) -> None:
+    """Mit einem zweiten Verwalter ist Umgruppieren erlaubt, solange der Handelnde dadurch
+    nicht zum Alleininhaber wird (dafuer gibt es einen eigenen Test)."""
     client = client_als(ADMIN)
     second = user_with_permissions(session, "zweiter", ADMIN)
+    third = user_with_permissions(session, "dritter", ADMIN)
     assert _call(client, "PUT", f"/ui-api/access/users/{second.id}/active", {"active": False}).status_code == 200
     assert _call(client, "PUT", f"/ui-api/access/users/{second.id}/active", {"active": True}).status_code == 200
     empty = AccessGroup(name="leer")
@@ -406,6 +409,7 @@ def test_a_second_administrator_lifts_the_guard(client_als: Als, session: Sessio
     assert moved.status_code == 200 and moved.json()["group_id"] == empty.id
     assert session.scalars(select(UserAccessGroup.access_group_id).where(UserAccessGroup.user_id == second.id)).all() == [empty.id]
     assert "user.group_changed" in _actions(session)
+    assert third.id in _holders(session, "user.manage")
 
 
 def test_set_user_group_unknown_group_is_422(client_als: Als, session: Session) -> None:
@@ -1087,6 +1091,88 @@ def test_nobody_hands_out_or_takes_over_more_rights_than_their_own(client_als: A
     assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": weak.id}).status_code == 200
     assert _call(client, "PUT", f"/ui-api/access/groups/{weak.id}/permissions", {"permissions": [{"code": "zone.read", "zone_id": None}]}).status_code == 200
     assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/password", {"password": LONG_PASSWORD}).status_code == 200
+
+
+def test_ungrouping_a_stronger_account_is_beyond_own_rights(client_als: Als, session: Session) -> None:
+    """Gruppe entziehen oder wechseln prüft auch die bisherigen Rechte des Zielkontos.
+
+    Sonst entsteht die Alleinverwalter-Ausnahme durch die Änderung selbst: Wer den zweiten
+    Verwalter aus seiner Gruppe nimmt, wäre danach allein und dürfte beliebig Rechte vergeben.
+    """
+    client = client_als([("user.manage", None), ("group.manage", None)])
+    stark = user_with_permissions(session, "zweiter-verwalter", [("user.manage", None), ("setting.manage", None)])
+    weak = _named_group(session, "schwach", ["user.manage"])
+    _err(_call(client, "PUT", f"/ui-api/access/users/{stark.id}/group", {"group_id": None}), 403, "beyond_own_rights")
+    _err(_call(client, "PUT", f"/ui-api/access/users/{stark.id}/group", {"group_id": weak.id}), 403, "beyond_own_rights")
+
+
+def _holders(session: Session, code: str) -> set[int]:
+    return set(
+        session.scalars(
+            select(UserAccessGroup.user_id)
+            .join(GroupPermission, GroupPermission.access_group_id == UserAccessGroup.access_group_id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .where(Permission.code == code, GroupPermission.zone_id.is_(None))
+        )
+    )
+
+
+def _group_of(session: Session, user: User) -> AccessGroup:
+    group = session.scalar(
+        select(AccessGroup).join(UserAccessGroup).where(UserAccessGroup.user_id == user.id)
+    )
+    assert group is not None
+    return group
+
+
+ADMIN_PAIR = [("user.manage", None), ("group.manage", None)]
+
+
+def test_one_cannot_make_oneself_the_sole_holder_by_ungrouping_the_other(
+    client_als: Als, session: Session
+) -> None:
+    client = client_als(ADMIN_PAIR)
+    other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
+    _err(_call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": None}), 409, "sole_holder")
+    assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
+    assert len(_holders(session, "group.manage")) == 2
+
+
+def test_one_cannot_make_oneself_the_sole_holder_by_revoking_the_others_group_rights(
+    client_als: Als, session: Session
+) -> None:
+    client = client_als(ADMIN_PAIR)
+    other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
+    group = _group_of(session, other)
+    _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": []}), 409, "sole_holder")
+    assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
+
+
+def test_one_cannot_make_oneself_the_sole_holder_by_deleting_the_others_group(
+    client_als: Als, session: Session
+) -> None:
+    client = client_als(ADMIN_PAIR)
+    other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
+    group = _group_of(session, other)
+    _err(_call(client, "DELETE", f"/ui-api/access/groups/{group.id}"), 409, "sole_holder")
+    assert session.get(AccessGroup, group.id) is not None
+    assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
+
+
+def test_the_established_sole_holder_may_still_strip_a_non_holder(
+    client_als: Als, session: Session
+) -> None:
+    client = client_als(ADMIN_PAIR)
+    plain = user_with_permissions(session, "kein-verwalter", [("zone.read", None)])
+    group = _group_of(session, plain)
+    assert _call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": []}).status_code == 200
+    assert _call(client, "PUT", f"/ui-api/access/users/{plain.id}/group", {"group_id": None}).status_code == 200
 
 
 def test_the_only_user_manager_may_hand_out_new_rights(client_als: Als, session: Session) -> None:

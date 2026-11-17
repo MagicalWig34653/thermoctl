@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
+from thermoctl.domain.fault import FUTURE_TOLERANCE
+
 log = logging.getLogger(__name__)
 
 
@@ -55,7 +57,15 @@ def _measured_at(value: object, received_at: datetime) -> datetime:
         # time: fault detection depends on it, and it decides based on exactly this
         # age.
         return received_at
-    return moment.astimezone(UTC).replace(tzinfo=None)
+    try:
+        measured = moment.astimezone(UTC).replace(tzinfo=None)
+    except OverflowError:
+        # e.g. 9999-12-31T23:59:59-05:00 does not fit into UTC.
+        return received_at
+    if measured - received_at > FUTURE_TOLERANCE:
+        # A timestamp from the future would outrank every later, correct reading.
+        return received_at
+    return measured
 
 
 def _value(value: object) -> tuple[Decimal | None, str | None] | None:

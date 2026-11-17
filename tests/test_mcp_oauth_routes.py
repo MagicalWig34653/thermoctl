@@ -539,3 +539,68 @@ def test_token_rejects_malformed_form(session: Session, body: bytes) -> None:
     )
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_request"
+
+
+class _ChunkedRequest:
+    """Anfrage ohne Content-Length, deren Körper stückweise eintrifft."""
+
+    headers: dict[str, str] = {}
+
+    def __init__(self, chunks: int, size: int) -> None:
+        self.read = 0
+        self._chunks = chunks
+        self._size = size
+
+    async def stream(self):
+        for _ in range(self._chunks):
+            self.read += 1
+            yield b"a" * self._size
+
+    async def body(self) -> bytes:  # pragma: no cover - der Test schlägt an, wenn das gerufen wird
+        raise AssertionError("body() puffert den gesamten Körper")
+
+
+def test_chunked_body_is_cut_off_at_the_limit_without_buffering_it_all() -> None:
+    import asyncio
+
+    request = _ChunkedRequest(chunks=10_000, size=1024)
+    assert asyncio.run(oauth_routes._limited_body(request)) is None  # type: ignore[arg-type]
+    # 16 KiB Limit, 1-KiB-Stücke: nach spätestens 17 Stücken ist Schluss.
+    assert request.read <= 17
+
+
+def _chunks(total: int, size: int = 1024):
+    sent = 0
+    while sent < total:
+        piece = min(size, total - sent)
+        sent += piece
+        yield b"a" * piece
+
+
+def test_a_real_chunked_upload_without_content_length_over_the_limit_is_refused(
+    session: Session,
+) -> None:
+    client = _client(session)
+    response = client.post(
+        "/mcp/token",
+        content=_chunks(1024 * 1024),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 413
+
+
+def test_a_chunked_upload_of_exactly_the_limit_is_not_refused_as_too_large(
+    session: Session,
+) -> None:
+    client = _client(session)
+    limit = oauth_routes._MAX_BODY
+    headers = {"content-type": "application/x-www-form-urlencoded"}
+    assert client.post("/mcp/token", content=_chunks(limit), headers=headers).status_code != 413
+    assert client.post("/mcp/token", content=_chunks(limit + 1), headers=headers).status_code == 413
+
+
+def test_chunked_body_within_the_limit_is_returned_whole() -> None:
+    import asyncio
+
+    request = _ChunkedRequest(chunks=4, size=1024)
+    assert asyncio.run(oauth_routes._limited_body(request)) == b"a" * 4096  # type: ignore[arg-type]

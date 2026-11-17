@@ -38,6 +38,12 @@ def test_sensor_state_measurement_from_the_future_is_ok() -> None:
     assert sensor_state(measurement, NOW, 300) == OK
 
 
+def test_sensor_state_measurement_far_in_the_future_is_not_fresh() -> None:
+    measurement = NOW + timedelta(days=365)
+
+    assert sensor_state(measurement, NOW, 300) == VERALTET
+
+
 @pytest.mark.parametrize(
     ("age_s", "expected"),
     [(0, OK), (1, VERALTET)],
