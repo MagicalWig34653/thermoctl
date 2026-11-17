@@ -139,8 +139,16 @@ async def _limited_body(request: Request) -> bytes | None:
                 return None
         except ValueError:
             return None
-    body = await request.body()
-    return body if len(body) <= _MAX_BODY else None
+    # Stueckweise lesen und beim Ueberschreiten sofort abbrechen: `request.body()` wuerde
+    # einen Chunked-Body ohne Content-Length erst vollstaendig puffern.
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _MAX_BODY:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def build_oauth_routes(factory: sessionmaker[Session], settings: Settings) -> list[Route]:

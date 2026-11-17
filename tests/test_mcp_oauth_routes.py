@@ -539,3 +539,38 @@ def test_token_rejects_malformed_form(session: Session, body: bytes) -> None:
     )
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_request"
+
+
+class _ChunkedRequest:
+    """Anfrage ohne Content-Length, deren Körper stückweise eintrifft."""
+
+    headers: dict[str, str] = {}
+
+    def __init__(self, chunks: int, size: int) -> None:
+        self.read = 0
+        self._chunks = chunks
+        self._size = size
+
+    async def stream(self):
+        for _ in range(self._chunks):
+            self.read += 1
+            yield b"a" * self._size
+
+    async def body(self) -> bytes:  # pragma: no cover - der Test schlägt an, wenn das gerufen wird
+        raise AssertionError("body() puffert den gesamten Körper")
+
+
+def test_chunked_body_is_cut_off_at_the_limit_without_buffering_it_all() -> None:
+    import asyncio
+
+    request = _ChunkedRequest(chunks=10_000, size=1024)
+    assert asyncio.run(oauth_routes._limited_body(request)) is None  # type: ignore[arg-type]
+    # 16 KiB Limit, 1-KiB-Stücke: nach spätestens 17 Stücken ist Schluss.
+    assert request.read <= 17
+
+
+def test_chunked_body_within_the_limit_is_returned_whole() -> None:
+    import asyncio
+
+    request = _ChunkedRequest(chunks=4, size=1024)
+    assert asyncio.run(oauth_routes._limited_body(request)) == b"a" * 4096  # type: ignore[arg-type]
