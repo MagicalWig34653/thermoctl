@@ -299,7 +299,7 @@ def test_seen_actions_ignores_a_stored_future_press(session: Session) -> None:
 
     _zone, device = _installation(session)
     action = capability(session, "action")
-    now = utcnow()
+    now = utcnow().replace(microsecond=0)  # MariaDB speichert keine Mikrosekunden
     past = now - timedelta(minutes=10)
     for at in (now + timedelta(days=365), past):
         session.add(
