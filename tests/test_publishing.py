@@ -1203,3 +1203,30 @@ def test_deleting_a_zone_and_its_device_keeps_the_command_log_entry(session: Ses
     assert survivor.device_id is None
     assert survivor.zone_name == zone_name
     assert survivor.device_name == device_name
+
+
+def test_a_channel_value_ignores_a_stored_future_temperature(session: Session) -> None:
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from tests.helpers import capability, create_device
+    from thermoctl.db.models.measurement import Measurement
+    from thermoctl.services.publishing import _channel_value
+
+    device = create_device(session, "kanal-fuehler")
+    temperature = capability(session, "temperature")
+    for value, at in (
+        (Decimal("35"), NOW + timedelta(days=365)),
+        (Decimal("20.5"), NOW - timedelta(minutes=1)),
+    ):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=temperature.id, value_numeric=value,
+                measured_at=at, received_at=NOW,
+            )
+        )
+    session.flush()
+    channel = SimpleNamespace(source_device_id=device.id, zone_id=None)
+    kind = SimpleNamespace(code="sensor_temperature")
+
+    assert _channel_value(session, channel, kind, NOW) == Decimal("20.5")  # type: ignore[arg-type]

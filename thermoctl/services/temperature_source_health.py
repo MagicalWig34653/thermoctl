@@ -21,6 +21,7 @@ from thermoctl.db.models.lookup import CommandOutcome, DeviceCapability, DeviceR
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.self_regulating import TEMPERATURE_PROPERTIES
 from thermoctl.domain.temperature_source_health import ThermostatCandidate
 
@@ -163,6 +164,7 @@ def zone_candidates(session: Session, zone: Zone, now: datetime) -> list[Thermos
                 .where(
                     Measurement.device_id == device.id,
                     Measurement.capability_id == temperature.id,
+                    not_in_future(now),
                 )
                 .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
                 .limit(1)

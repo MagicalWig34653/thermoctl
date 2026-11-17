@@ -27,7 +27,8 @@ from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
 )
-from thermoctl.domain.fault import FUTURE_TOLERANCE, OK, sensor_state, stuck_reading
+from thermoctl.domain.fault import OK, sensor_state, stuck_reading
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.room_temperature import RoomTemperature, SensorInput, room_temperature
@@ -166,7 +167,7 @@ def _process_state(
         raw_values = {}
     # Read before inserting: afterwards our own new reading would be the most recent
     # one, and the comparison below would compare the message with itself.
-    last_pressed = _last_pressed(session, device.id)
+    last_pressed = _last_pressed(session, device.id, received_at)
     measured_at = readings[0].measured_at
     changed_values: dict[str, object] = {}
     for property_model in session.scalars(
@@ -240,7 +241,7 @@ def _process_state(
     apply_read_channels(session, device, changed_values, received_at)
 
 
-def _last_pressed(session: Session, device_id: int) -> datetime | None:
+def _last_pressed(session: Session, device_id: int, now: datetime) -> datetime | None:
     """When this device last reported a button press -- before this message.
 
     The guard against duplicate execution: Zigbee2MQTT normally sends state messages
@@ -259,6 +260,7 @@ def _last_pressed(session: Session, device_id: int) -> datetime | None:
         .where(
             Measurement.device_id == device_id,
             Measurement.capability_id == capability_id,
+            not_in_future(now),
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
@@ -374,8 +376,7 @@ def _latest_temperature(
         .where(
             Measurement.device_id == device_id,
             Measurement.capability_id == temperature.id,
-            # Zeitstempel weit in der Zukunft duerfen spaetere, korrekte Werte nicht verdraengen.
-            Measurement.measured_at <= now + FUTURE_TOLERANCE,
+            not_in_future(now),
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
@@ -691,6 +692,7 @@ def _contact_window_open(
             .where(
                 Measurement.device_id == device_id,
                 Measurement.capability_id == contact.id,
+                not_in_future(now),
             )
             .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
             .limit(1)

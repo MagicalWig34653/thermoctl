@@ -1646,3 +1646,45 @@ def test_an_overlong_text_value_is_not_stored_but_the_rest_of_the_message_is(
     warnings = [r for r in caplog.records if "zu lang" in r.getMessage()]
     assert len(warnings) == 1
     assert "A" * (length + 1) not in caplog.text
+
+
+def test_a_stored_future_contact_reading_does_not_shadow_the_current_one(
+    session: Session,
+) -> None:
+    from thermoctl.services.ingest import _contact_window_open
+
+    contact = _capability(session, "contact")
+    device = create_device(session, _device_names()[0])
+    for text, at in (
+        ("false", EMPFANGEN_AM + timedelta(days=365)),
+        ("true", EMPFANGEN_AM - timedelta(seconds=10)),
+    ):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=contact.id, value_text=text,
+                measured_at=at, received_at=EMPFANGEN_AM,
+            )
+        )
+    session.flush()
+
+    assert _contact_window_open(session, [device.id], contact, EMPFANGEN_AM, 300) is False
+
+
+def test_a_stored_future_button_press_does_not_become_the_last_press(
+    session: Session,
+) -> None:
+    from thermoctl.services.ingest import _last_pressed
+
+    action = _capability(session, "action")
+    device = create_device(session, _device_names()[0])
+    past = EMPFANGEN_AM - timedelta(minutes=1)
+    for at in (EMPFANGEN_AM + timedelta(days=365), past):
+        session.add(
+            Measurement(
+                device_id=device.id, capability_id=action.id, value_text="single",
+                measured_at=at, received_at=EMPFANGEN_AM,
+            )
+        )
+    session.flush()
+
+    assert _last_pressed(session, device.id, EMPFANGEN_AM) == past

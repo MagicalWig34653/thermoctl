@@ -255,3 +255,11 @@ def test_a_timestamp_slightly_ahead_of_the_receipt_time_is_kept() -> None:
     readings = readings_from_payload(payload, RECEIVED_AT)
 
     assert [r.measured_at for r in readings] == [datetime(2035, 1, 2, 3, 6, 5)]
+
+
+def test_an_out_of_range_timestamp_falls_back_to_the_receipt_time() -> None:
+    payload = json.dumps({"temperature": 20, "last_seen": "9999-12-31T23:59:59-05:00"})
+
+    readings = readings_from_payload(payload, RECEIVED_AT)
+
+    assert [r.measured_at for r in readings] == [RECEIVED_AT]

@@ -67,6 +67,7 @@ from thermoctl.domain.fault_notice import (
     FaultNotice,
     command_failure_notice,
 )
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
 from thermoctl.domain.self_regulating import (
@@ -1716,6 +1717,7 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
             Measurement.device_id == channel.source_device_id,
             Measurement.capability_id == capability_id,
             Measurement.value_numeric.is_not(None),
+            not_in_future(now),
         ).order_by(Measurement.measured_at.desc(), Measurement.id.desc()).limit(1))
     if channel.zone_id is None:  # pragma: no cover - configure_channel demands a zone
         # Guard, not a case: a zone kind without a zone is rejected at creation time.
