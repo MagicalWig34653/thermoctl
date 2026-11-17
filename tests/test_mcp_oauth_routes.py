@@ -569,6 +569,36 @@ def test_chunked_body_is_cut_off_at_the_limit_without_buffering_it_all() -> None
     assert request.read <= 17
 
 
+def _chunks(total: int, size: int = 1024):
+    sent = 0
+    while sent < total:
+        piece = min(size, total - sent)
+        sent += piece
+        yield b"a" * piece
+
+
+def test_a_real_chunked_upload_without_content_length_over_the_limit_is_refused(
+    session: Session,
+) -> None:
+    client = _client(session)
+    response = client.post(
+        "/mcp/token",
+        content=_chunks(1024 * 1024),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 413
+
+
+def test_a_chunked_upload_of_exactly_the_limit_is_not_refused_as_too_large(
+    session: Session,
+) -> None:
+    client = _client(session)
+    limit = oauth_routes._MAX_BODY
+    headers = {"content-type": "application/x-www-form-urlencoded"}
+    assert client.post("/mcp/token", content=_chunks(limit), headers=headers).status_code != 413
+    assert client.post("/mcp/token", content=_chunks(limit + 1), headers=headers).status_code == 413
+
+
 def test_chunked_body_within_the_limit_is_returned_whole() -> None:
     import asyncio
 
