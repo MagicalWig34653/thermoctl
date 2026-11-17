@@ -1133,8 +1133,10 @@ def test_one_cannot_make_oneself_the_sole_holder_by_ungrouping_the_other(
 ) -> None:
     client = client_als(ADMIN_PAIR)
     other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
     _err(_call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": None}), 409, "sole_holder")
     assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
     assert len(_holders(session, "group.manage")) == 2
 
 
@@ -1143,9 +1145,11 @@ def test_one_cannot_make_oneself_the_sole_holder_by_revoking_the_others_group_ri
 ) -> None:
     client = client_als(ADMIN_PAIR)
     other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
     group = _group_of(session, other)
     _err(_call(client, "PUT", f"/ui-api/access/groups/{group.id}/permissions", {"permissions": []}), 409, "sole_holder")
     assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
 
 
 def test_one_cannot_make_oneself_the_sole_holder_by_deleting_the_others_group(
@@ -1153,10 +1157,12 @@ def test_one_cannot_make_oneself_the_sole_holder_by_deleting_the_others_group(
 ) -> None:
     client = client_als(ADMIN_PAIR)
     other = user_with_permissions(session, "zweiter-verwalter", ADMIN_PAIR)
+    audit_before = _actions(session)
     group = _group_of(session, other)
     _err(_call(client, "DELETE", f"/ui-api/access/groups/{group.id}"), 409, "sole_holder")
     assert session.get(AccessGroup, group.id) is not None
     assert len(_holders(session, "user.manage")) == 2
+    assert _actions(session) == audit_before, "der Audit-Eintrag der zurueckgenommenen Aenderung darf nicht bleiben"
 
 
 def test_the_established_sole_holder_may_still_strip_a_non_holder(
