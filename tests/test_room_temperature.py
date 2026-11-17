@@ -176,4 +176,4 @@ def test_result_types_are_immutable() -> None:
 def test_without_a_temperature_capability_there_is_no_latest_reading(session) -> None:  # type: ignore[no-untyped-def]
     from thermoctl.services.ingest import _latest_temperature
 
-    assert _latest_temperature(session, 1, None) is None
+    assert _latest_temperature(session, 1, None, datetime(2026, 8, 29, 12, 0)) is None
