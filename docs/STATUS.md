@@ -3,6 +3,7 @@
 Letzte Aktualisierung: 2026-11-13. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **Seit 0.24.0 auf `main`, noch nicht freigegeben:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4–9 offen (Board). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository

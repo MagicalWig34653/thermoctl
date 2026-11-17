@@ -9,6 +9,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Sicherheit
+
+- Wer ein Konto umgruppiert, braucht dafür auch die bisherigen Rechte dieses Kontos. Eine Änderung an Gruppen oder Gruppenrechten, nach der der Handelnde als Einziger ein Verwaltungsrecht hielte, wird abgelehnt.
+- Messzeitstempel, die mehr als fünf Minuten in der Zukunft liegen, werden durch die Empfangszeit ersetzt; bereits gespeicherte werden beim Lesen übergangen.
+- Der Rumpf einer OAuth-Anfrage wird stückweise gelesen und bei mehr als 16 KiB sofort abgewiesen.
+
+---
+
 ## 0.24.0 — 2026-11-13
 
 ### Beim Upgrade zu wissen
