@@ -538,6 +538,10 @@ def set_group_of_user(
     user = _user_or_404(session, user_id)
     _not_self(principal, user, "umgruppieren")
     _known_group(session, body.group_id)
+    # Auch die bisherigen Rechte des Zielkontos zählen, und zwar vor der Änderung: Wer ein
+    # stärkeres Konto aus seiner Gruppe nimmt, würde danach sonst selbst zum einzigen
+    # Verwalter und dürfte die Grenze der eigenen Rechte aufheben.
+    _within_own_rights(session, principal, _assigned_grants(session, user))
     if body.group_id is not None:
         _within_own_rights(session, principal, _group_grants(session, body.group_id))
     try:

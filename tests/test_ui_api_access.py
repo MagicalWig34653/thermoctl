@@ -1089,6 +1089,19 @@ def test_nobody_hands_out_or_takes_over_more_rights_than_their_own(client_als: A
     assert _call(client, "PUT", f"/ui-api/access/users/{other.id}/password", {"password": LONG_PASSWORD}).status_code == 200
 
 
+def test_ungrouping_a_stronger_account_is_beyond_own_rights(client_als: Als, session: Session) -> None:
+    """Gruppe entziehen oder wechseln prüft auch die bisherigen Rechte des Zielkontos.
+
+    Sonst entsteht die Alleinverwalter-Ausnahme durch die Änderung selbst: Wer den zweiten
+    Verwalter aus seiner Gruppe nimmt, wäre danach allein und dürfte beliebig Rechte vergeben.
+    """
+    client = client_als([("user.manage", None), ("group.manage", None)])
+    stark = user_with_permissions(session, "zweiter-verwalter", [("user.manage", None), ("setting.manage", None)])
+    weak = _named_group(session, "schwach", ["user.manage"])
+    _err(_call(client, "PUT", f"/ui-api/access/users/{stark.id}/group", {"group_id": None}), 403, "beyond_own_rights")
+    _err(_call(client, "PUT", f"/ui-api/access/users/{stark.id}/group", {"group_id": weak.id}), 403, "beyond_own_rights")
+
+
 def test_the_only_user_manager_may_hand_out_new_rights(client_als: Als, session: Session) -> None:
     client = client_als([("user.manage", None), ("group.manage", None)])
     group = _named_group(session, "neu", ["zone.read"])
