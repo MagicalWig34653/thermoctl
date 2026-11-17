@@ -223,16 +223,18 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
 
     quelle = _Path(__file__).resolve().parent.parent / "thermoctl"
     stellen = [
-        f"{pfad.relative_to(quelle.parent)}:{nummer}"
+        # Ohne Zeilennummer: jede Konstruktorstelle erscheint einzeln, aber eine
+        # Zeilenverschiebung durch eine neue Importzeile macht den Test nicht rot.
+        str(pfad.relative_to(quelle.parent))
         for pfad in sorted(quelle.rglob("*.py"))
-        for nummer, zeile in enumerate(pfad.read_text(encoding="utf-8").splitlines(), 1)
+        for zeile in pfad.read_text(encoding="utf-8").splitlines()
         # `Device(` als Konstruktoraufruf: nicht `DeviceProperty(` und Verwandte,
         # und nicht die Klassendefinition selbst.
         if re.search(r"(?<![A-Za-z])Device\(", zeile) and not zeile.lstrip().startswith("class ")
     ]
     assert stellen == [
-        "thermoctl/services/ingest.py:74",
-        "thermoctl/services/meross_discovery.py:108",
+        "thermoctl/services/ingest.py",
+        "thermoctl/services/meross_discovery.py",
     ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)
 
 
