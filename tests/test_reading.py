@@ -239,3 +239,19 @@ def test_valid_json_that_is_not_an_object_yields_nothing() -> None:
     received = datetime(2026, 8, 29, 12, 0, 0)
     assert readings_from_payload("[1, 2, 3]", received) == []
     assert readings_from_payload("42", received) == []
+
+
+def test_a_timestamp_far_in_the_future_is_replaced_by_the_receipt_time() -> None:
+    payload = json.dumps({"temperature": 35, "last_seen": "2040-01-01T00:00:00Z"})
+
+    readings = readings_from_payload(payload, RECEIVED_AT)
+
+    assert [r.measured_at for r in readings] == [RECEIVED_AT]
+
+
+def test_a_timestamp_slightly_ahead_of_the_receipt_time_is_kept() -> None:
+    payload = json.dumps({"temperature": 20, "last_seen": "2035-01-02T03:06:05Z"})
+
+    readings = readings_from_payload(payload, RECEIVED_AT)
+
+    assert [r.measured_at for r in readings] == [datetime(2035, 1, 2, 3, 6, 5)]

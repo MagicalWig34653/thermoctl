@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 OK = "ok"
@@ -44,6 +44,10 @@ def stuck_reading(
     return (max(values) - min(values)) <= span_threshold_c
 
 
+# Wie weit ein Messzeitstempel der Empfangszeit voraus sein darf (Uhrabweichung des Fuehlers).
+FUTURE_TOLERANCE = timedelta(minutes=5)
+
+
 def sensor_state(
     latest_reading: datetime | None,
     now: datetime,
@@ -53,8 +57,9 @@ def sensor_state(
         return NO_SOURCE
 
     age_s = (now - latest_reading).total_seconds()
-    # A sensor clock running slightly fast must not trigger a false failure.
-    if age_s <= timeout_s:
+    # A sensor clock running slightly fast must not trigger a false failure -- but a
+    # timestamp far in the future is not a fresh reading, it is a wrong clock.
+    if -FUTURE_TOLERANCE.total_seconds() <= age_s <= timeout_s:
         return OK
     return VERALTET
 

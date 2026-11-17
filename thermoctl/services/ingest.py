@@ -27,7 +27,7 @@ from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
 )
-from thermoctl.domain.fault import OK, sensor_state, stuck_reading
+from thermoctl.domain.fault import FUTURE_TOLERANCE, OK, sensor_state, stuck_reading
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.room_temperature import RoomTemperature, SensorInput, room_temperature
@@ -365,7 +365,7 @@ def zone_sensor_device_ids(session: Session, zone_id: int) -> list[int]:
 
 
 def _latest_temperature(
-    session: Session, device_id: int, temperature: DeviceCapability | None
+    session: Session, device_id: int, temperature: DeviceCapability | None, now: datetime
 ) -> Measurement | None:
     if temperature is None:
         return None
@@ -374,6 +374,8 @@ def _latest_temperature(
         .where(
             Measurement.device_id == device_id,
             Measurement.capability_id == temperature.id,
+            # Zeitstempel weit in der Zukunft duerfen spaetere, korrekte Werte nicht verdraengen.
+            Measurement.measured_at <= now + FUTURE_TOLERANCE,
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
@@ -396,7 +398,7 @@ def _zone_room(
     timeout_s: int,
 ) -> _ZoneRoom:
     measurements = {
-        device_id: _latest_temperature(session, device_id, temperature) for device_id in sensor_ids
+        device_id: _latest_temperature(session, device_id, temperature, now) for device_id in sensor_ids
     }
     inputs = [
         SensorInput(
