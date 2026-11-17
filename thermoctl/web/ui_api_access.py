@@ -21,8 +21,9 @@ Sicherheitsregeln, die in jedem Endpunkt gelten:
   der ein Fehler gemeldet wird, ist zurückgerollt (Ausnahme läuft durch `get_session`).
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from collections.abc import Set as AbstractSet
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -49,10 +50,12 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import (
+    GUARDED_PERMISSIONS,
     AdministrationError,
     create_group,
     create_user,
     delete_group,
+    holders_of,
     is_sole_holder,
     revoke_token,
     set_group_permissions,
@@ -150,6 +153,27 @@ def _within_own_rights(
             "Das geht über die eigenen Rechte hinaus (" + ", ".join(dict.fromkeys(missing)) + ").",
             "beyond_own_rights",
         )
+
+
+@contextmanager
+def _no_self_made_sole_holder(session: Session, principal: Principal) -> Iterator[None]:
+    """Wer anderen ein Verwaltungsrecht nimmt, wird dadurch nicht zum Alleininhaber.
+
+    Sonst greift danach die Alleinverwalter-Ausnahme von `_within_own_rights`, und die
+    Grenze der eigenen Rechte ließe sich selbst aufheben. Die Änderung läuft in einem
+    Savepoint und wird zurückgenommen, wenn sie diesen Zustand herstellen würde.
+    """
+    actor = principal.user_id
+    before = {code: holders_of(session, code) for code in GUARDED_PERMISSIONS}
+    with session.begin_nested():
+        yield
+        for code in GUARDED_PERMISSIONS:
+            if holders_of(session, code) == {actor} and before[code] != {actor}:
+                raise RoomApiError(
+                    409,
+                    "Danach wären Sie die einzige Person mit diesem Verwaltungsrecht.",
+                    "sole_holder",
+                )
 
 
 def _assigned_grants(session: Session, user: User) -> set[tuple[str, int | None]]:
@@ -545,7 +569,8 @@ def set_group_of_user(
     if body.group_id is not None:
         _within_own_rights(session, principal, _group_grants(session, body.group_id))
     try:
-        set_user_group(session, user, body.group_id, actor_id=principal.user_id)
+        with _no_self_made_sole_holder(session, principal):
+            set_user_group(session, user, body.group_id, actor_id=principal.user_id)
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "last_administrator") from None
     return _one_user(session, principal, user)
@@ -723,7 +748,8 @@ def remove_group(
     _admin(principal, "group.manage")
     group = _group_or_404(session, group_id)
     try:
-        delete_group(session, group, actor_id=principal.user_id)
+        with _no_self_made_sole_holder(session, principal):
+            delete_group(session, group, actor_id=principal.user_id)
     except AdministrationError as exc:
         raise RoomApiError(
             409, str(exc), "builtin_group" if group.is_builtin else "last_administrator"
@@ -808,7 +834,8 @@ def set_permissions(
     _within_own_rights(session, principal, wanted - _group_grants(session, group.id))
     _no_self_grant(session, principal, group, wanted)
     try:
-        set_group_permissions(session, group, wanted, actor_id=principal.user_id)
+        with _no_self_made_sole_holder(session, principal):
+            set_group_permissions(session, group, wanted, actor_id=principal.user_id)
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "last_administrator") from None
     return _one_group(session, group)
