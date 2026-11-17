@@ -47,6 +47,7 @@ from thermoctl.domain.control_loop import (
     decide,
 )
 from thermoctl.domain.fault import NO_SOURCE, OK, VERALTET
+from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.number_text import difference_text, percent_text
 from thermoctl.domain.pi_control import (
     INTEGRATOR_HOLD,
@@ -321,6 +322,7 @@ def _window_situation(
                 Measurement.device_id == device_id,
                 Measurement.capability_id == contact.id,
                 Measurement.value_text.in_(("true", "false")),
+                not_in_future(now),
             )
             .order_by(Measurement.measured_at, Measurement.id)
         ):

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.testclient import TestClient
 
 from tests.helpers import (
+    capability,
     create_device,
     create_mode,
     create_settings,
@@ -710,6 +711,32 @@ def test_window_state_is_safe_when_only_one_required_lookup_exists(session: Sess
     session.flush()
 
     assert shadow_run._window_situation(session, zone, state, NOW) == (False, None)
+
+
+def test_window_closing_history_ignores_stored_future_contact_rows(session: Session) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "kontakt-zukunft", measured_c=Decimal("5.0"))
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    state.window_open = False
+    contact = capability(session, "contact")
+    device = create_device(session, "kontakt-zukunft-geraet")
+    session.add(ZoneDevice(
+        zone_id=zone.id, device_id=device.id, device_role_id=role(session, "window_contact").id,
+    ))
+    for text, at in (
+        ("false", NOW - timedelta(minutes=60)),
+        ("true", NOW - timedelta(minutes=30)),
+        ("false", NOW + timedelta(days=365)),
+        ("true", NOW + timedelta(days=366)),
+    ):
+        session.add(Measurement(
+            device_id=device.id, capability_id=contact.id, value_text=text,
+            measured_at=at, received_at=NOW,
+        ))
+    session.flush()
+
+    assert shadow_run._window_situation(session, zone, state, NOW) == (False, 1800)
 
 
 def _actuator(session: Session, zone: Zone, *, thermostat_mode: str, suffix: str) -> None:
