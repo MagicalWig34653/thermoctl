@@ -28,6 +28,7 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain import control
 from thermoctl.domain.control import ControlError, check_number
 from thermoctl.domain.zone_settings import (
+    BY_NAME,
     PARAMETERS,
     ControlParameters,
     ParameterOutOfRange,
@@ -114,6 +115,24 @@ def test_zone_table_is_exactly_the_documented_one() -> None:
         name: tuple(Decimal(x) for x in row[:3]) for name, row in ZONE_TABLE.items()
     }
     assert {n: row[3] for n, row in actual.items()} == {n: r[3] for n, r in ZONE_TABLE.items()}
+
+
+@pytest.mark.parametrize("name", SHARED)
+def test_global_limit_is_built_from_the_zone_table_not_written_out_twice(name: str) -> None:
+    """Direkt, ohne Literale: `LIMITS["default_<name>"]` *ist* der Eintrag aus `PARAMETERS`.
+
+    Ein festgeschriebenes `(30, 7200)` in `control.LIMITS` bliebe bei den Literal-Tabellen
+    oben unbemerkt, solange PARAMETERS dieselben Zahlen trägt; erst wenn jemand eine
+    Grenze nur an einer Stelle ändert, fiele es auf -- und genau dann bricht dieser Test.
+    """
+    description = BY_NAME[name]
+    assert control.LIMITS[f"default_{name}"] == (description.minimum, description.maximum)
+
+
+def test_every_mirrored_default_is_covered_by_the_construction_test() -> None:
+    mirrored = {f for f in control.LIMITS if f.startswith("default_") and
+                f.removeprefix("default_") in BY_NAME}
+    assert mirrored == {f"default_{name}" for name in SHARED}
 
 
 def test_global_limits_are_exactly_the_documented_ones() -> None:
