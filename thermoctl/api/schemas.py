@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.zone_settings import (
+    BY_NAME,
     MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES,
     MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS,
 )
@@ -90,14 +91,45 @@ class SchedulePointResponse(BaseModel):
     mode_name: str
 
 
+def _range(name: str) -> str:
+    """The documented range of a control parameter, read from the one table.
+
+    Documentation only: it does not check anything. The checks stay in the domain
+    (`domain.zone_settings.check_parameter_value`); a `Field(ge=..., le=...)` built
+    from the same numbers would be a second version that has to be kept in step.
+    """
+    description = BY_NAME[name]
+    unit = f" {description.unit}" if description.unit else ""
+    return (
+        f"Zulässig {description.minimum} bis {description.maximum}{unit}, "
+        f"Schritt {description.step}."
+    )
+
+
 class WriteControlParameters(BaseModel):
-    hysteresis_k: Decimal | None = Field(default=None, ge=0)
-    min_on_seconds: int | None = Field(default=None, ge=0)
-    min_off_seconds: int | None = Field(default=None, ge=0)
-    sensor_timeout_seconds: int | None = Field(default=None, ge=0)
-    temperature_offset_k: Decimal | None = None
-    window_resume_delay_seconds: int | None = Field(default=None, ge=0)
-    solar_setback_max_k: Decimal | None = Field(default=None, ge=0)
+    """All control parameters of a zone at once.
+
+    `description` of every field names the range from `domain.zone_settings.PARAMETERS`.
+    It is enforced exactly like `PUT /zones/{id}/parameters/{name}` and MCP: a value outside
+    it is refused with 422, an empty one means "inherited". A value the request leaves as
+    it is stored is not checked again (the hysteresis always is).
+    """
+
+    hysteresis_k: Decimal | None = Field(default=None, ge=0, description=_range("hysteresis_k"))
+    min_on_seconds: int | None = Field(default=None, ge=0, description=_range("min_on_seconds"))
+    min_off_seconds: int | None = Field(default=None, ge=0, description=_range("min_off_seconds"))
+    sensor_timeout_seconds: int | None = Field(
+        default=None, ge=0, description=_range("sensor_timeout_seconds")
+    )
+    temperature_offset_k: Decimal | None = Field(
+        default=None, description=_range("temperature_offset_k")
+    )
+    window_resume_delay_seconds: int | None = Field(
+        default=None, ge=0, description=_range("window_resume_delay_seconds")
+    )
+    solar_setback_max_k: Decimal | None = Field(
+        default=None, ge=0, description=_range("solar_setback_max_k")
+    )
     valve_protection_enabled: bool = False
     valve_protection_interval_days: int = Field(
         default=30, gt=0, le=MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS
@@ -107,13 +139,16 @@ class WriteControlParameters(BaseModel):
     )
     # PI (Beta), specification section 7: not inherited, not nullable. The exact
     # bounds and steps live in the domain (`domain/zone_settings.PARAMETERS`) and are
-    # checked there -- a `Field(ge=..., le=...)` here would be a second version of
-    # the same numbers.
+    # checked there; the descriptions read them from the same table.
     pi_enabled: bool = False
-    pi_gain_per_k: Decimal = Field(default=Decimal("0.25"), ge=0)
-    pi_integral_time_minutes: int = Field(default=180, ge=0)
-    pi_min_on_seconds: int = Field(default=60, ge=0)
-    pi_min_off_seconds: int = Field(default=60, ge=0)
+    pi_gain_per_k: Decimal = Field(
+        default=Decimal("0.25"), ge=0, description=_range("pi_gain_per_k")
+    )
+    pi_integral_time_minutes: int = Field(
+        default=180, ge=0, description=_range("pi_integral_time_minutes")
+    )
+    pi_min_on_seconds: int = Field(default=60, ge=0, description=_range("pi_min_on_seconds"))
+    pi_min_off_seconds: int = Field(default=60, ge=0, description=_range("pi_min_off_seconds"))
 
 
 class ControlParametersResponse(WriteControlParameters):
@@ -303,7 +338,7 @@ class BoostResponse(BaseModel):
 class WriteParameter(BaseModel):
     """A single control parameter.
 
-    The limits live in the domain (`domain/zone_settings.PARAMETER`) and are checked
+    The limits live in the domain (`domain/zone_settings.PARAMETERS`) and are checked
     there. Here only says that a number is expected -- a second pair of limits at this
     spot would have fallen behind on the next change.
     """
