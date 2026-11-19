@@ -13,7 +13,7 @@ from typing import cast
 
 import pytest
 from sqlalchemy import CheckConstraint, Table
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, create_zone
@@ -32,7 +32,10 @@ def _accepted(session: Session, zone: Zone, name: str, value: Decimal) -> bool:
         with session.begin_nested():
             setattr(zone, name, _stored(name, value))
             session.flush()
-    except IntegrityError:
+    except DBAPIError:
+        # SQLite meldet eine verletzte CHECK-Bedingung als IntegrityError, MariaDB (11.4,
+        # PyMySQL) als OperationalError -- beides ist die Ablehnung. Der Savepoint
+        # (`begin_nested`) rollt zurück; die Sitzung bleibt für den nächsten Wert nutzbar.
         return False
     return True
 
