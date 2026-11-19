@@ -63,7 +63,7 @@ def _state(now: datetime, integral: str, context: str = "plan") -> PiState:
     )
 
 
-def _input(now: datetime, error: str, context: str = "plan", **extra: Decimal) -> PiCycleInput:
+def _input(now: datetime, error: str, *, context: str = "plan", **extra: Decimal) -> PiCycleInput:
     return PiCycleInput(
         now=now,
         error_k=Decimal(error),
@@ -339,18 +339,24 @@ class TestDefaultsKeepTheEarlierBehaviour:
 # E. What surrounds the arithmetic is untouched by the new parameters.
 # --------------------------------------------------------------------------- #
 
-ACTIVE = {
-    "surplus_decay_factor": Decimal("0.2"),
-    "integral_separation_k": Decimal("0.5"),
-    "feedforward_duty": Decimal("0.3"),
-}
+
+def _active_input(now: datetime, error: str, context: str = "plan") -> PiCycleInput:
+    """An input with all three optional rules switched on."""
+    return _input(
+        now,
+        error,
+        context=context,
+        surplus_decay_factor=Decimal("0.2"),
+        integral_separation_k=Decimal("0.5"),
+        feedforward_duty=Decimal("0.3"),
+    )
 
 
 class TestSurroundingRulesAreUnchanged:
     def test_restart_without_state_starts_with_integral_zero_either_way(self) -> None:
         now = _at(12)
         plain = pi_cycle(NEUTRAL_PI_STATE, _input(now, "0.4"))
-        active = pi_cycle(NEUTRAL_PI_STATE, _input(now, "0.4", **ACTIVE))
+        active = pi_cycle(NEUTRAL_PI_STATE, _active_input(now, "0.4"))
         assert active.state == plain.state
         assert active.state.integral == 0
         assert active.reason_code == RESET_REASON_TIME_GAP
@@ -360,7 +366,7 @@ class TestSurroundingRulesAreUnchanged:
         now = _at(12)
         old = _state(now - timedelta(hours=2), "0.37")
         plain = pi_cycle(old, _input(now, "-0.4"))
-        active = pi_cycle(old, _input(now, "-0.4", **ACTIVE))
+        active = pi_cycle(old, _active_input(now, "-0.4"))
         assert active.state == plain.state
         assert active.state.integral == Decimal("0.37")
         assert active.integrator_action == INTEGRATOR_HOLD
@@ -380,7 +386,7 @@ class TestSurroundingRulesAreUnchanged:
     def test_a_setpoint_jump_only_moves_the_integral_through_the_arithmetic(self) -> None:
         now = _at(12)
         state = _state(now, "0.37")
-        jumped = pi_cycle(state, _input(now, "1.5", context="override", **ACTIVE))
+        jumped = pi_cycle(state, _active_input(now, "1.5", "override"))
         # e = 1.5 > k: separated, so the integral is exactly what it was.
         assert jumped.state.integral == Decimal("0.37")
         assert jumped.state.setpoint_context_key == "override"
