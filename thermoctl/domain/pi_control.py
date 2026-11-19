@@ -139,6 +139,7 @@ def pi_arithmetic(
     dt_seconds: Decimal,
     gain_per_k: Decimal,
     integral_time_minutes: Decimal,
+    surplus_decay_factor: Decimal = Decimal(1),
 ) -> tuple[Decimal, Decimal]:
     """One PI step: `(u, neuer Integralanteil)` (section 2).
 
@@ -147,6 +148,13 @@ def pi_arithmetic(
     is exactly saturated (0 or 1) *and* the error still pushes further into the same
     saturation, the integral is frozen rather than driven further past the bound it
     is already clamped to; in the opposite direction it is free to unwind.
+
+    `surplus_decay_factor` (0..1, default 1 = unchanged) scales every *negative*
+    integral increment, i.e. unwinding while the room is above the setpoint (`e < 0`).
+    With 0 the integral is kept at a surplus (sun heating the room does not erase the
+    heating demand the room will have again at night); with 1 it unwinds as before.
+    It scales only the free unwinding: the lock at `u = 0` above stays as it is. A
+    value outside 0..1 is clamped, a negative one would turn unwinding into winding up.
     """
     u_before = _clamp01(gain_per_k * error_k + integral)
     stuck_high = u_before == 1 and error_k > 0
@@ -156,6 +164,8 @@ def pi_arithmetic(
     else:
         ti_seconds = integral_time_minutes * 60
         increment = (gain_per_k / ti_seconds) * error_k * dt_seconds
+        if error_k < 0:
+            increment = increment * _clamp01(surplus_decay_factor)
         new_integral = _clamp01(integral + increment)
     u = _clamp01(gain_per_k * error_k + new_integral)
     return u, new_integral
@@ -411,6 +421,8 @@ class PiCycleInput:
     integral_time_minutes: Decimal
     pi_min_on_seconds: int
     pi_min_off_seconds: int
+    # Optional rules, all with defaults that reproduce the earlier behaviour exactly.
+    surplus_decay_factor: Decimal = Decimal(1)
 
 
 @dataclass(frozen=True)
@@ -499,6 +511,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         dt_seconds=dt,
         gain_per_k=cycle.gain_per_k,
         integral_time_minutes=cycle.integral_time_minutes,
+        surplus_decay_factor=cycle.surplus_decay_factor,
     )
     modulator_result = window_modulate(
         base.modulator,
