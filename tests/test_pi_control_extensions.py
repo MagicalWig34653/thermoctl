@@ -10,15 +10,21 @@ new parameters change nothing there.
 
 from __future__ import annotations
 
+import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from thermoctl.domain.pi_control import (
+    INTEGRATOR_HOLD,
     NEUTRAL_MODULATOR_STATE,
+    NEUTRAL_PI_STATE,
+    RESET_REASON_FROST,
+    RESET_REASON_TIME_GAP,
     PiCycleInput,
     PiState,
     pi_arithmetic,
     pi_cycle,
+    reset_pi_state,
 )
 
 KP = Decimal("0.5")
@@ -242,3 +248,145 @@ class TestFeedforwardDuty:
         waiting = pi_cycle(awaiting, _input(now, "0.1", feedforward_duty=Decimal("0.3")))
         assert waiting.duty_raw is None
         assert waiting.feedforward_duty == Decimal(0)
+
+
+# --------------------------------------------------------------------------- #
+# D. Defaults reproduce the earlier behaviour bit for bit.
+# --------------------------------------------------------------------------- #
+
+
+def _legacy_pi_arithmetic(
+    *,
+    integral: Decimal,
+    error_k: Decimal,
+    dt_seconds: Decimal,
+    gain_per_k: Decimal,
+    integral_time_minutes: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Verbatim copy of `pi_arithmetic` as it was before the three optional rules."""
+
+    def clamp01(value: Decimal) -> Decimal:
+        return max(Decimal(0), min(Decimal(1), value))
+
+    u_before = clamp01(gain_per_k * error_k + integral)
+    stuck_high = u_before == 1 and error_k > 0
+    stuck_low = u_before == 0 and error_k < 0
+    if stuck_high or stuck_low:
+        new_integral = integral
+    else:
+        ti_seconds = integral_time_minutes * 60
+        increment = (gain_per_k / ti_seconds) * error_k * dt_seconds
+        new_integral = clamp01(integral + increment)
+    u = clamp01(gain_per_k * error_k + new_integral)
+    return u, new_integral
+
+
+def _random_inputs(rng: random.Random) -> dict[str, Decimal]:
+    return {
+        "integral": Decimal(rng.randint(0, 1000)) / 1000,
+        "error_k": Decimal(rng.randint(-60, 60)) / 10,
+        "dt_seconds": Decimal(rng.choice([1, 30, 60, 120])),
+        "gain_per_k": Decimal(rng.randint(5, 300)) / 100,
+        "integral_time_minutes": Decimal(rng.choice([30, 60, 90, 180, 720])),
+    }
+
+
+class TestDefaultsKeepTheEarlierBehaviour:
+    def test_arithmetic_matches_the_verbatim_old_function_on_random_inputs(self) -> None:
+        rng = random.Random(20261120)  # noqa: S311 -- reproducible fixture, not crypto
+        for _ in range(3000):
+            args = _random_inputs(rng)
+            assert pi_arithmetic(**args) == _legacy_pi_arithmetic(**args)
+
+    def test_explicit_neutral_values_equal_the_defaults(self) -> None:
+        rng = random.Random(7)  # noqa: S311 -- reproducible fixture, not crypto
+        for _ in range(500):
+            args = _random_inputs(rng)
+            neutral = pi_arithmetic(
+                **args,
+                surplus_decay_factor=Decimal(1),
+                integral_separation_k=Decimal(0),
+                feedforward_duty=Decimal(0),
+            )
+            assert neutral == pi_arithmetic(**args)
+
+    def test_a_closed_loop_with_defaults_equals_the_old_arithmetic_cycle_by_cycle(self) -> None:
+        rng = random.Random(42)  # noqa: S311 -- reproducible fixture, not crypto
+        state = _state(_at(0), "0")
+        legacy_integral = Decimal(0)
+        for cycle in range(1500):
+            now = _at(0) + timedelta(seconds=30 * cycle)
+            error = Decimal(rng.randint(-40, 40)) / 10
+            out = pi_cycle(state, _input(now, str(error)))
+            legacy_u, legacy_new = _legacy_pi_arithmetic(
+                integral=legacy_integral,
+                error_k=error,
+                dt_seconds=Decimal(30),
+                gain_per_k=KP,
+                integral_time_minutes=TI,
+            )
+            assert out.duty_raw == legacy_u
+            # A held minimum duration keeps the integral instead of the new value --
+            # that part of `pi_cycle()` is unchanged, so follow what it decided.
+            if out.integrator_action != INTEGRATOR_HOLD:
+                legacy_integral = legacy_new
+            assert out.state.integral == legacy_integral
+            assert out.feedforward_duty == 0
+            state = out.state
+
+
+# --------------------------------------------------------------------------- #
+# E. What surrounds the arithmetic is untouched by the new parameters.
+# --------------------------------------------------------------------------- #
+
+ACTIVE = {
+    "surplus_decay_factor": Decimal("0.2"),
+    "integral_separation_k": Decimal("0.5"),
+    "feedforward_duty": Decimal("0.3"),
+}
+
+
+class TestSurroundingRulesAreUnchanged:
+    def test_restart_without_state_starts_with_integral_zero_either_way(self) -> None:
+        now = _at(12)
+        plain = pi_cycle(NEUTRAL_PI_STATE, _input(now, "0.4"))
+        active = pi_cycle(NEUTRAL_PI_STATE, _input(now, "0.4", **ACTIVE))
+        assert active.state == plain.state
+        assert active.state.integral == 0
+        assert active.reason_code == RESET_REASON_TIME_GAP
+        assert (active.pi_available, active.heating, active.duty_raw) == (False, None, None)
+
+    def test_time_gap_freezes_the_integral_either_way(self) -> None:
+        now = _at(12)
+        old = _state(now - timedelta(hours=2), "0.37")
+        plain = pi_cycle(old, _input(now, "-0.4"))
+        active = pi_cycle(old, _input(now, "-0.4", **ACTIVE))
+        assert active.state == plain.state
+        assert active.state.integral == Decimal("0.37")
+        assert active.integrator_action == INTEGRATOR_HOLD
+
+    def test_a_mode_switch_resets_nothing_with_the_new_parameters(self) -> None:
+        now = _at(12)
+        state = _state(now, "0.37", context="plan")
+        plain = pi_cycle(state, _input(now, "0.1", context="boost"))
+        decay = {"surplus_decay_factor": Decimal("0.2")}
+        active = pi_cycle(state, _input(now, "0.1", context="boost", **decay))
+        assert plain.state.setpoint_context_key == active.state.setpoint_context_key == "boost"
+        # Same arithmetic for e >= 0 whatever the decay factor: nothing was dropped.
+        assert active.state.integral == plain.state.integral
+        assert active.state.integral >= Decimal("0.37")
+        assert active.state.modulator == plain.state.modulator
+
+    def test_a_setpoint_jump_only_moves_the_integral_through_the_arithmetic(self) -> None:
+        now = _at(12)
+        state = _state(now, "0.37")
+        jumped = pi_cycle(state, _input(now, "1.5", context="override", **ACTIVE))
+        # e = 1.5 > k: separated, so the integral is exactly what it was.
+        assert jumped.state.integral == Decimal("0.37")
+        assert jumped.state.setpoint_context_key == "override"
+        # ... and the output still reacts through Kp and the feed-forward share.
+        assert jumped.duty_raw == Decimal(1)
+
+    def test_reset_keeps_carrying_the_integral(self) -> None:
+        carried = reset_pi_state(RESET_REASON_FROST, now=_at(12), integral=Decimal("0.4"))
+        assert carried.integral == Decimal("0.4")
