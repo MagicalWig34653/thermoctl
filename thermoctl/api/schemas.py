@@ -96,7 +96,7 @@ def _range(name: str) -> str:
 
     Documentation only: it does not check anything. The checks stay in the domain
     (`domain.zone_settings.check_parameter_value`); a `Field(ge=..., le=...)` built
-    from the same numbers would also tighten what `PUT /zones/{id}/parameters` accepts.
+    from the same numbers would be a second version that has to be kept in step.
     """
     description = BY_NAME[name]
     unit = f" {description.unit}" if description.unit else ""
@@ -110,10 +110,9 @@ class WriteControlParameters(BaseModel):
     """All control parameters of a zone at once.
 
     `description` of every field names the range from `domain.zone_settings.PARAMETERS`.
-    How far it is enforced depends on the path: `PUT /zones/{id}/parameters/{name}` checks
-    the full range of the one parameter; this combined write checks the hysteresis (lower
-    bound and step), the PI parameters and the valve protection, and for the other
-    parameters only that they are not negative.
+    It is enforced exactly like `PUT /zones/{id}/parameters/{name}` and MCP: a value outside
+    it is refused with 422, an empty one means "inherited". A value the request leaves as
+    it is stored is not checked again (the hysteresis always is).
     """
 
     hysteresis_k: Decimal | None = Field(default=None, ge=0, description=_range("hysteresis_k"))
