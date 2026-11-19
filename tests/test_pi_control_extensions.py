@@ -173,3 +173,72 @@ class TestIntegralSeparation:
         free = pi_cycle(_state(now, "0.3"), _input(now, "0.8"))
         assert held.state.integral == Decimal("0.3")
         assert free.state.integral == Decimal("0.3") + _increment("0.8")
+
+
+# --------------------------------------------------------------------------- #
+# C. Feed-forward duty: additive share, anti-windup sees it.
+# --------------------------------------------------------------------------- #
+
+
+class TestFeedforwardDuty:
+    def test_it_is_added_to_the_output_not_to_the_integral(self) -> None:
+        u, integral = _arith("0.2", "0.1", feedforward_duty=Decimal("0.3"))
+        assert integral == Decimal("0.2") + _increment("0.1")
+        assert u == KP * Decimal("0.1") + integral + Decimal("0.3")
+
+    def test_output_is_clamped_to_one(self) -> None:
+        u, _ = _arith("0.2", "0.1", feedforward_duty=Decimal("0.95"))
+        assert u == 1
+
+    def test_output_is_clamped_to_zero(self) -> None:
+        u, _ = _arith("0.2", "-1", feedforward_duty=Decimal("0.1"))
+        assert u == 0
+
+    def test_high_lock_sees_the_feedforward(self) -> None:
+        # Without it u = 0.15 + 0.2 = 0.35 and I rises; with 0.9 u is saturated at 1.
+        _, free = _arith("0.2", "0.3")
+        assert free > Decimal("0.2")
+        u, integral = _arith("0.2", "0.3", feedforward_duty=Decimal("0.9"))
+        assert u == 1
+        assert integral == Decimal("0.2")
+
+    def test_low_lock_sees_the_feedforward(self) -> None:
+        # Without it u = clamp(-0.05) = 0 and I is locked; with 0.2 u = 0.15 > 0 and I
+        # may unwind again.
+        _, locked = _arith("0", "-0.1")
+        assert locked == 0
+        _, integral = _arith("0.1", "-0.1", feedforward_duty=Decimal("0.2"))
+        assert integral == Decimal("0.1") + _increment("-0.1")
+        u_locked, kept = _arith("0.05", "-0.5", feedforward_duty=Decimal("0.1"))
+        assert (u_locked, kept) == (Decimal(0), Decimal("0.05"))
+
+    def test_zero_is_todays_behaviour(self) -> None:
+        assert _arith("0.2", "0.3", feedforward_duty=Decimal(0)) == _arith("0.2", "0.3")
+
+    def test_through_pi_cycle_the_raw_duty_includes_it(self) -> None:
+        now = _at(12)
+        out = pi_cycle(_state(now, "0.2"), _input(now, "0.1", feedforward_duty=Decimal("0.3")))
+        assert out.feedforward_duty == Decimal("0.3")
+        assert out.duty_raw == KP * Decimal("0.1") + out.state.integral + Decimal("0.3")
+        plain = pi_cycle(_state(now, "0.2"), _input(now, "0.1"))
+        assert plain.feedforward_duty == Decimal(0)
+
+    def test_the_output_reports_zero_where_no_duty_was_computed(self) -> None:
+        now = _at(12)
+        gap = pi_cycle(
+            _state(now - timedelta(hours=1), "0.2"),
+            _input(now, "0.1", feedforward_duty=Decimal("0.3")),
+        )
+        assert gap.duty_raw is None
+        assert gap.feedforward_duty == Decimal(0)
+        awaiting = PiState(
+            integral=Decimal("0.2"),
+            last_evaluated_at=now - timedelta(seconds=30),
+            setpoint_context_key="plan",
+            modulator=NEUTRAL_MODULATOR_STATE,
+            awaiting_boundary_until=now + timedelta(minutes=5),
+            last_reset_reason="scharfschaltung",
+        )
+        waiting = pi_cycle(awaiting, _input(now, "0.1", feedforward_duty=Decimal("0.3")))
+        assert waiting.duty_raw is None
+        assert waiting.feedforward_duty == Decimal(0)

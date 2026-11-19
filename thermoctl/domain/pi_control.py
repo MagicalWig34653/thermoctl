@@ -141,6 +141,7 @@ def pi_arithmetic(
     integral_time_minutes: Decimal,
     surplus_decay_factor: Decimal = Decimal(1),
     integral_separation_k: Decimal = Decimal(0),
+    feedforward_duty: Decimal = Decimal(0),
 ) -> tuple[Decimal, Decimal]:
     """One PI step: `(u, neuer Integralanteil)` (section 2).
 
@@ -163,7 +164,7 @@ def pi_arithmetic(
     the plant delay has not yet answered would only wind it up (it overshoots when the
     setpoint is reached). From `e <= k` on it integrates as before.
     """
-    u_before = _clamp01(gain_per_k * error_k + integral)
+    u_before = _clamp01(gain_per_k * error_k + integral + feedforward_duty)
     stuck_high = u_before == 1 and error_k > 0
     stuck_low = u_before == 0 and error_k < 0
     separated = integral_separation_k > 0 and error_k > integral_separation_k
@@ -175,7 +176,7 @@ def pi_arithmetic(
         if error_k < 0:
             increment = increment * _clamp01(surplus_decay_factor)
         new_integral = _clamp01(integral + increment)
-    u = _clamp01(gain_per_k * error_k + new_integral)
+    u = _clamp01(gain_per_k * error_k + new_integral + feedforward_duty)
     return u, new_integral
 
 
@@ -432,6 +433,7 @@ class PiCycleInput:
     # Optional rules, all with defaults that reproduce the earlier behaviour exactly.
     surplus_decay_factor: Decimal = Decimal(1)
     integral_separation_k: Decimal = Decimal(0)
+    feedforward_duty: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -449,6 +451,9 @@ class PiCycleOutput:
     # `False` whenever no modulator run happened this cycle (awaiting a window
     # boundary, or a time gap/context reset that only resets state).
     switched: bool
+    # The feed-forward share that went into `duty_raw` (0 if none, and 0 in cycles
+    # that computed no duty). `duty_raw` itself includes it.
+    feedforward_duty: Decimal = Decimal(0)
 
 
 def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
@@ -522,6 +527,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         integral_time_minutes=cycle.integral_time_minutes,
         surplus_decay_factor=cycle.surplus_decay_factor,
         integral_separation_k=cycle.integral_separation_k,
+        feedforward_duty=cycle.feedforward_duty,
     )
     modulator_result = window_modulate(
         base.modulator,
@@ -552,6 +558,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         reason_code=modulator_result.reason_code,
         integrator_action=modulator_result.integrator_action,
         switched=modulator_result.switched,
+        feedforward_duty=cycle.feedforward_duty,
     )
 
 
