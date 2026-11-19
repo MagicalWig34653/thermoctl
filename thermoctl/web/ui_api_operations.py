@@ -414,8 +414,9 @@ def _parameters(session: Session, principal: Principal, zone: Zone) -> Parameter
 def _parameter_field_for(message: str) -> str | None:
     """Ordnet eine Domänenmeldung ohne Feldangabe dem Eingabefeld zu.
 
-    `validate_valve_protection` und `validate_pi_parameters` nennen kein Feld; die
-    Meldung enthält aber die Bezeichnung (`BY_NAME[...].label`) bzw. "Ventilschutz-...".
+    `validate_valve_protection`, `validate_pi_parameters` und `validate_inherited_parameters`
+    nennen kein Feld; die Meldung enthält aber die Bezeichnung (`BY_NAME[...].label`)
+    bzw. "Ventilschutz-...".
     """
     if message.startswith("Ventilschutz-Abstand"):
         return "valve_protection_interval_days"
@@ -426,6 +427,10 @@ def _parameter_field_for(message: str) -> str | None:
             return name
     if "PI-" in message:
         return "pi_enabled"
+    # Bereichsmeldung eines erbbaren Feldes ("<Bezeichnung> muss zwischen ... liegen.").
+    for name in ERBENDE_FELDER:
+        if message.startswith(BY_NAME[name].label):
+            return name
     return None
 
 

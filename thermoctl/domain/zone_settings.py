@@ -267,7 +267,7 @@ def save_control_parameters(
         for name in ControlParameters.__dataclass_fields__
     }
     validate_valve_protection(complete)
-    validate_hysteresis(complete["hysteresis_k"])
+    validate_inherited_parameters(zone, complete)
     validate_pi_parameters(session, zone, complete)
     if zone.sensor_failure_enabled:
         try:
@@ -288,17 +288,29 @@ def save_control_parameters(
     )
 
 
-def validate_hysteresis(value: Decimal | int | bool | None) -> None:
-    """Lower bound and precision of a zone's own hysteresis (``None`` = inherited).
+def validate_inherited_parameters(
+    zone: Zone, values: dict[str, Decimal | int | bool | None]
+) -> None:
+    """Range (and step) of every zone parameter that may inherit its value.
 
-    Storage keeps four decimal places, so a finer value would be rounded silently --
-    possibly down to zero, the legacy system's cycling at the setpoint. The upper
-    bound stays advisory in the interface, as before: `enforce_maximum=False` is the
-    one deliberate difference to the global default's check, which shares this path.
+    The same bounds as the single value (`set_parameter`) and MCP -- the bulk save used
+    to check only "not negative" for most of them. ``None`` means inherited and is
+    always fine. A value the save leaves exactly as it is stored is not checked again:
+    a zone that still carries an out-of-range value from before must stay editable in
+    its other fields, and the interface sends every field with each save. The
+    hysteresis is the exception and is always checked: its lower bound is what keeps
+    the zone from switching at the setpoint (the legacy system's defect), and storage
+    keeps four decimal places, so a finer value would be rounded silently.
     """
-    if value is None:
-        return
-    check_parameter_value(BY_NAME["hysteresis_k"], Decimal(value), enforce_maximum=False)
+    for description in PARAMETERS:
+        if description.group != GROUP_INHERITED:
+            continue
+        value = values[description.name]
+        if value is None:
+            continue
+        if description.name != "hysteresis_k" and value == getattr(zone, description.name):
+            continue
+        check_parameter_value(description, Decimal(value))
 
 
 def validate_valve_protection(values: dict[str, Decimal | int | bool | None]) -> None:
@@ -455,28 +467,14 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
 BY_NAME: dict[str, ParameterDescription] = {p.name: p for p in PARAMETERS}
 
 
-def check_parameter_value(
-    description: ParameterDescription, value: Decimal, *, enforce_maximum: bool = True
-) -> None:
+def check_parameter_value(description: ParameterDescription, value: Decimal) -> None:
     """The one check of a value against its description -- raises `ParameterOutOfRange`.
 
     Used by the zone parameters (single and bulk save, PI) and by the global defaults
     that mirror a zone parameter (`domain.control.check_number`), so a bound and its
     message exist exactly once. Order: range first, then the step where it is binding.
-    `enforce_maximum=False` is only for the zone's bulk save of the hysteresis (see
-    `validate_hysteresis`); the message then names only the lower bound it enforces.
     """
-    if not value.is_finite() or value < description.minimum:
-        if enforce_maximum:
-            raise ParameterOutOfRange(
-                f"{description.label} muss zwischen {description.minimum} und "
-                f"{description.maximum} liegen."
-            )
-        raise ParameterOutOfRange(
-            f"{description.label} muss mindestens {description.minimum} "
-            f"{description.unit} betragen."
-        )
-    if enforce_maximum and value > description.maximum:
+    if not value.is_finite() or not description.minimum <= value <= description.maximum:
         raise ParameterOutOfRange(
             f"{description.label} muss zwischen {description.minimum} und "
             f"{description.maximum} liegen."
