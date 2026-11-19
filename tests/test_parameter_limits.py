@@ -7,9 +7,10 @@ Untergrenze, knapp darunter, die Obergrenze, knapp darüber und (wo sie bindend 
 Schrittweite -- für die globalen Standardwerte (Domäne, REST, `/ui-api`) und für die
 Zone (Domäne, REST, MCP, `/ui-api`).
 
-Ausdrücklich festgehalten wird auch, wo eine Grenze **nicht** erzwungen wird (Abschnitt
-„Heutiger Stand"): Das ist der Ist-Zustand vor L1, kein Sollzustand. Wer eine dieser
-Lücken schließt, passt die betreffenden Tests an.
+Das Speichern aller Raumfelder (REST `PUT /zones/{id}/parameters`, `/ui-api`) erzwingt
+dieselben Bereiche wie der Einzelwert und MCP (Abschnitt „Sammel-Speichern"); vorher
+prüfte es nur „nicht negativ". Werte, die ein Speichern gar nicht verändert (Altbestand),
+blockieren es nicht -- außer der Hysterese, die immer geprüft wird.
 """
 
 from collections.abc import Callable
@@ -169,6 +170,7 @@ def test_global_unparsable_input_is_refused(text: str) -> None:
 def test_global_decimal_comma_and_hysteresis_step() -> None:
     assert check_number("default_hysteresis_k", "0,5") == Decimal("0.5")
     assert check_number("default_hysteresis_k", "0.0002") == Decimal("0.0002")
+    assert check_number("default_hysteresis_k", "0.50000") == Decimal("0.5")
     for bad in ("0.00015", "0.12345", "0.00009"):
         with pytest.raises(ControlError):
             check_number("default_hysteresis_k", bad)
@@ -426,37 +428,146 @@ def test_zone_bulk_valve_protection_bounds(session: Session) -> None:
             _save(session, zone, **{field: bad})
 
 
-# -- Heutiger Stand: was beim Speichern aller Felder NICHT geprüft wird -------------------
+# -- Sammel-Speichern: alle erbbaren Felder, gleiche Bereiche wie der Einzelwert ----------
+
+INHERITED = [
+    "hysteresis_k",
+    "min_on_seconds",
+    "min_off_seconds",
+    "sensor_timeout_seconds",
+    "temperature_offset_k",
+    "window_resume_delay_seconds",
+    "solar_setback_max_k",
+]
+LABELS = {
+    "hysteresis_k": "Hysterese",
+    "min_on_seconds": "Mindest-Einschaltdauer",
+    "min_off_seconds": "Mindest-Ausschaltdauer",
+    "sensor_timeout_seconds": "Sensorausfall nach",
+    "temperature_offset_k": "Sensorabgleich",
+    "window_resume_delay_seconds": "Nachlauf nach Fensterschluss",
+    "solar_setback_max_k": "Obergrenze Sonnenabsenkung",
+}
+DECIMAL_FIELDS = {"hysteresis_k", "temperature_offset_k", "solar_setback_max_k"}
+# Klar außerhalb, auch die Werte aus der früheren Lücke (0, zehn Millionen, 99).
+WILD: dict[str, tuple[str, str]] = {
+    "hysteresis_k": ("0", "99"),
+    "min_on_seconds": ("0", "10000000"),
+    "min_off_seconds": ("0", "10000000"),
+    "sensor_timeout_seconds": ("0", "10000000"),
+    "temperature_offset_k": ("-99", "99"),
+    "window_resume_delay_seconds": ("-1", "10000000"),
+    "solar_setback_max_k": ("-99", "99"),
+}
 
 
-def test_today_zone_bulk_save_does_not_check_the_hysteresis_maximum(session: Session) -> None:
-    """Die Obergrenze der Zonen-Hysterese ist beim Sammel-Speichern nur beratend
-    (siehe `validate_hysteresis`); `set_parameter` erzwingt sie, REST/`/ui-api`-Sammel-PUT nicht."""
-    zone = _zone(session)
-    _save(session, zone, hysteresis_k=Decimal("99"))
-    assert zone.hysteresis_k == Decimal("99")
+def _number(name: str, text: str) -> Decimal | int:
+    return Decimal(text) if name in DECIMAL_FIELDS else int(text)
 
 
-@pytest.mark.parametrize("name", [
-    "min_on_seconds", "min_off_seconds", "sensor_timeout_seconds",
-    "window_resume_delay_seconds"])
-def test_today_zone_bulk_save_does_not_range_check_the_inherited_timing_fields(
+def _range_message(name: str) -> str:
+    lo, hi, _step, _unit = ZONE_TABLE[name]
+    return f"{LABELS[name]} muss zwischen {lo} und {hi} liegen."
+
+
+def _outside(name: str) -> list[str]:
+    return [*BELOW_ABOVE[name], *WILD[name]]
+
+
+@pytest.mark.parametrize("name", INHERITED)
+def test_zone_bulk_accepts_both_limits_of_every_inherited_field(
     session: Session, name: str
 ) -> None:
     zone = _zone(session)
-    _save(session, zone, **{name: 0})
-    assert getattr(zone, name) == 0
-    _save(session, zone, **{name: 10_000_000})
-    assert getattr(zone, name) == 10_000_000
+    lo, hi, _, _ = ZONE_TABLE[name]
+    for good in (lo, hi):
+        _save(session, zone, **{name: _number(name, good)})
+        assert getattr(zone, name) == _number(name, good)
 
 
-@pytest.mark.parametrize("name", ["temperature_offset_k", "solar_setback_max_k"])
-def test_today_zone_bulk_save_does_not_range_check_the_decimal_fields(
+@pytest.mark.parametrize("name", INHERITED)
+def test_zone_bulk_refuses_everything_outside_with_the_range_message(
     session: Session, name: str
 ) -> None:
     zone = _zone(session)
-    _save(session, zone, **{name: Decimal("99")})
-    assert getattr(zone, name) == Decimal("99")
+    for bad in _outside(name):
+        before = getattr(zone, name)
+        with pytest.raises(ParameterOutOfRange) as raised:
+            _save(session, zone, **{name: _number(name, bad)})
+        assert str(raised.value) == _range_message(name), bad
+        assert getattr(zone, name) == before
+
+
+@pytest.mark.parametrize("name", INHERITED)
+def test_zone_bulk_none_stays_inherited(session: Session, name: str) -> None:
+    zone = _zone(session)
+    _save(session, zone, **{name: _number(name, ZONE_TABLE[name][0])})
+    _save(session, zone, **{name: None})
+    assert getattr(zone, name) is None
+
+
+@pytest.mark.parametrize("text", ["NaN", "Infinity", "-Infinity"])
+def test_zone_bulk_non_finite_numbers_give_a_message(session: Session, text: str) -> None:
+    zone = _zone(session)
+    for name in ("hysteresis_k", "temperature_offset_k", "solar_setback_max_k"):
+        with pytest.raises(ParameterOutOfRange):
+            _save(session, zone, **{name: Decimal(text)})
+
+
+def test_zone_bulk_hysteresis_upper_bound_is_enforced_like_the_single_value(
+    session: Session,
+) -> None:
+    zone = _zone(session)
+    with pytest.raises(ParameterOutOfRange, match=r"^Hysterese muss zwischen 0\.0001 und 5\.0"):
+        _save(session, zone, hysteresis_k=Decimal("5.0001"))
+    _save(session, zone, hysteresis_k=Decimal("5.0"))
+
+
+# -- Altbestand außerhalb des Bereichs ----------------------------------------------------
+# Früher konnte der Sammel-Weg Werte wie 0 s Mindestdauer speichern. Solche Werte im
+# Bestand sollen ein Speichern *anderer* Felder nicht blockieren; ändert man das Feld
+# selbst, gilt der Bereich. Die Hysterese wird als Schutz vor Schalten am Sollwert immer
+# geprüft.
+
+
+@pytest.mark.parametrize("via", ["bulk", "single"])
+def test_legacy_out_of_range_value_does_not_block_saving_another_field(
+    session: Session, via: str
+) -> None:
+    zone = _zone(session)
+    zone.min_on_seconds = 0
+    zone.sensor_timeout_seconds = 10_000_000
+    zone.temperature_offset_k = Decimal("99")
+    session.flush()
+    if via == "bulk":
+        _save(session, zone, hysteresis_k=Decimal("0.5"))
+    else:
+        _set(session, zone, "hysteresis_k", "0.5")
+    assert zone.hysteresis_k == Decimal("0.5")
+    assert (zone.min_on_seconds, zone.sensor_timeout_seconds) == (0, 10_000_000)
+    assert zone.temperature_offset_k == Decimal("99")
+
+
+def test_legacy_value_must_be_valid_when_it_is_the_one_being_changed(session: Session) -> None:
+    zone = _zone(session)
+    zone.min_on_seconds = 0
+    session.flush()
+    with pytest.raises(ParameterOutOfRange):
+        _save(session, zone, min_on_seconds=5)
+    _save(session, zone, min_on_seconds=30)
+    assert zone.min_on_seconds == 30
+
+
+def test_legacy_hysteresis_outside_the_range_blocks_until_it_is_corrected(
+    session: Session,
+) -> None:
+    zone = _zone(session)
+    zone.hysteresis_k = Decimal("7.0")
+    session.flush()
+    with pytest.raises(ParameterOutOfRange, match="^Hysterese muss zwischen"):
+        _save(session, zone, min_on_seconds=300)
+    _save(session, zone, hysteresis_k=Decimal("0.5"), min_on_seconds=300)
+    assert zone.min_on_seconds == 300
 
 
 # -- Zone: REST --------------------------------------------------------------------------
@@ -503,6 +614,8 @@ def test_rest_bulk_hysteresis_lower_bound_and_step(client: TestClient, session: 
         response = _rest_bulk(client, zone, head, hysteresis_k=bad)
         assert response.status_code == 422, bad
     assert _rest_bulk(client, zone, head, hysteresis_k="-1").status_code == 422  # pydantic ge=0
+    assert _rest_bulk(client, zone, head, hysteresis_k="5.0").status_code == 200
+    assert _rest_bulk(client, zone, head, hysteresis_k="5.0001").status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -524,24 +637,37 @@ def test_rest_bulk_pi_limits(
         assert _rest_bulk(client, zone, head, **{name: bad}).status_code == 422, bad
 
 
-@pytest.mark.parametrize(
-    ("name", "lo_value"),
-    [
-        ("min_on_seconds", 0),
-        ("min_off_seconds", 0),
-        ("sensor_timeout_seconds", 0),
-        ("window_resume_delay_seconds", 0),
-    ],
-)
-def test_today_rest_bulk_accepts_values_below_the_documented_minimum(
-    client: TestClient, session: Session, name: str, lo_value: int
+@pytest.mark.parametrize("name", INHERITED)
+def test_rest_bulk_inherited_fields_enforce_the_same_range_as_the_single_value(
+    client: TestClient, session: Session, name: str
 ) -> None:
-    """Heutiger Stand (Lücke, siehe Bericht): nur das pydantic-`ge=0` greift."""
     zone, head = _rest_zone(session)
-    response = _rest_bulk(client, zone, head, **{name: lo_value})
+    lo, hi, _, _ = ZONE_TABLE[name]
+    for good in (lo, hi):
+        response = _rest_bulk(client, zone, head, **{name: good})
+        assert response.status_code == 200, (name, good, response.text)
+    session.refresh(zone)
+    stored = getattr(zone, name)
+    for bad in _outside(name):
+        response = _rest_bulk(client, zone, head, **{name: bad})
+        assert response.status_code == 422, (name, bad, response.text)
+        if Decimal(bad) >= 0 or name == "temperature_offset_k":
+            # negativ lehnt für die meisten Felder schon das Schema (ge=0) ab
+            assert response.json()["detail"] == f"control_parameters: {_range_message(name)}"
+    session.refresh(zone)
+    assert getattr(zone, name) == stored
+
+
+def test_rest_single_value_is_not_blocked_by_a_legacy_value_elsewhere(
+    client: TestClient, session: Session
+) -> None:
+    zone, head = _rest_zone(session)
+    zone.min_on_seconds = 0
+    session.flush()
+    response = client.put(
+        f"/api/v1/zones/{zone.id}/parameters/hysteresis_k", headers=head, json={"value": "0.5"}
+    )
     assert response.status_code == 200, response.text
-    assert response.json()[name] == lo_value
-    assert _rest_bulk(client, zone, head, **{name: -1}).status_code == 422
 
 
 def test_rest_schema_is_what_openapi_publishes_today(client: TestClient) -> None:
@@ -703,19 +829,25 @@ def test_ui_api_valve_protection_limits(
     assert _put_parameters(client, zone, ok).status_code == 200
 
 
-@pytest.mark.parametrize(
-    ("name", "value"),
-    [("min_on_seconds", 0), ("min_off_seconds", 5), ("window_resume_delay_seconds", 0),
-     ("sensor_timeout_seconds", 10)],
-)
-def test_today_ui_api_accepts_timing_values_below_the_documented_minimum(
-    raum: Callable[[], tuple[TestClient, Zone]], session: Session, name: str, value: int
+@pytest.mark.parametrize("name", INHERITED)
+def test_ui_api_bulk_inherited_fields_enforce_the_same_range_as_the_single_value(
+    raum: Callable[[], tuple[TestClient, Zone]], session: Session, name: str
 ) -> None:
-    """Heutiger Stand (Lücke, siehe Bericht): die Form prüft nur "nicht negativ"."""
     client, zone = raum()
-    assert _put_parameters(client, zone, {name: value}).status_code == 200
+    lo, hi, _, _ = ZONE_TABLE[name]
+    for good in (lo, hi):
+        response = _put_parameters(client, zone, {name: good})
+        assert response.status_code == 200, (name, good, response.text)
     session.refresh(zone)
-    assert getattr(zone, name) == value
+    stored = getattr(zone, name)
+    for bad in _outside(name):
+        response = _put_parameters(client, zone, {name: bad})
+        body = _fehler(response, 422, "validation", name)
+        if Decimal(bad) >= 0 or name == "temperature_offset_k":
+            # negative Werte meldet für die meisten Felder schon die Formularprüfung
+            assert body["detail"] == _range_message(name), (name, bad)
+    session.refresh(zone)
+    assert getattr(zone, name) == stored
 
 
 # -- Einheitliche Meldungen (L1, B2) ------------------------------------------------------
@@ -745,11 +877,16 @@ def test_zone_and_global_use_the_same_texts_for_the_same_violation(session: Sess
     assert global_range.value.notice == "Hysterese muss zwischen 0.0001 und 5.0 liegen."
 
 
-def test_zone_bulk_hysteresis_names_only_the_lower_bound_it_enforces(session: Session) -> None:
+def test_the_same_hysteresis_text_for_bulk_single_and_global(session: Session) -> None:
     zone = _zone(session)
-    expected = r"^Hysterese muss mindestens 0\.0001 K betragen\.$"
-    with pytest.raises(ParameterOutOfRange, match=expected):
+    with pytest.raises(ParameterOutOfRange) as bulk:
         _save(session, zone, hysteresis_k=Decimal("0"))
+    with pytest.raises(ParameterOutOfRange) as single:
+        _set(session, zone, "hysteresis_k", "0")
+    with pytest.raises(ControlError) as default:
+        check_number("default_hysteresis_k", "0")
+    assert str(bulk.value) == str(single.value) == default.value.notice
+    assert default.value.notice == "Hysterese muss zwischen 0.0001 und 5.0 liegen."
 
 
 @pytest.mark.parametrize("text", ["NaN", "Infinity", "-Infinity"])
