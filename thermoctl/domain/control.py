@@ -35,6 +35,12 @@ from thermoctl.domain.sensor_failure_policy import (
 from thermoctl.domain.sensor_failure_policy import save_backup_offset as _save_backup_offset
 from thermoctl.domain.sensor_failure_policy import save_defaults as _save_defaults
 from thermoctl.domain.sensor_failure_policy import save_profile as _save_profile
+from thermoctl.domain.zone_settings import (
+    BY_NAME,
+    ParameterDescription,
+    ParameterOutOfRange,
+    check_parameter_value,
+)
 
 
 @dataclass
@@ -56,14 +62,24 @@ class ControlError(Exception):
 # loop, a minimum switch duration of zero seconds is exactly the legacy system's defect
 # (cycling at the setpoint), and a hysteresis of zero kelvin is the same problem. Upper
 # bounds keep out numbers that can only arise from a typo.
+#
+# The six defaults that a zone can override take their bounds from the one description
+# of the zone parameters (`domain.zone_settings.PARAMETERS`, prefix `default_`): a bound
+# that is written down twice is exactly what once had to be changed in two places. The
+# remaining fields have no zone counterpart and are written out here.
+def _of_zone_parameter(name: str) -> tuple[Decimal, Decimal]:
+    description = BY_NAME[name]
+    return (description.minimum, description.maximum)
+
+
 LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "polling_interval_seconds": (Decimal(5), Decimal(3600)),
     "shadow_interval_seconds": (Decimal(5), Decimal(3600)),
-    "default_hysteresis_k": (Decimal("0.0001"), Decimal("5.0")),
-    "default_min_on_seconds": (Decimal(30), Decimal(7200)),
-    "default_min_off_seconds": (Decimal(30), Decimal(7200)),
-    "default_sensor_timeout_seconds": (Decimal(60), Decimal(86400)),
-    "default_window_resume_delay_seconds": (Decimal(0), Decimal(3600)),
+    "default_hysteresis_k": _of_zone_parameter("hysteresis_k"),
+    "default_min_on_seconds": _of_zone_parameter("min_on_seconds"),
+    "default_min_off_seconds": _of_zone_parameter("min_off_seconds"),
+    "default_sensor_timeout_seconds": _of_zone_parameter("sensor_timeout_seconds"),
+    "default_window_resume_delay_seconds": _of_zone_parameter("window_resume_delay_seconds"),
     # An hour is the shortest span for which "unmoving" is still a meaningful claim
     # about a room's temperature at all; a week is long enough that anything longer
     # would stop being a diagnostic and start being silence.
@@ -77,7 +93,7 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "command_log_retention_days": (Decimal(1), Decimal(3650)),
     "command_log_max_mb": (Decimal(10), Decimal(1048576)),
     "session_lifetime_seconds": (Decimal(300), Decimal(31536000)),
-    "default_solar_setback_max_k": (Decimal("0.0"), Decimal("10.0")),
+    "default_solar_setback_max_k": _of_zone_parameter("solar_setback_max_k"),
     # A window of a day or more would predict "sun" far past the point where the
     # forecast is still meaningful; below one hour there is nothing left to look
     # ahead to.
@@ -198,12 +214,22 @@ LABELS: dict[str, str] = {
     "assumed_relay_lifetime_operations": "Angenommene Relais-Lebensdauer (Schaltspiele)",
 }
 
-# Which fields are integer-valued. The rest are decimal numbers.
-GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k", "default_solar_setback_max_k"}
+
+def _zone_parameter_of(field: str) -> ParameterDescription | None:
+    """The zone parameter a global default mirrors (`default_hysteresis_k` -> `hysteresis_k`)."""
+    if not field.startswith("default_"):
+        return None
+    return BY_NAME.get(field.removeprefix("default_"))
 
 
-# Decimal fields stored with four decimal places (`Numeric(6, 4)`).
-FINE_FIELDS = frozenset({"default_hysteresis_k"})
+def _is_decimal_zone_mirror(field: str) -> bool:
+    mirrored = _zone_parameter_of(field)
+    return mirrored is not None and not mirrored.integral
+
+
+# Which fields are integer-valued. The rest are decimal numbers: a field that mirrors a
+# zone parameter is integer exactly when the zone parameter is (`ParameterDescription.integral`).
+GANZZAHLIG = frozenset(field for field in LIMITS if not _is_decimal_zone_mirror(field))
 
 
 def settings(session: Session) -> Setting:
@@ -237,11 +263,17 @@ def check_number(
         raise ControlError(field, "Bitte eine Zahl angeben.") from exc
     if field in ganzzahlig and value != value.to_integral_value():
         raise ControlError(field, "Bitte eine ganze Zahl angeben.")
-    if field in FINE_FIELDS and value.is_finite() and -value.as_tuple().exponent > 4:  # type: ignore[operator]
-        # Storage keeps four decimal places; refuse instead of rounding silently.
-        raise ControlError(field, "Bitte höchstens vier Nachkommastellen angeben.")
+    zone_parameter = _zone_parameter_of(field)
+    if zone_parameter is not None:
+        # The shared check (range, then the step where it binds -- the hysteresis'
+        # four decimal places): one text for the zone and the global default.
+        try:
+            check_parameter_value(zone_parameter, value)
+        except ParameterOutOfRange as exc:
+            raise ControlError(field, str(exc)) from exc
+        return value
     lower, upper = limits[field]
-    if not (lower <= value <= upper):
+    if not value.is_finite() or not (lower <= value <= upper):
         raise ControlError(
             field, f"Bitte einen Wert zwischen {_short(lower)} und {_short(upper)} angeben."
         )

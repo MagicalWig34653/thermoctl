@@ -161,18 +161,10 @@ def validate_pi_parameters(
         "pi_min_on_seconds",
         "pi_min_off_seconds",
     ):
-        description = BY_NAME[name]
-        value = Decimal(values[name])  # type: ignore[arg-type]
-        if not description.minimum <= value <= description.maximum:
-            raise ParameterOutOfRange(
-                f"{description.label} muss zwischen {description.minimum} und "
-                f"{description.maximum} liegen."
-            )
-        steps = (value - description.minimum) / description.step
-        if steps != steps.to_integral_value():
-            raise ParameterOutOfRange(
-                f"{description.label} muss in Schritten von {description.step} liegen."
-            )
+        check_parameter_value(
+            BY_NAME[name],
+            Decimal(values[name]),  # type: ignore[arg-type]
+        )
     if values["pi_enabled"]:
         eligibility = pi_eligibility(
             session,
@@ -301,21 +293,12 @@ def validate_hysteresis(value: Decimal | int | bool | None) -> None:
 
     Storage keeps four decimal places, so a finer value would be rounded silently --
     possibly down to zero, the legacy system's cycling at the setpoint. The upper
-    bound stays advisory in the interface, as before.
+    bound stays advisory in the interface, as before: `enforce_maximum=False` is the
+    one deliberate difference to the global default's check, which shares this path.
     """
     if value is None:
         return
-    description = BY_NAME["hysteresis_k"]
-    number = Decimal(value)
-    if not number.is_finite() or number < description.minimum:
-        raise ParameterOutOfRange(
-            f"{description.label} muss mindestens "
-            f"{description.minimum} {description.unit} betragen."
-        )
-    if number % description.step != 0:
-        raise ParameterOutOfRange(
-            f"{description.label} darf höchstens vier Nachkommastellen haben."
-        )
+    check_parameter_value(BY_NAME["hysteresis_k"], Decimal(value), enforce_maximum=False)
 
 
 def validate_valve_protection(values: dict[str, Decimal | int | bool | None]) -> None:
@@ -368,6 +351,10 @@ class ParameterDescription:
     # Which field list of the zone form the parameter belongs to (see the `GROUP_*`
     # constants below); the web adapter derives its field lists from this.
     group: str = ""
+    # Whether the step is a hard rule (a value off the grid is refused) or only the
+    # increment the interface offers. Binding for the hysteresis (storage keeps four
+    # decimal places) and for the PI parameters (specification section 7).
+    binding_step: bool = False
 
     @property
     def integral(self) -> bool:
@@ -379,14 +366,15 @@ GROUP_VALVE_PROTECTION = "valve_protection"  # timing fields; the on-off flag is
 GROUP_PI = "pi"  # PI (Beta) fields; the on-off flag is its own field
 GROUP_FLAG = "flag"  # on-off flags, handled outside the numeric field lists
 
-# The bounds match those of the global defaults (`domain/steuerung.GRENZEN`) -- a zone
-# value that the global default would not be allowed to take would be a back door.
+# The one description of the bounds. The global defaults that have a zone counterpart
+# (`domain.control.LIMITS`, prefix `default_`) are *built from this table*, so a zone value
+# that the global default would not be allowed to take (a back door) cannot arise.
 # `temperature_offset_k` has no global counterpart: it corrects a miscalibrated
 # sensor, and more than ten kelvin off is no longer an offset but a broken device.
 PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "hysteresis_k", "Hysterese", "K", Decimal("0.0001"), Decimal("5.0"), Decimal("0.0001"),
-        group=GROUP_INHERITED,
+        group=GROUP_INHERITED, binding_step=True,
     ),
     ParameterDescription(
         "min_on_seconds", "Mindest-Einschaltdauer", "s", Decimal(30), Decimal(7200), Decimal(10),
@@ -411,9 +399,9 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         Decimal(0), Decimal(3600), Decimal(10),
         group=GROUP_INHERITED,
     ),
-    # No global counterpart under a *different* name here either -- unlike
-    # `temperature_offset_k`, this one has one: `setting.default_solar_setback_max_k`.
-    # The bound matches `domain.control.LIMITS["default_solar_setback_max_k"]`.
+    # Unlike `temperature_offset_k`, this one has a global counterpart:
+    # `setting.default_solar_setback_max_k`, whose bound `domain.control.LIMITS` takes
+    # from this entry.
     ParameterDescription(
         "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
         Decimal("0.0"), Decimal("10.0"), Decimal("0.1"),
@@ -434,8 +422,9 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES), Decimal(1),
         group=GROUP_VALVE_PROTECTION,
     ),
-    # Bounds and steps match the spec table exactly (section 7) and the zone's own
-    # `CheckConstraint`s in `db/models/zone.py` -- three places would otherwise drift.
+    # Bounds and steps match the spec table exactly (section 7). The zone's own
+    # `CheckConstraint`s in `db/models/zone.py` repeat them (a database cannot read this
+    # table); `tests/test_parameter_limits_constraints.py` holds the two against each other.
     ParameterDescription(
         "pi_enabled", "PI-Regelung (Beta) eingeschaltet", None,
         Decimal(0), Decimal(1), Decimal(1),
@@ -444,26 +433,60 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "pi_gain_per_k", "PI-Verstärkung Kp (Beta)", "1/K",
         Decimal("0.05"), Decimal("0.50"), Decimal("0.05"),
-        group=GROUP_PI,
+        group=GROUP_PI, binding_step=True,
     ),
     ParameterDescription(
         "pi_integral_time_minutes", "PI-Nachstellzeit Ti (Beta)", "min",
         Decimal(60), Decimal(720), Decimal(30),
-        group=GROUP_PI,
+        group=GROUP_PI, binding_step=True,
     ),
     ParameterDescription(
         "pi_min_on_seconds", "PI-Mindest-Einschaltdauer (Beta)", "s",
         Decimal(60), Decimal(300), Decimal(30),
-        group=GROUP_PI,
+        group=GROUP_PI, binding_step=True,
     ),
     ParameterDescription(
         "pi_min_off_seconds", "PI-Mindest-Ausschaltdauer (Beta)", "s",
         Decimal(60), Decimal(300), Decimal(30),
-        group=GROUP_PI,
+        group=GROUP_PI, binding_step=True,
     ),
 )
 
 BY_NAME: dict[str, ParameterDescription] = {p.name: p for p in PARAMETERS}
+
+
+def check_parameter_value(
+    description: ParameterDescription, value: Decimal, *, enforce_maximum: bool = True
+) -> None:
+    """The one check of a value against its description -- raises `ParameterOutOfRange`.
+
+    Used by the zone parameters (single and bulk save, PI) and by the global defaults
+    that mirror a zone parameter (`domain.control.check_number`), so a bound and its
+    message exist exactly once. Order: range first, then the step where it is binding.
+    `enforce_maximum=False` is only for the zone's bulk save of the hysteresis (see
+    `validate_hysteresis`); the message then names only the lower bound it enforces.
+    """
+    if not value.is_finite() or value < description.minimum:
+        if enforce_maximum:
+            raise ParameterOutOfRange(
+                f"{description.label} muss zwischen {description.minimum} und "
+                f"{description.maximum} liegen."
+            )
+        raise ParameterOutOfRange(
+            f"{description.label} muss mindestens {description.minimum} "
+            f"{description.unit} betragen."
+        )
+    if enforce_maximum and value > description.maximum:
+        raise ParameterOutOfRange(
+            f"{description.label} muss zwischen {description.minimum} und "
+            f"{description.maximum} liegen."
+        )
+    if description.binding_step:
+        steps = (value - description.minimum) / description.step
+        if steps != steps.to_integral_value():
+            raise ParameterOutOfRange(
+                f"{description.label} muss in Schritten von {description.step} liegen."
+            )
 
 
 def set_parameter(
@@ -489,11 +512,7 @@ def set_parameter(
     description = BY_NAME.get(name)
     if description is None:
         raise UnknownParameter(f"Den Regelparameter '{name}' gibt es nicht.")
-    if not description.minimum <= value <= description.maximum:
-        raise ParameterOutOfRange(
-            f"{description.label} muss zwischen {description.minimum} und "
-            f"{description.maximum} liegen."
-        )
+    check_parameter_value(description, value)
     rounded = int(value) if description.integral else value
     # Take over the other fields exactly as they stand on the zone -- an inherited
     # None stays inherited. Only this one parameter gets fixed.
