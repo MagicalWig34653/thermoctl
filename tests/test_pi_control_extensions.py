@@ -126,3 +126,50 @@ class TestSurplusDecayThroughPiCycle:
         full = pi_cycle(_state(now, "0.5"), _input(now, "-0.4"))
         assert low.state.integral == Decimal("0.5")
         assert full.state.integral == Decimal("0.5") + _increment("-0.4")
+
+
+# --------------------------------------------------------------------------- #
+# B. Integral separation: far below the setpoint the integral is frozen.
+# --------------------------------------------------------------------------- #
+
+K = Decimal("0.5")
+
+
+class TestIntegralSeparation:
+    def test_error_just_above_k_freezes_the_integral(self) -> None:
+        u, integral = _arith("0.3", "0.51", integral_separation_k=K)
+        assert integral == Decimal("0.3")
+        assert u == KP * Decimal("0.51") + Decimal("0.3")
+
+    def test_error_exactly_k_still_integrates(self) -> None:
+        _, integral = _arith("0.3", "0.5", integral_separation_k=K)
+        assert integral == Decimal("0.3") + _increment("0.5")
+
+    def test_error_just_below_k_integrates(self) -> None:
+        _, integral = _arith("0.3", "0.49", integral_separation_k=K)
+        assert integral == Decimal("0.3") + _increment("0.49")
+
+    def test_zero_switches_the_separation_off(self) -> None:
+        _, integral = _arith("0.3", "0.9", integral_separation_k=Decimal(0))
+        assert integral == Decimal("0.3") + _increment("0.9")
+
+    def test_a_negative_error_is_never_separated(self) -> None:
+        # The sign matters: e > k compares the signed error, so a large surplus is not
+        # "far below the setpoint" and unwinds exactly as without the rule.
+        _, integral = _arith("0.5", "-3", integral_separation_k=K)
+        assert integral == _arith("0.5", "-3")[1]
+        _, small = _arith("0.5", "-0.4", integral_separation_k=K)
+        assert small == Decimal("0.5") + _increment("-0.4")
+
+    def test_frozen_means_no_unwinding_either(self) -> None:
+        # Integral at 1 with a large positive error is frozen by the saturation lock
+        # anyway; with a high integral but u < 1 the separation holds it as well.
+        _, integral = _arith("0.9", "0.6", integral_separation_k=K)
+        assert integral == Decimal("0.9")
+
+    def test_through_pi_cycle(self) -> None:
+        now = _at(12)
+        held = pi_cycle(_state(now, "0.3"), _input(now, "0.8", integral_separation_k=K))
+        free = pi_cycle(_state(now, "0.3"), _input(now, "0.8"))
+        assert held.state.integral == Decimal("0.3")
+        assert free.state.integral == Decimal("0.3") + _increment("0.8")

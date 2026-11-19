@@ -140,6 +140,7 @@ def pi_arithmetic(
     gain_per_k: Decimal,
     integral_time_minutes: Decimal,
     surplus_decay_factor: Decimal = Decimal(1),
+    integral_separation_k: Decimal = Decimal(0),
 ) -> tuple[Decimal, Decimal]:
     """One PI step: `(u, neuer Integralanteil)` (section 2).
 
@@ -155,11 +156,18 @@ def pi_arithmetic(
     heating demand the room will have again at night); with 1 it unwinds as before.
     It scales only the free unwinding: the lock at `u = 0` above stays as it is. A
     value outside 0..1 is clamped, a negative one would turn unwinding into winding up.
+
+    `integral_separation_k` (default 0 = off) is integral separation: with a value
+    above 0 and `e > k` (strictly, signed: far *below* the setpoint, never a surplus)
+    the integral is frozen -- neither raised nor unwound -- because a large error that
+    the plant delay has not yet answered would only wind it up (it overshoots when the
+    setpoint is reached). From `e <= k` on it integrates as before.
     """
     u_before = _clamp01(gain_per_k * error_k + integral)
     stuck_high = u_before == 1 and error_k > 0
     stuck_low = u_before == 0 and error_k < 0
-    if stuck_high or stuck_low:
+    separated = integral_separation_k > 0 and error_k > integral_separation_k
+    if stuck_high or stuck_low or separated:
         new_integral = integral
     else:
         ti_seconds = integral_time_minutes * 60
@@ -423,6 +431,7 @@ class PiCycleInput:
     pi_min_off_seconds: int
     # Optional rules, all with defaults that reproduce the earlier behaviour exactly.
     surplus_decay_factor: Decimal = Decimal(1)
+    integral_separation_k: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -512,6 +521,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         gain_per_k=cycle.gain_per_k,
         integral_time_minutes=cycle.integral_time_minutes,
         surplus_decay_factor=cycle.surplus_decay_factor,
+        integral_separation_k=cycle.integral_separation_k,
     )
     modulator_result = window_modulate(
         base.modulator,
