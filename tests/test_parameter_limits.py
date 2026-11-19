@@ -553,6 +553,23 @@ def test_rest_schema_is_what_openapi_publishes_today(client: TestClient) -> None
     assert properties["valve_protection_interval_days"]["exclusiveMinimum"] == 0
 
 
+@pytest.mark.parametrize("name", [n for n in ZONE_TABLE if not n.endswith("_enabled")
+                                  and not n.startswith("valve_protection")])
+def test_rest_schema_documents_the_real_range_of_every_parameter(
+    client: TestClient, name: str
+) -> None:
+    """Die OpenAPI-Beschreibung nennt Grenzen und Schritt der Tabelle (B4), nicht `ge=0`."""
+    properties = client.get("/openapi.json").json()["components"]["schemas"][
+        "WriteControlParameters"
+    ]["properties"]
+    lo, hi, step, unit = ZONE_TABLE[name]
+    description = properties[name]["description"]
+    assert f"{lo} bis {hi}" in description
+    assert f"Schritt {step}" in description
+    if unit:
+        assert unit in description
+
+
 # -- Zone: MCP ---------------------------------------------------------------------------
 
 
@@ -699,3 +716,44 @@ def test_today_ui_api_accepts_timing_values_below_the_documented_minimum(
     assert _put_parameters(client, zone, {name: value}).status_code == 200
     session.refresh(zone)
     assert getattr(zone, name) == value
+
+
+# -- Einheitliche Meldungen (L1, B2) ------------------------------------------------------
+
+
+def test_zone_and_global_use_the_same_texts_for_the_same_violation(session: Session) -> None:
+    zone = _zone(session)
+    with pytest.raises(ControlError) as raised:
+        check_number("default_min_on_seconds", "29")
+    assert raised.value.notice == "Mindest-Einschaltdauer muss zwischen 30 und 7200 liegen."
+    with pytest.raises(ParameterOutOfRange) as zone_raised:
+        _set(session, zone, "min_on_seconds", "29")
+    assert str(zone_raised.value) == raised.value.notice
+
+    with pytest.raises(ControlError) as global_step:
+        check_number("default_hysteresis_k", "0.00015")
+    assert global_step.value.notice == "Hysterese muss in Schritten von 0.0001 liegen."
+    with pytest.raises(ParameterOutOfRange) as zone_step:
+        _set(session, zone, "hysteresis_k", "0.00015")
+    assert str(zone_step.value) == global_step.value.notice
+
+    with pytest.raises(ControlError) as global_range:
+        check_number("default_hysteresis_k", "5.0001")
+    with pytest.raises(ParameterOutOfRange) as zone_range:
+        _set(session, zone, "hysteresis_k", "5.0001")
+    assert str(zone_range.value) == global_range.value.notice
+    assert global_range.value.notice == "Hysterese muss zwischen 0.0001 und 5.0 liegen."
+
+
+def test_zone_bulk_hysteresis_names_only_the_lower_bound_it_enforces(session: Session) -> None:
+    zone = _zone(session)
+    expected = r"^Hysterese muss mindestens 0\.0001 K betragen\.$"
+    with pytest.raises(ParameterOutOfRange, match=expected):
+        _save(session, zone, hysteresis_k=Decimal("0"))
+
+
+@pytest.mark.parametrize("text", ["NaN", "Infinity", "-Infinity"])
+def test_global_non_finite_numbers_are_refused_not_a_crash(text: str) -> None:
+    for field in ("default_hysteresis_k", "polling_interval_seconds"):
+        with pytest.raises(ControlError):
+            check_number(field, text)

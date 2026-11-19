@@ -11,6 +11,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Geändert
+
+- **Eine Quelle für die Parametergrenzen:** Die Grenzen der Raum-Regelparameter (`domain/zone_settings.PARAMETERS`) sind jetzt die einzige Beschreibung; die globalen Standardwerte mit Raum-Gegenstück (Hysterese, Mindestzeiten, Sensorausfall, Fensternachlauf, Obergrenze Sonnenabsenkung) lesen ihre Grenzen von dort. Die Zahlen sind unverändert (Hysterese 0,0001–5,0 K, Mindestzeiten 30–7200 s, PI-Bereiche wie zuvor). Ein Test hält die Datenbank-Constraints der PI-Felder gegen die Tabelle, die OpenAPI-Beschreibung von `PUT /api/v1/zones/{id}/parameters` nennt die echten Bereiche.
+- **Einheitliche Fehlermeldungen** für Raum und globale Standardwerte, z. B. „Hysterese muss zwischen 0.0001 und 5.0 liegen.“ und „Hysterese muss in Schritten von 0.0001 liegen.“ statt „Bitte einen Wert zwischen 0.0001 und 5 angeben.“ bzw. „Bitte höchstens vier Nachkommastellen angeben.“ / „… darf höchstens vier Nachkommastellen haben.“. Gilt für die sechs Felder oben; die übrigen globalen Felder behalten ihren Text. Beim Speichern aller Raumfelder bleibt „Hysterese muss mindestens 0.0001 K betragen.“ (dort gilt die Obergrenze weiterhin nicht).
+- `NaN` und `Infinity` als globaler Standardwert werden mit einer Fehlermeldung abgewiesen statt einen Serverfehler auszulösen.
+
 ### Sicherheit
 
 - Wer ein Konto umgruppiert, braucht dafür auch die bisherigen Rechte dieses Kontos. Eine Änderung an Gruppen oder Gruppenrechten, nach der der Handelnde als Einziger ein Verwaltungsrecht hielte, wird abgelehnt.
