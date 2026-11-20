@@ -366,6 +366,14 @@ def shadow_decisions(
             "would_heat": row.would_heat,
             "outcome": row.outcome_code,
             "reason": row.reason,
+            "requested_controller": row.requested_controller,
+            "effective_controller": row.effective_controller,
+            # PI-Zahlen als Anteile von 0 bis 1 (None ohne PI-Rechnung in diesem Zyklus).
+            "pi_integral_before": _decimal(row.pi_integral_before),
+            "pi_integral_after": _decimal(row.pi_integral_after),
+            "pi_raw_duty": _decimal(row.pi_raw_duty),
+            "pi_frozen_duty": _decimal(row.pi_frozen_duty),
+            "pi_feedforward_duty": _decimal(row.pi_feedforward_duty),
         }
         for row in rows
     ]

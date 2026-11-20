@@ -169,8 +169,40 @@ def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> No
             "would_heat": False,
             "outcome": "aus",
             "reason": "Sollwert ist erreicht.",
+            "requested_controller": "hysteresis",
+            "effective_controller": "hysteresis",
+            "pi_integral_before": None,
+            "pi_integral_after": None,
+            "pi_raw_duty": None,
+            "pi_frozen_duty": None,
+            "pi_feedforward_duty": None,
         }
     ]
+
+
+def test_shadow_decisions_carries_the_pi_numbers_of_the_decision(session: Session) -> None:
+    zone = create_zone(session, "pi-zahlen")
+    decision = create_shadow_decision(session, zone)
+    decision.requested_controller = "pi"
+    decision.effective_controller = "pi"
+    decision.pi_integral_before = Decimal("0.200000")
+    decision.pi_integral_after = Decimal("0.210000")
+    decision.pi_raw_duty = Decimal("0.560000")
+    decision.pi_frozen_duty = Decimal("0.550000")
+    decision.pi_feedforward_duty = Decimal("0.320000")
+    session.flush()
+    plaintext = _token(session, "pi-leser", [("zone.read", zone.id)])
+
+    (entry,) = server.shadow_decisions(session, plaintext, zone.id, 1)
+
+    assert entry["effective_controller"] == "pi"
+    assert (
+        entry["pi_integral_before"],
+        entry["pi_integral_after"],
+        entry["pi_raw_duty"],
+        entry["pi_frozen_duty"],
+        entry["pi_feedforward_duty"],
+    ) == ("0.200000", "0.210000", "0.560000", "0.550000", "0.320000")
 
 
 def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> None:

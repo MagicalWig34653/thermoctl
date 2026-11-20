@@ -635,6 +635,11 @@ def test_operation_shows_decisions_with_reasons_and_emergency_per_zone(
     decision.effective_controller = "hysteresis"
     decision.controller_fallback_reason = "fenster_offen"
     decision.scheduled_setpoint_c = Decimal("21.0")
+    decision.pi_integral_before = Decimal("0.200000")
+    decision.pi_integral_after = Decimal("0.210000")
+    decision.pi_raw_duty = Decimal("0.560000")
+    decision.pi_frozen_duty = Decimal("0.550000")
+    decision.pi_feedforward_duty = Decimal("0.320000")
     other = create_zone(session, "keller")
     other_decision = create_shadow_decision(session, other)
     other_decision.requested_controller = "pi"
@@ -654,6 +659,11 @@ def test_operation_shows_decisions_with_reasons_and_emergency_per_zone(
     assert room["decision"]["effective_controller"] == "hysteresis"
     assert room["decision"]["controller_fallback_label"] == "Ein Fenster ist offen."
     assert room["decision"]["planned_setpoint_c"] == "21.0"
+    assert room["decision"]["pi_integral_before"] == "0.200000"
+    assert room["decision"]["pi_integral_after"] == "0.210000"
+    assert room["decision"]["pi_raw_duty"] == "0.560000"
+    assert room["decision"]["pi_frozen_duty"] == "0.550000"
+    assert room["decision"]["pi_feedforward_duty"] == "0.320000"
     assert room["emergency"]["stage"] == "normal"
     assert room["emergency"]["actuators"] == [] and room["emergency"]["comparisons"] == []
     unknown = next(r for r in body["rooms"] if r["id"] == other.id)

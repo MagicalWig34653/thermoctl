@@ -573,6 +573,15 @@ export function switchingSummary(a: OperationActuation): { switching: boolean; t
 const CONTROLLER_LABELS: Record<string, string> = { hysteresis: 'Hysterese-Regler', pi: 'PI-Regler' };
 
 /** Lesbarer Reglername; ein unbekannter Code bleibt roh sichtbar. */
+/** Anteil von 0 bis 1 (Integralanteil, Tastgrad) als Prozent mit einer Nachkommastelle;
+ *  reine Anzeige, `null` und Nicht-Zahlen ergeben einen Gedankenstrich. */
+export function shareAsPercent(value: string | null): string {
+  if (value === null) return '—';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${(number * 100).toFixed(1).replace('.', ',')} %`;
+}
+
 export const controllerLabel = (code: string): string => CONTROLLER_LABELS[code] ?? code;
 
 const OUTCOME_LABELS: Record<string, string> = {

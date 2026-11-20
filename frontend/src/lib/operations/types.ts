@@ -171,6 +171,11 @@ export interface DecisionDetail {
   effective_controller: string;
   controller_fallback_reason: string | null;
   controller_fallback_label: string | null;
+  pi_integral_before: string | null;
+  pi_integral_after: string | null;
+  pi_raw_duty: string | null;
+  pi_frozen_duty: string | null;
+  pi_feedforward_duty: string | null;
 }
 
 export interface EmergencyActuator {

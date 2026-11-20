@@ -706,6 +706,14 @@ class DecisionDetailOut(BaseModel):
     effective_controller: str
     controller_fallback_reason: str | None
     controller_fallback_label: str | None
+    # PI-Zahlen der Entscheidung als Anteile von 0 bis 1 (nur bei PI gesetzt):
+    # Integralanteil vor und nach dem Zyklus, Tastgrad roh und eingefroren, Anteil der
+    # Vorsteuerung am rohen Tastgrad.
+    pi_integral_before: str | None
+    pi_integral_after: str | None
+    pi_raw_duty: str | None
+    pi_frozen_duty: str | None
+    pi_feedforward_duty: str | None
 
 
 class EmergencyActuatorOut(BaseModel):
@@ -838,6 +846,11 @@ def _operation_rooms(
                         requested_controller=decision.requested_controller,
                         effective_controller=decision.effective_controller,
                         controller_fallback_reason=decision.controller_fallback_reason,
+                        pi_integral_before=_dec(decision.pi_integral_before),
+                        pi_integral_after=_dec(decision.pi_integral_after),
+                        pi_raw_duty=_dec(decision.pi_raw_duty),
+                        pi_frozen_duty=_dec(decision.pi_frozen_duty),
+                        pi_feedforward_duty=_dec(decision.pi_feedforward_duty),
                         controller_fallback_label=(
                             PI_FALLBACK_LABELS.get(
                                 decision.controller_fallback_reason,

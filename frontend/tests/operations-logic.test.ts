@@ -4,7 +4,7 @@ import { ApiError } from '../src/lib/api.ts';
 import {
   armOutcome, buildParametersPatch, buildSensorFailureBody, decisionEffect, defaultsPayload, displayDetailValue,
   draftFromParameters, errorAt, fromInput, generalError, inheritanceNote, localParameterErrors, opsFailure,
-  operationHeadline, outsideLimit, patchedFields, piGainWarning, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
+  operationHeadline, outsideLimit, patchedFields, piGainWarning, shareAsPercent, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
   SENDING_LATCH_NOTE, controllerLabel, outcomeLabel, switchingSummary, subtractDecimal, switchingTable, wearRatioSentence, formatCount, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
 } from '../src/lib/operations/logic.ts';
 import { actuation, ARMED_NO_RESTART, LIVE, parameters, settings } from './operations-fixture.ts';
@@ -476,4 +476,12 @@ test('Reglername und Ergebnis sind lesbar, unbekannte Codes bleiben roh', () => 
   assert.equal(outcomeLabel('heizen'), 'Heizen');
   assert.equal(outcomeLabel('gesperrt_mindestdauer'), 'Gesperrt (Mindestdauer)');
   assert.equal(outcomeLabel('neu_x'), 'neu_x');
+});
+
+test('Anteile (Integralanteil, Tastgrad) als Prozent mit Komma; ohne Wert ein Gedankenstrich', () => {
+  assert.equal(shareAsPercent('0.560000'), '56,0 %');
+  assert.equal(shareAsPercent('0.123456'), '12,3 %');
+  assert.equal(shareAsPercent('0'), '0,0 %');
+  assert.equal(shareAsPercent(null), '—');
+  assert.equal(shareAsPercent('x'), '—');
 });

@@ -3,7 +3,7 @@
   import { useApp } from '$lib/context';
   import { formatCelsius } from '$lib/rooms/decimal';
   import { formatInstant } from '$lib/rooms/logic';
-  import { actuatorCycle, controllerLabel, decisionEffect, outcomeLabel, sensorTimeoutText } from '$lib/operations/logic';
+  import { actuatorCycle, controllerLabel, decisionEffect, outcomeLabel, sensorTimeoutText, shareAsPercent } from '$lib/operations/logic';
   import type { Operation } from '$lib/operations/types';
   import Notice from '$lib/components/rooms/Notice.svelte';
 
@@ -42,6 +42,18 @@
               {#if d.solar_setback_k !== null}<dt class="text-muted-foreground">Sonnenabsenkung</dt><dd class="m-0 tabular-nums">{d.solar_setback_k.replace('.', ',')} K</dd>{/if}
               <dt class="text-muted-foreground">Regler</dt>
               <dd class="m-0">{controllerLabel(d.effective_controller)}{d.requested_controller !== d.effective_controller ? ` (gewünscht: ${controllerLabel(d.requested_controller)})` : ''}</dd>
+              {#if d.pi_raw_duty !== null}
+                <dt class="text-muted-foreground">Tastgrad</dt>
+                <dd class="m-0 tabular-nums" data-testid={`pi-duty-${room.id}`}>roh {shareAsPercent(d.pi_raw_duty)}{d.pi_frozen_duty !== null ? `, eingefroren ${shareAsPercent(d.pi_frozen_duty)}` : ''}</dd>
+              {/if}
+              {#if d.pi_integral_after !== null}
+                <dt class="text-muted-foreground">Integralanteil</dt>
+                <dd class="m-0 tabular-nums" data-testid={`pi-integral-${room.id}`}>{shareAsPercent(d.pi_integral_before)} → {shareAsPercent(d.pi_integral_after)}</dd>
+              {/if}
+              {#if d.pi_feedforward_duty !== null && d.pi_raw_duty !== null}
+                <dt class="text-muted-foreground">Vorsteuerung</dt>
+                <dd class="m-0 tabular-nums">{shareAsPercent(d.pi_feedforward_duty)} des Tastgrads</dd>
+              {/if}
               {#if d.controller_fallback_label}<dt class="text-muted-foreground">Rückfall</dt><dd class="m-0">{d.controller_fallback_label}</dd>{/if}
               <dt class="text-muted-foreground">Ergebnis</dt><dd class="m-0">{outcomeLabel(d.outcome_code)}</dd>
             </dl>
