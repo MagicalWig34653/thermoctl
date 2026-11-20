@@ -4,7 +4,7 @@ import { ApiError } from '../src/lib/api.ts';
 import {
   armOutcome, buildParametersPatch, buildSensorFailureBody, decisionEffect, defaultsPayload, displayDetailValue,
   draftFromParameters, errorAt, fromInput, generalError, inheritanceNote, localParameterErrors, opsFailure,
-  operationHeadline, outsideLimit, patchedFields, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
+  operationHeadline, outsideLimit, patchedFields, piGainWarning, sameNumber, sensorFailureDirty, sensorFailureDraft, solarExample, stateCards,
   SENDING_LATCH_NOTE, controllerLabel, outcomeLabel, switchingSummary, subtractDecimal, switchingTable, wearRatioSentence, formatCount, testOutcomeFromFailure, testOutcomeFromResult, thresholdsPayload, toInput,
 } from '../src/lib/operations/logic.ts';
 import { actuation, ARMED_NO_RESTART, LIVE, parameters, settings } from './operations-fixture.ts';
@@ -112,6 +112,56 @@ test('PI einschalten sendet die Bestätigung mit, Ausschalten nicht; leere PI-Fe
   const d2 = draftFromParameters(on);
   d2.pi.enabled = false;
   assert.deepEqual(buildParametersPatch(on, d2), { pi_enabled: false });
+});
+
+test('PI-Erweiterungen: nur geänderte Felder gehen mit, der Schalter getrennt von den Zahlen', () => {
+  const p = parameters();
+  const d = draftFromParameters(p);
+  assert.equal(d.pi.surplus_decay_factor, '1,00');
+  assert.equal(d.pi.feedforward_enabled, false);
+  assert.equal(d.pi.feedforward_smoothing_hours, '3');
+  assert.deepEqual(buildParametersPatch(p, d), {});
+  d.pi.surplus_decay_factor = '0,5';
+  d.pi.integral_separation_k = '0,4';
+  d.pi.feedforward_enabled = true;
+  d.pi.feedforward_gain = '0,025';
+  d.pi.feedforward_smoothing_hours = '6';
+  const patch = buildParametersPatch(p, d);
+  assert.deepEqual(patch, {
+    pi_surplus_decay_factor: '0.5',
+    pi_integral_separation_k: '0.4',
+    pi_feedforward_enabled: true,
+    pi_feedforward_gain: '0.025',
+    pi_feedforward_smoothing_hours: '6',
+  });
+  assert.equal(patchedFields(patch).length, 5);
+  // Gleicher Wert in anderer Schreibweise ist keine Änderung (0.02 = 0,020).
+  const d2 = draftFromParameters(p);
+  d2.pi.feedforward_gain = '0,020';
+  assert.deepEqual(buildParametersPatch(p, d2), {});
+});
+
+test('PI-Erweiterungen: leere Zahlenfelder werden als fehlend gemeldet, nicht still gesendet', () => {
+  const p = parameters();
+  const d = draftFromParameters(p);
+  d.pi.feedforward_gain = '';
+  d.pi.integral_separation_k = '';
+  assert.deepEqual(buildParametersPatch(p, d), {});
+  const errors = localParameterErrors(p, d);
+  assert.equal(errors.pi_feedforward_gain, 'Bitte einen Wert angeben.');
+  assert.equal(errors.pi_integral_separation_k, 'Bitte einen Wert angeben.');
+});
+
+test('Verstärkung: Warnung erst über 0,5, ab 1,0 mit Empfehlung zur Nachstellzeit', () => {
+  assert.equal(piGainWarning('0,5', '180'), null);
+  assert.equal(piGainWarning('', '180'), null);
+  assert.equal(piGainWarning('viel', '180'), null);
+  const mid = piGainWarning('0,55', '60');
+  assert.ok(mid && mid.includes('Schwingneigung') && !mid.includes('180 Minuten'));
+  const high = piGainWarning('1', '90');
+  assert.ok(high && high.includes('mindestens 180 Minuten') && high.includes('Eingestellt sind 90 Minuten'));
+  const fine = piGainWarning('2,5', '180');
+  assert.ok(fine && fine.includes('mindestens 180 Minuten') && !fine.includes('Eingestellt'));
 });
 
 test('Ausfallbenachrichtigungen: Schalter geht nur bei Änderung mit und stimmt mit dem Entwurf überein', () => {
