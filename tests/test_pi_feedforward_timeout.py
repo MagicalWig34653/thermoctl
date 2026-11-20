@@ -101,3 +101,23 @@ class TestAveragingBoundaries:
     def test_a_sample_at_now_after_an_older_one_has_no_weight(self) -> None:
         samples = [(NOW - 1 * HOUR, _d(5)), (NOW, _d(9))]
         assert smoothed_outdoor(samples, NOW, 1) == _d(5)
+
+
+class TestWindowWithoutOrWithSeveralSamples:
+    def test_without_a_value_in_the_window_the_newest_older_value_counts(self) -> None:
+        # Fenster 1 h, nichts darin; ältere Werte vor 2 h (3 Grad) und vor 1,5 h (9 Grad):
+        # der neueste ältere gilt.
+        samples = [(NOW - 2 * HOUR, _d(3)), (NOW - timedelta(minutes=90), _d(9))]
+        assert smoothed_outdoor(samples, NOW, 1) == _d(9)
+        assert smoothed_outdoor(list(reversed(samples)), NOW, 1) == _d(9)
+
+    def test_value_before_the_window_and_two_inside_use_exact_segment_bounds(self) -> None:
+        # Fenster 4 h. Vor dem Fenster: 10 Grad (vor 6 h). Im Fenster: 2 Grad ab vor 3,5 h,
+        # 6 Grad ab vor 0,5 h. Segmente: 10 Grad 0,5 h (ab Fensterbeginn), 2 Grad 3 h,
+        # 6 Grad 0,5 h: (10*0,5 + 2*3 + 6*0,5) / 4 = 14 / 4 = 3,5.
+        samples = [
+            (NOW - 6 * HOUR, _d(10)),
+            (NOW - timedelta(minutes=210), _d(2)),
+            (NOW - timedelta(minutes=30), _d(6)),
+        ]
+        assert smoothed_outdoor(samples, NOW, 4) == _d("3.5")
