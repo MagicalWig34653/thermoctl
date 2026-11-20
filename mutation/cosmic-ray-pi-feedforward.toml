@@ -16,7 +16,7 @@
 module-path = "thermoctl/domain/pi_feedforward.py"
 timeout = 10.0
 excluded-modules = []
-test-command = ".venv/bin/python -m pytest --no-cov tests/test_pi_feedforward.py"
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_pi_feedforward.py tests/test_pi_feedforward_timeout.py"
 
 [cosmic-ray.distributor]
 name = "local"
