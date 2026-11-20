@@ -108,6 +108,10 @@ export const PI_FIELDS = [
   'pi_integral_time_minutes',
   'pi_min_on_seconds',
   'pi_min_off_seconds',
+  'pi_surplus_decay_factor',
+  'pi_integral_separation_k',
+  'pi_feedforward_gain',
+  'pi_feedforward_smoothing_hours',
 ] as const;
 
 export interface ParametersDraft {
@@ -122,6 +126,11 @@ export interface ParametersDraft {
     integral_time_minutes: string;
     min_on_seconds: string;
     min_off_seconds: string;
+    surplus_decay_factor: string;
+    integral_separation_k: string;
+    feedforward_enabled: boolean;
+    feedforward_gain: string;
+    feedforward_smoothing_hours: string;
   };
   window_temp_drop: boolean;
   fault_notifications: boolean;
@@ -152,6 +161,11 @@ export function draftFromParameters(p: RoomParameters): ParametersDraft {
       integral_time_minutes: String(p.pi.integral_time_minutes),
       min_on_seconds: String(p.pi.min_on_seconds),
       min_off_seconds: String(p.pi.min_off_seconds),
+      surplus_decay_factor: toInput(p.pi.surplus_decay_factor),
+      integral_separation_k: toInput(p.pi.integral_separation_k),
+      feedforward_enabled: p.pi.feedforward_enabled,
+      feedforward_gain: toInput(p.pi.feedforward_gain),
+      feedforward_smoothing_hours: String(p.pi.feedforward_smoothing_hours),
     },
     window_temp_drop: p.window_temp_drop_detection_enabled,
     fault_notifications: p.fault_notifications_enabled,
@@ -203,16 +217,25 @@ export function buildParametersPatch(p: RoomParameters, d: ParametersDraft): Par
     pi_integral_time_minutes: String(p.pi.integral_time_minutes),
     pi_min_on_seconds: String(p.pi.min_on_seconds),
     pi_min_off_seconds: String(p.pi.min_off_seconds),
+    pi_surplus_decay_factor: p.pi.surplus_decay_factor,
+    pi_integral_separation_k: p.pi.integral_separation_k,
+    pi_feedforward_gain: p.pi.feedforward_gain,
+    pi_feedforward_smoothing_hours: String(p.pi.feedforward_smoothing_hours),
   };
   const piDraft: Record<(typeof PI_FIELDS)[number], string> = {
     pi_gain_per_k: d.pi.gain_per_k,
     pi_integral_time_minutes: d.pi.integral_time_minutes,
     pi_min_on_seconds: d.pi.min_on_seconds,
     pi_min_off_seconds: d.pi.min_off_seconds,
+    pi_surplus_decay_factor: d.pi.surplus_decay_factor,
+    pi_integral_separation_k: d.pi.integral_separation_k,
+    pi_feedforward_gain: d.pi.feedforward_gain,
+    pi_feedforward_smoothing_hours: d.pi.feedforward_smoothing_hours,
   };
   for (const name of PI_FIELDS) {
     if (piDraft[name].trim() !== '' && !sameNumber(piDraft[name], piNow[name])) patch[name] = fromInput(piDraft[name]);
   }
+  if (d.pi.feedforward_enabled !== p.pi.feedforward_enabled) patch.pi_feedforward_enabled = d.pi.feedforward_enabled;
   if (d.window_temp_drop !== p.window_temp_drop_detection_enabled) {
     patch.window_temp_drop_detection_enabled = d.window_temp_drop;
   }
@@ -257,12 +280,41 @@ export function localParameterErrors(p: RoomParameters, d: ParametersDraft): Rec
     ['pi_integral_time_minutes', d.pi.integral_time_minutes],
     ['pi_min_on_seconds', d.pi.min_on_seconds],
     ['pi_min_off_seconds', d.pi.min_off_seconds],
+    ['pi_surplus_decay_factor', d.pi.surplus_decay_factor],
+    ['pi_integral_separation_k', d.pi.integral_separation_k],
+    ['pi_feedforward_gain', d.pi.feedforward_gain],
+    ['pi_feedforward_smoothing_hours', d.pi.feedforward_smoothing_hours],
   ];
   for (const [name, text] of required) if (text.trim() === '') errors[name] = 'Bitte einen Wert angeben.';
   if (d.pi.enabled && !p.pi.enabled && !d.pi.confirm) {
     errors.pi_confirm = 'Bitte bestätigen, dass dir die Folgen bewusst sind, bevor PI eingeschaltet wird.';
   }
   return errors;
+}
+
+/** Verstärkung Kp, ab der gewarnt wird (frühere Server-Obergrenze). */
+const PI_GAIN_CAUTION = '0.5';
+/** Ab dieser Verstärkung wird eine längere Nachstellzeit empfohlen. */
+const PI_GAIN_LONG_TI = '1';
+const PI_RECOMMENDED_TI_MINUTES = 180;
+
+/** Hinweis zur Verstärkung Kp: über 0,5 steigt die Schwingneigung, ab 1,0 wird eine
+ *  Nachstellzeit von mindestens 180 Minuten empfohlen. Nur Warnung, keine Prüfung; leere oder
+ *  ungültige Eingaben ergeben `null`. Die Zahlen werden exakt über ihre Ziffern verglichen. */
+export function piGainWarning(gainText: string, integralTimeText: string): string | null {
+  const gain = fromInput(gainText);
+  const aboveCaution = compareDecimal(gain, PI_GAIN_CAUTION);
+  if (gain === '' || aboveCaution === null || aboveCaution <= 0) return null;
+  let text = 'Eine Verstärkung über 0,5 erhöht die Schwingneigung des Reglers. Besser in kleinen Schritten erhöhen und den Verlauf beobachten.';
+  const atLeastOne = compareDecimal(gain, PI_GAIN_LONG_TI);
+  if (atLeastOne !== null && atLeastOne >= 0) {
+    text += ` Ab 1,0 wird eine Nachstellzeit von mindestens ${PI_RECOMMENDED_TI_MINUTES} Minuten empfohlen.`;
+    const ti = Number(fromInput(integralTimeText));
+    if (integralTimeText.trim() !== '' && Number.isFinite(ti) && ti < PI_RECOMMENDED_TI_MINUTES) {
+      text += ` Eingestellt sind ${ti} Minuten.`;
+    }
+  }
+  return text;
 }
 
 /** Liegt der eingetragene Wert außerhalb der vom Server genannten Grenzen? Reine Warnung zur
@@ -519,6 +571,15 @@ export function switchingSummary(a: OperationActuation): { switching: boolean; t
 }
 
 const CONTROLLER_LABELS: Record<string, string> = { hysteresis: 'Hysterese-Regler', pi: 'PI-Regler' };
+
+/** Anteil von 0 bis 1 (Integralanteil, Tastgrad) als Prozent mit einer Nachkommastelle;
+ *  reine Anzeige, `null` und Nicht-Zahlen ergeben einen Gedankenstrich. */
+export function shareAsPercent(value: string | null): string {
+  if (value === null) return '—';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${(number * 100).toFixed(1).replace('.', ',')} %`;
+}
 
 /** Lesbarer Reglername; ein unbekannter Code bleibt roh sichtbar. */
 export const controllerLabel = (code: string): string => CONTROLLER_LABELS[code] ?? code;

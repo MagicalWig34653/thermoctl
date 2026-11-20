@@ -7,7 +7,7 @@
   import { createSaver } from '$lib/operations/saver.svelte';
   import {
     buildParametersPatch, draftFromParameters, errorAt, localParameterErrors,
-    opsFailure, patchedFields, toInput, type OpsFailure, type ParametersDraft,
+    opsFailure, patchedFields, piGainWarning, toInput, type OpsFailure, type ParametersDraft,
   } from '$lib/operations/logic';
   import type { RoomParameters } from '$lib/operations/types';
   import InheritField from './InheritField.svelte';
@@ -56,6 +56,7 @@
     solar_setback_max_k: 'sun', solar_gain_factor: 'sun',
     valve_protection_enabled: 'valve', valve_protection_interval_days: 'valve', valve_protection_duration_minutes: 'valve',
     pi_enabled: 'pi', pi_confirm: 'pi', pi_gain_per_k: 'pi', pi_integral_time_minutes: 'pi', pi_min_on_seconds: 'pi', pi_min_off_seconds: 'pi',
+    pi_surplus_decay_factor: 'pi', pi_integral_separation_k: 'pi', pi_feedforward_enabled: 'pi', pi_feedforward_gain: 'pi', pi_feedforward_smoothing_hours: 'pi',
     window_temp_drop_detection_enabled: 'window',
     fault_notifications_enabled: 'notify',
     sensor_failure_enabled: 'emergency', sensor_failure_profile_id: 'emergency', sensor_failure_emergency_setpoint_c: 'emergency',
@@ -105,6 +106,7 @@
   const generalMessage = $derived(
     saver.failure && !(saver.failure.kind === 'validation' && saver.failure.field && isPlaced(saver.failure.field)) ? saver.failure.message : null,
   );
+  const gainWarning = $derived(draft ? piGainWarning(draft.pi.gain_per_k, draft.pi.integral_time_minutes) : null);
   const range = (l: { minimum: string; maximum: string } | undefined) => (l ? `Erlaubt: ${toInput(l.minimum)} bis ${toInput(l.maximum)}` : null);
 </script>
 
@@ -181,9 +183,17 @@
               {#if err('pi_confirm')}<p class="mt-0 mb-0 text-sm text-destructive">{err('pi_confirm')}</p>{/if}
             {/if}
             <NumField id={idOf('pi_gain_per_k')} label="Verstärkung" unit="je K" bind:value={draft.pi.gain_per_k} hint={range(params.pi.limits.pi_gain_per_k)} error={err('pi_gain_per_k')} />
+            {#if gainWarning}<div data-testid="pi-gain-warning"><Notice tone="warn">{gainWarning}</Notice></div>{/if}
             <NumField id={idOf('pi_integral_time_minutes')} label="Nachstellzeit" unit="Min." inputmode="numeric" bind:value={draft.pi.integral_time_minutes} hint={range(params.pi.limits.pi_integral_time_minutes)} error={err('pi_integral_time_minutes')} />
             <NumField id={idOf('pi_min_on_seconds')} label="Mindest-Einschaltdauer" unit="s" inputmode="numeric" bind:value={draft.pi.min_on_seconds} hint={range(params.pi.limits.pi_min_on_seconds)} error={err('pi_min_on_seconds')} />
             <NumField id={idOf('pi_min_off_seconds')} label="Mindest-Ausschaltdauer" unit="s" inputmode="numeric" bind:value={draft.pi.min_off_seconds} hint={range(params.pi.limits.pi_min_off_seconds)} error={err('pi_min_off_seconds')} />
+            <NumField id={idOf('pi_surplus_decay_factor')} label="Abbau des Integralanteils bei Überschuss" help="pi_surplus_decay" bind:value={draft.pi.surplus_decay_factor} hint={`${range(params.pi.limits.pi_surplus_decay_factor)}. 1 = unveränderter Abbau, 0 = kein Abbau, solange die Raumtemperatur über dem Sollwert liegt. Bei 0 kann der Integralanteil im Messrauschen nur steigen; kleine Werte sind vorsichtiger.`} error={err('pi_surplus_decay_factor')} />
+            <NumField id={idOf('pi_integral_separation_k')} label="Integraltrennung" unit="K" help="pi_integral_separation" bind:value={draft.pi.integral_separation_k} hint={`${range(params.pi.limits.pi_integral_separation_k)}. 0 = aus.`} error={err('pi_integral_separation_k')} />
+            <div class="space-y-4 rounded-lg border border-dashed p-3" data-testid="pi-feedforward">
+              <ToggleRow id={idOf('pi_feedforward_enabled')} label="Vorsteuerung mit Außentemperatur" description="Addiert zum Tastgrad einen Anteil aus der Differenz von Sollwert und geglätteter Außentemperatur. Standard: aus." help="pi_feedforward" bind:checked={draft.pi.feedforward_enabled} error={err('pi_feedforward_enabled')} />
+              <NumField id={idOf('pi_feedforward_gain')} label="Vorsteuerung: Faktor" unit="je K" disabled={!draft.pi.feedforward_enabled} bind:value={draft.pi.feedforward_gain} hint={range(params.pi.limits.pi_feedforward_gain)} error={err('pi_feedforward_gain')} />
+              <NumField id={idOf('pi_feedforward_smoothing_hours')} label="Vorsteuerung: Glättung der Außentemperatur" unit="h" inputmode="numeric" disabled={!draft.pi.feedforward_enabled} bind:value={draft.pi.feedforward_smoothing_hours} hint={range(params.pi.limits.pi_feedforward_smoothing_hours)} error={err('pi_feedforward_smoothing_hours')} />
+            </div>
           </div>
         </details>
 

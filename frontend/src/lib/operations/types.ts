@@ -28,6 +28,11 @@ export interface PiParameters {
   integral_time_minutes: number;
   min_on_seconds: number;
   min_off_seconds: number;
+  surplus_decay_factor: string;
+  integral_separation_k: string;
+  feedforward_enabled: boolean;
+  feedforward_gain: string;
+  feedforward_smoothing_hours: number;
   eligible: boolean;
   eligibility_reason: string;
   limits: Record<string, ParameterLimit>;
@@ -115,6 +120,11 @@ export interface ParametersPatch {
   pi_integral_time_minutes?: string;
   pi_min_on_seconds?: string;
   pi_min_off_seconds?: string;
+  pi_surplus_decay_factor?: string;
+  pi_integral_separation_k?: string;
+  pi_feedforward_enabled?: boolean;
+  pi_feedforward_gain?: string;
+  pi_feedforward_smoothing_hours?: string;
   window_temp_drop_detection_enabled?: boolean;
   fault_notifications_enabled?: boolean;
   sensor_failure_enabled?: boolean;
@@ -161,6 +171,11 @@ export interface DecisionDetail {
   effective_controller: string;
   controller_fallback_reason: string | null;
   controller_fallback_label: string | null;
+  pi_integral_before: string | null;
+  pi_integral_after: string | null;
+  pi_raw_duty: string | null;
+  pi_frozen_duty: string | null;
+  pi_feedforward_duty: string | null;
 }
 
 export interface EmergencyActuator {

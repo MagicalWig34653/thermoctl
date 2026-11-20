@@ -149,6 +149,20 @@ class WriteControlParameters(BaseModel):
     )
     pi_min_on_seconds: int = Field(default=60, ge=0, description=_range("pi_min_on_seconds"))
     pi_min_off_seconds: int = Field(default=60, ge=0, description=_range("pi_min_off_seconds"))
+    # PI-Erweiterungen (Beta): die Vorgaben lassen das bisherige Verhalten unverändert.
+    pi_surplus_decay_factor: Decimal = Field(
+        default=Decimal("1.00"), ge=0, description=_range("pi_surplus_decay_factor")
+    )
+    pi_integral_separation_k: Decimal = Field(
+        default=Decimal("0.0"), ge=0, description=_range("pi_integral_separation_k")
+    )
+    pi_feedforward_enabled: bool = False
+    pi_feedforward_gain: Decimal = Field(
+        default=Decimal("0.020"), ge=0, description=_range("pi_feedforward_gain")
+    )
+    pi_feedforward_smoothing_hours: int = Field(
+        default=3, ge=0, description=_range("pi_feedforward_smoothing_hours")
+    )
 
 
 class ControlParametersResponse(WriteControlParameters):

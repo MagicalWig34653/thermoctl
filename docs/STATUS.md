@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-13. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-20. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
 - **Seit 0.24.0 auf `main`, noch nicht freigegeben:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4–9 offen (Board). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
@@ -9,9 +9,14 @@ Letzte Aktualisierung: 2026-11-13. Diese Datei sagt, was **jetzt** gilt. Verlauf
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **Migrationskopf:** `f7c2a91d4e08` (Hysterese-Spalten mit vier Nachkommastellen).
+- **PI-Erweiterungen (auf `main` noch nicht, Branch der Karte 964E1EFE):** Kp bis 3,00; neue Zonenparameter
+  `pi_surplus_decay_factor`, `pi_integral_separation_k`, `pi_feedforward_enabled/_gain/_smoothing_hours` (Vorgaben = bisheriges Verhalten);
+  Vorsteuerung liest die Außentemperatur aus `measurement` (Quelle der Einstellung „Außenfühler“) mit dem Plan-Sollwert vor der Sonnenabsenkung;
+  Entscheidungsdetails (UI-API, MCP) zeigen I vor/nach, Tastgrad roh/eingefroren und `pi_feedforward_duty`. REST hat keinen Entscheidungs-Endpunkt.
+  Die Kp-Schrittprüfung der Datenbank ist neu gefasst (die alte `% 5` lehnte unter SQLite Werte wie 1,15 ab). Nicht an der Anlage gemessen.
+- **Migrationskopf:** `a3e8c5d17b94` (PI-Erweiterungen; davor `f7c2a91d4e08`, Hysterese-Spalten mit vier Nachkommastellen).
 - **Inhalt von 0.24.0 gegenüber 0.23.0:** Hysterese bis 0,0001 K (Migration `f7c2a91d4e08`; Raumwert strikt ab 0,0001 K geprüft); PI behält den Integralanteil bei Gates und Neustart; Verbindungsanzeige mit Schreibsperre; Fehler- und Leerzustände; Touch-Ziele am Handy; lesbare deaktivierte Primärknöpfe; Raumseite (Ausfallschalter, Erben erklärt, Raumtechnik eingeklappt). Einzelheiten: `CHANGELOG.md`, Abschnitt 0.24.0.
-- **Browsertests (`browser_tests/`):** 45 von 45 grün (2026-11-13, lokal; laufen nicht in der CI). Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
+- **Browsertests (`browser_tests/`):** 49 Tests (2026-11-20, lokal; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,

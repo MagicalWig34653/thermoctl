@@ -338,6 +338,16 @@ Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abg
 Das ist Absicht: Ein Modell soll den
 Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
 
+Die PI-Parameter stehen mit Grenzen und Wert in `read_control_parameters` und lassen sich mit
+`set_control_parameters` einzeln setzen: `pi_gain_per_k` (Kp, 0,05 bis 3,00; über 0,5 steigt die
+Schwingneigung, ab 1,0 wird eine Nachstellzeit von mindestens 180 Minuten empfohlen; über MCP
+erscheint keine Warnung),
+`pi_surplus_decay_factor`, `pi_integral_separation_k`, `pi_feedforward_enabled`,
+`pi_feedforward_gain` und `pi_feedforward_smoothing_hours` (Bedeutung und Bereiche:
+[REST-Referenz](api.md#regelparameter)). `shadow_decisions` nennt je Entscheidung außerdem
+den gewünschten und wirksamen Regler, den Integralanteil vor und nach dem Zyklus, den Tastgrad
+(roh und eingefroren) und den Anteil der Vorsteuerung, jeweils als Anteil von 0 bis 1.
+
 PI (Beta) kann je nach Einstellung mehr Schaltspiele erzeugen als die Hysterese. Wer es über
 MCP aktiviert, umgeht den Warnhinweis, den die Oberfläche am Schalter zeigt — eine
 Modellrechnung steht dort und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md), und die

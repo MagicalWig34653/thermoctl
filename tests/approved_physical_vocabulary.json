@@ -638,6 +638,8 @@
     "thermoctl/domain/zone_settings.py": [
       "PI-Regelung (Beta) eingeschaltet",
       "PI-Regelung (Beta) kann für diese Zone nicht eingeschaltet werden:",
+      "PI-Vorsteuerung Außentemperatur (Beta) eingeschaltet",
+      "PI-Vorsteuerung Faktor (Beta)",
       "Ventilschutz eingeschaltet",
       "Ventilschutz-Abstand",
       "Ventilschutz-Abstand darf höchstens",

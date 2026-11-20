@@ -1608,3 +1608,20 @@ class TestIntegralExpiredWithoutHeating:
     def test_the_latest_heating_wins_over_the_start_of_history(self) -> None:
         last = self.NOW - timedelta(hours=2)
         assert self._expired(last_heating_at=last, earliest=self.NOW - timedelta(days=9)) is False
+
+
+class TestResetPiStateIntegral:
+    """`reset_pi_state` ohne `integral` setzt I auf 0, mit `integral` übernimmt es ihn."""
+
+    MOMENT = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
+
+    def test_default_integral_is_zero(self) -> None:
+        from thermoctl.domain.pi_control import reset_pi_state
+
+        assert reset_pi_state("testgrund", now=self.MOMENT).integral == Decimal(0)
+
+    def test_a_given_integral_is_carried(self) -> None:
+        from thermoctl.domain.pi_control import reset_pi_state
+
+        state = reset_pi_state("testgrund", now=self.MOMENT, integral=Decimal("0.4"))
+        assert state.integral == Decimal("0.4")

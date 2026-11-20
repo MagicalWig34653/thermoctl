@@ -72,6 +72,14 @@ def test_pi_configuration_has_the_specified_defaults_without_inheritance(
         zone.pi_min_on_seconds,
         zone.pi_min_off_seconds,
     ) == (False, Decimal("0.25"), 180, 60, 60)
+    # Die Erweiterungen starten mit dem Wert, der das bisherige Verhalten lässt.
+    assert (
+        zone.pi_surplus_decay_factor,
+        zone.pi_integral_separation_k,
+        zone.pi_feedforward_enabled,
+        zone.pi_feedforward_gain,
+        zone.pi_feedforward_smoothing_hours,
+    ) == (Decimal("1.00"), Decimal("0.00"), False, Decimal("0.0200"), 3)
     effective = control_parameters(session, zone)
     assert isinstance(effective, ControlParameters)
     assert (
@@ -81,14 +89,31 @@ def test_pi_configuration_has_the_specified_defaults_without_inheritance(
         effective.pi_min_on_seconds,
         effective.pi_min_off_seconds,
     ) == (False, Decimal("0.25"), 180, 60, 60)
+    assert (
+        effective.pi_surplus_decay_factor,
+        effective.pi_integral_separation_k,
+        effective.pi_feedforward_enabled,
+        effective.pi_feedforward_gain,
+        effective.pi_feedforward_smoothing_hours,
+    ) == (Decimal("1.00"), Decimal("0.0"), False, Decimal("0.020"), 3)
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [
         ("pi_gain_per_k", Decimal("0.04")),
-        ("pi_gain_per_k", Decimal("0.51")),
+        ("pi_gain_per_k", Decimal("3.05")),
         ("pi_gain_per_k", Decimal("0.06")),
+        ("pi_surplus_decay_factor", Decimal("1.05")),
+        ("pi_surplus_decay_factor", Decimal("-0.05")),
+        ("pi_surplus_decay_factor", Decimal("0.07")),
+        ("pi_integral_separation_k", Decimal("2.10")),
+        ("pi_integral_separation_k", Decimal("0.15")),
+        ("pi_feedforward_gain", Decimal("0.0040")),
+        ("pi_feedforward_gain", Decimal("0.0510")),
+        ("pi_feedforward_gain", Decimal("0.0215")),
+        ("pi_feedforward_smoothing_hours", 0),
+        ("pi_feedforward_smoothing_hours", 13),
         ("pi_integral_time_minutes", 59),
         ("pi_integral_time_minutes", 721),
         ("pi_integral_time_minutes", 61),
@@ -113,10 +138,14 @@ def test_pi_configuration_rejects_values_outside_bounds_or_steps(
 @pytest.mark.parametrize(
     ("field", "lower", "upper"),
     [
-        ("pi_gain_per_k", Decimal("0.05"), Decimal("0.50")),
+        ("pi_gain_per_k", Decimal("0.05"), Decimal("3.00")),
         ("pi_integral_time_minutes", 60, 720),
         ("pi_min_on_seconds", 60, 300),
         ("pi_min_off_seconds", 60, 300),
+        ("pi_surplus_decay_factor", Decimal("0.00"), Decimal("1.00")),
+        ("pi_integral_separation_k", Decimal("0.00"), Decimal("2.00")),
+        ("pi_feedforward_gain", Decimal("0.0050"), Decimal("0.0500")),
+        ("pi_feedforward_smoothing_hours", 1, 12),
     ],
 )
 def test_pi_configuration_accepts_both_specified_boundaries(
@@ -141,7 +170,7 @@ def test_pi_is_now_a_shared_control_parameter_across_every_adapter(session: Sess
     """
     assert "pi_enabled" not in WriteZone.model_fields
 
-    for name in ("pi_enabled", *PI_FELDER):
+    for name in ("pi_enabled", "pi_feedforward_enabled", *PI_FELDER):
         assert name in WriteControlParameters.model_fields, name
         assert name in BY_NAME, name
         assert name in {description.name for description in PARAMETERS}, name
@@ -221,7 +250,7 @@ def test_save_control_parameters_rejects_a_pi_value_outside_its_range(
     values = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values["pi_gain_per_k"] = Decimal("0.60")  # above the 0.50 maximum
+    values["pi_gain_per_k"] = Decimal("3.10")  # above the 3.00 maximum
 
     with pytest.raises(ParameterOutOfRange, match="muss zwischen"):
         save_control_parameters(session, zone, values, user_id=None, source="api")

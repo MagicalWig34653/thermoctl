@@ -11,6 +11,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (`a3e8c5d17b94`): fünf neue Spalten an `zone` (Vorgaben = bisheriges Verhalten: Abbauwert 1,00, Integraltrennung 0,0 K, Vorsteuerung aus, Verstärkung der Vorsteuerung 0,020, Glättung 3 h), die Obergrenze von Kp wird von 0,50 auf 3,00 angehoben, und `shadow_decision` bekommt `pi_feedforward_duty`. Bestehende Zonen ändern ihr Verhalten nicht. Beim Zurückstufen wird Kp über 0,50 auf 0,50 begrenzt und die neuen Spalten entfallen.
+
+### Neu
+
+- **Was von der PI-Verbesserung umgesetzt ist und was nicht:** Der Anti-Windup beim Annähern von unten (Auftrag B) ist als **Integraltrennung** (`pi_integral_separation_k`) umgesetzt; die vorgeschlagene Vorhersage „Ist + Anstieg × Verzögerung“ ist **nicht** umgesetzt (in der Simulation kaum Wirkung). Das Ti-Minimum bleibt bei 60 Minuten, weil ein kleineres Ti die Dämpfung bei großem Kp verschlechtert. Eine **lernende** Vorsteuerung (Auftrag D) ist **nicht** enthalten: Der Wert c ist ein fester Zonenparameter (`pi_feedforward_gain`). Die Simulationen sind keine Messung an der Anlage.
+- **Hysterese im PI-Betrieb (Auftrag E, nur Dokumentation, kein Code):** Im PI-Betrieb beeinflusst `hysteresis_k` die Entscheidung über die Heizpulse nicht, nur Rückfall, Vorrangregeln und die Haltephase. Die strikten Vergleiche an den Schwellen im Ein/Aus-Betrieb bleiben unverändert (eine Änderung auf „kleiner gleich“ / „größer gleich“ würde den Ein/Aus-Betrieb verändern und gehört nicht zu dieser Änderung). Der Text „Hysterese 0,00 K“ in der Begründung entsteht durch die Rundung auf zwei Nachkommastellen.
+- **Abbau bei Überschuss 0:** Der Integralanteil wird dann zur Ratsche und kann im Messrauschen nur steigen; die Oberfläche weist darauf hin.
+- **PI-Regelung (Beta), neue Einstellungen je Raum:** Abbau des Integralanteils bei Überschuss (0 bis 1), Integraltrennung (0 bis 2 K), Vorsteuerung mit der geglätteten Außentemperatur (aus, Wert 0,005 bis 0,050 je K, Glättung 1 bis 12 h). Die Vorsteuerung nutzt den Plan-Sollwert vor der Sonnenabsenkung und fällt ohne gültigen Außenwert (über drei Stunden) auf 0 zurück. Verstärkung Kp jetzt bis 3,00; die Oberfläche warnt ab 0,5 vor Schwingneigung und empfiehlt ab 1,0 eine Nachstellzeit von mindestens 180 Minuten. REST, MCP und Oberfläche kennen die Felder.
+- **Entscheidungsdetails zeigen die PI-Zahlen:** Integralanteil vor und nach dem Zyklus, Tastgrad roh und eingefroren und der Anteil der Vorsteuerung stehen in `GET /ui-api/operation`, in `shadow_decisions` (MCP) und auf der Betriebsseite.
+
 ### Geändert
 
 - **Speichern aller Raumfelder erzwingt die Grenzen:** `PUT /api/v1/zones/{id}/parameters` und die Raum-Einstellungen der Oberfläche prüfen jetzt Hysterese (einschließlich Obergrenze 5,0 K), Mindest-Ein-/Ausschaltdauer, Sensorausfall, Fensternachlauf, Sensorabgleich und die Obergrenze der Sonnenabsenkung gegen dieselben Bereiche wie der Einzelwert (`PUT …/parameters/{name}`) und MCP. Bisher galt dort nur „nicht negativ“; Werte wie 0 s Mindestdauer oder 99 K Hysterese ließen sich speichern. Abgelehnt wird mit „<Bezeichnung> muss zwischen … und … liegen.“ (422), die Oberfläche markiert das Feld. Leere Felder (geerbt) bleiben erlaubt. **Beim Upgrade zu wissen:** Ein Wert, der schon vor dem Update außerhalb des Bereichs gespeichert war, blockiert das Speichern anderer Felder nicht, solange er unverändert bleibt; wer ihn ändert, muss in den Bereich. Nur die Hysterese wird immer geprüft: Steht eine Raumhysterese außerhalb von 0,0001–5,0 K, lässt sich die Zone erst nach Korrektur dieses Werts speichern.

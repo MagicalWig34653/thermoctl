@@ -24,7 +24,7 @@ PI_NAMES = [p.name for p in PARAMETERS if p.group == GROUP_PI]
 
 
 def _stored(name: str, value: Decimal) -> Decimal | int:
-    return value if name == "pi_gain_per_k" else int(value)
+    return int(value) if BY_NAME[name].integral else value
 
 
 def _accepted(session: Session, zone: Zone, name: str, value: Decimal) -> bool:
@@ -66,7 +66,8 @@ def test_database_accepts_exactly_what_the_table_allows(session: Session, name: 
     for value in on_grid:
         assert _accepted(session, zone, name, value), f"{name}={value} muss gelten"
 
-    off_grid = lo + step * Decimal("0.4")
-    outside = [lo - step, hi + step, off_grid]
+    outside = [lo - step, hi + step]
+    if step != 1:  # neben einem Raster von 1 gibt es keinen speicherbaren ganzzahligen Wert
+        outside.append(lo + step * Decimal("0.4"))
     for value in outside:
         assert not _accepted(session, zone, name, value), f"{name}={value} muss scheitern"

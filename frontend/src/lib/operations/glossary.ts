@@ -36,7 +36,19 @@ export const OPS_TERMS: Record<string, Term> = {
   },
   pi: {
     title: 'PI-Regler (Beta)',
-    text: 'Ein Regler, der stetig nachregelt, statt nur ein- und auszuschalten. Er schaltet häufiger und braucht passende Parameter. Ob er für diesen Raum zulässig ist, sagt der Server.',
+    text: 'Ein Regler, der stetig nachregelt, statt nur ein- und auszuschalten. Er schaltet häufiger und braucht passende Parameter. Weitere Einstellungen: Abbau des Integralanteils bei Überschuss, Integraltrennung und eine Vorsteuerung mit der geglätteten Außentemperatur (ab Werk aus). Eine Verstärkung über 0,5 erhöht die Schwingneigung. Ob er für diesen Raum zulässig ist, sagt der Server.',
+  },
+  pi_surplus_decay: {
+    title: 'Abbau bei Überschuss',
+    text: 'Liegt die Raumtemperatur über dem Sollwert, wird der Integralanteil des Reglers abgebaut. Dieser Faktor skaliert den Abbau: 1 lässt ihn unverändert, 0 hält den Integralanteil in dieser Lage fest, Werte dazwischen bremsen ihn.',
+  },
+  pi_integral_separation: {
+    title: 'Integraltrennung',
+    text: 'Liegt die Raumtemperatur um mehr als diesen Wert (in Kelvin) unter dem Sollwert, wird der Integralanteil nicht weiter aufgebaut. 0 schaltet die Funktion aus.',
+  },
+  pi_feedforward: {
+    title: 'Vorsteuerung mit Außentemperatur',
+    text: 'Zusätzlicher Anteil im Tastgrad: Faktor mal Differenz aus Sollwert und geglätteter Außentemperatur. Die Glättung ist ein gleitendes Mittel über die eingestellten Stunden. Fehlt die Außentemperatur, entfällt der Anteil.',
   },
   valve_protection: {
     title: 'Ventilschutz',

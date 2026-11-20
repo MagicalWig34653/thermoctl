@@ -283,10 +283,13 @@ aktiviert; dieser Endpunkt aktiviert oder deaktiviert ihn je Zone.
  "sensor_timeout_seconds": null, "temperature_offset_k": "0.00",
  "window_resume_delay_seconds": null,
  "pi_enabled": false, "pi_gain_per_k": "0.25", "pi_integral_time_minutes": 180,
- "pi_min_on_seconds": 60, "pi_min_off_seconds": 60}
+ "pi_min_on_seconds": 60, "pi_min_off_seconds": 60,
+ "pi_surplus_decay_factor": "1.00", "pi_integral_separation_k": "0.0",
+ "pi_feedforward_enabled": false, "pi_feedforward_gain": "0.020",
+ "pi_feedforward_smoothing_hours": 3}
 ```
 
-Die fünf `pi_*`-Werte gehören zur **PI-Regelung (Beta)**, seit 0.5.0. `pi_enabled` ist je
+Die `pi_*`-Werte gehören zur **PI-Regelung (Beta)**, seit 0.5.0. `pi_enabled` ist je
 Zone aus als Vorgabe und lässt sich nur setzen, wenn die Zone dafür taugt. Die Prüfung ist
 gerätegenau, nicht zonenweit: Ein Gerät mit der Fähigkeit `thermostat`, das nicht
 selbstregelnd ist, schließt PI aus — es bekäme die Entscheidung als Sollwertsprung
@@ -301,6 +304,29 @@ Hysterese zurückzufallen.
 des Tastgrads darf sie unterschreiten. Das ist eine bewusste Entscheidung; sie kann je nach Einstellung
 zu mehr Schaltspielen führen als bei der Hysterese. Eine Modellrechnung dazu steht am Schalter
 in der Oberfläche und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md).
+
+`pi_gain_per_k` (Kp) darf von 0,05 bis 3,00 in Schritten von 0,05 liegen. Ein Wert über 0,5
+erhöht die Schwingneigung des Reglers; die Oberfläche warnt davor und empfiehlt ab 1,0 eine
+Nachstellzeit von mindestens 180 Minuten. Die Vorgabe 0,25 ist unverändert. Dieselbe
+Empfehlung gilt für Aufrufe über REST und MCP, auch wenn dort keine Warnung erscheint.
+`pi_surplus_decay_factor` = 0 lässt den Integralanteil zur Ratsche werden: Er kann im
+Messrauschen nur steigen.
+
+Fünf weitere Werte sind Beta-Erweiterungen, deren Vorgaben das bisherige Verhalten lassen:
+
+| Feld | Bereich | Vorgabe | Bedeutung |
+|---|---|---|---|
+| `pi_surplus_decay_factor` | 0,00 bis 1,00, Schritt 0,05 | 1,00 | Skaliert den Abbau des Integralanteils, solange der Raum über dem Sollwert liegt. 1 = wie bisher, 0 = kein Abbau. |
+| `pi_integral_separation_k` | 0,0 bis 2,0 K, Schritt 0,1 | 0,0 (aus) | Liegt der Raum um mehr als diesen Wert unter dem Sollwert, wird der Integralanteil nicht weiter aufgebaut. |
+| `pi_feedforward_enabled` | an/aus | aus | Vorsteuerung mit der Außentemperatur. |
+| `pi_feedforward_gain` | 0,005 bis 0,050 je K, Schritt 0,001 | 0,020 | Vorsteuerung = dieser Wert mal (Plan-Sollwert minus geglättete Außentemperatur), begrenzt auf 0 bis 1. |
+| `pi_feedforward_smoothing_hours` | 1 bis 12 h, ganzzahlig | 3 | Fenster des gleitenden Mittels der Außentemperatur. |
+
+Die Vorsteuerung liest die Außentemperatur der anlagenweiten Außenfühler-Quelle
+(Einstellung „Außenfühler“). Der Plan-Sollwert ist der Sollwert vor der Sonnenabsenkung,
+damit die Sonne nicht doppelt wirkt. Ohne gültigen Außenwert, nach mehr als drei Stunden
+ohne gültigen Wert oder ohne Quelle entfällt der Anteil. Alle vier Regeln wirken nur, wenn
+PI für die Zone wirksam ist; Ein/Aus-Betrieb und Rückfälle bleiben unverändert.
 
 `PUT /api/v1/zones/{zone_id}/parameters/{name}` setzt **einen** Parameter und lässt die
 übrigen, wie sie sind — auch die geerbten. Neben dem PUT auf alle, nicht statt seiner: Wer

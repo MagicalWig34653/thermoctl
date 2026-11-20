@@ -69,6 +69,11 @@ from thermoctl.domain.pi_control import (
     pi_eligible,
     reset_pi_state,
 )
+from thermoctl.domain.pi_feedforward import (
+    FEEDFORWARD_OUTDOOR_TIMEOUT,
+    feedforward_duty,
+    smoothed_outdoor,
+)
 from thermoctl.domain.schedule import Setpoint, resolved_setpoint, running_vacation
 from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
 from thermoctl.domain.solar_setback import apply as apply_solar_setback
@@ -1459,7 +1464,55 @@ def _neutral_pi_fields() -> dict[str, object]:
         "pi_min_duration_decision": None,
         "pi_reset_reason": None,
         "pi_candidate_would_heat": None,
+        "pi_feedforward_duty": None,
     }
+
+
+def _zone_feedforward_duty(
+    session: Session,
+    settings: Setting,
+    parameter: ControlParameters,
+    plan_setpoint_c: Decimal,
+    now: datetime,
+) -> Decimal:
+    """The outdoor-temperature feed-forward share for one PI cycle (0 if off or no value).
+
+    One query, only when the zone has the feed-forward switched on: the numeric
+    `temperature` measurements of the plant-wide outdoor source for the smoothing window
+    plus the timeout of `smoothed_outdoor` (which falls back to the last valid value, up
+    to that timeout). Text readings (`unavailable`, `unknown`) arrive with
+    `value_numeric` NULL and count as invalid. `plan_setpoint_c` is the plan setpoint
+    *before* the solar setback -- see `domain.pi_feedforward`.
+    """
+    if not parameter.pi_feedforward_enabled:
+        return Decimal(0)
+    device_id = settings.outdoor_temperature_source_device_id
+    if device_id is None:
+        return Decimal(0)
+    moment = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo is not None else now
+    since = moment - timedelta(hours=parameter.pi_feedforward_smoothing_hours) - (
+        FEEDFORWARD_OUTDOOR_TIMEOUT
+    )
+    rows = session.execute(
+        select(Measurement.measured_at, Measurement.value_numeric)
+        .join(DeviceCapability, DeviceCapability.id == Measurement.capability_id)
+        .where(
+            Measurement.device_id == device_id,
+            DeviceCapability.code == "temperature",
+            Measurement.measured_at >= since,
+            not_in_future(moment),
+        )
+        .order_by(Measurement.measured_at)
+    ).all()
+    outdoor = smoothed_outdoor(
+        [(at, value) for at, value in rows], moment, parameter.pi_feedforward_smoothing_hours
+    )
+    return feedforward_duty(
+        enabled=True,
+        gain=parameter.pi_feedforward_gain,
+        setpoint_c=plan_setpoint_c,
+        outdoor_smoothed_c=outdoor,
+    )
 
 
 def _hysteresis_phase_still_holding(
@@ -1713,6 +1766,11 @@ def _pi_outcome(
             integral_time_minutes=Decimal(parameter.pi_integral_time_minutes),
             pi_min_on_seconds=parameter.pi_min_on_seconds,
             pi_min_off_seconds=parameter.pi_min_off_seconds,
+            surplus_decay_factor=parameter.pi_surplus_decay_factor,
+            integral_separation_k=parameter.pi_integral_separation_k,
+            feedforward_duty=_zone_feedforward_duty(
+                session, settings, parameter, setpoint.temperature_c, now
+            ),
         ),
     )
     _write_pi_state(state, output, now)
@@ -1732,6 +1790,7 @@ def _pi_outcome(
     fields["pi_integrator_action"] = output.integrator_action
     fields["pi_reset_reason"] = output.state.last_reset_reason
     fields["pi_candidate_would_heat"] = output.heating
+    fields["pi_feedforward_duty"] = output.feedforward_duty
     if integral_dropped:
         fields["pi_integral_before"] = stored_integral
         fields["pi_integrator_action"] = INTEGRATOR_RESET

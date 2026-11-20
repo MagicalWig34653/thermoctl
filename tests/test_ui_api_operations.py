@@ -164,7 +164,17 @@ def test_parameters_show_own_and_effective_values_separately(
     assert body["pi"]["enabled"] is False
     assert body["pi"]["eligible"] is False
     assert "Schaltaktor" in body["pi"]["eligibility_reason"]
-    assert body["pi"]["limits"]["pi_gain_per_k"]["maximum"] == "0.50"
+    assert body["pi"]["limits"]["pi_gain_per_k"]["maximum"] == "3.00"
+    assert body["pi"]["surplus_decay_factor"] == "1.00"
+    assert body["pi"]["integral_separation_k"] == "0.00"
+    assert body["pi"]["feedforward_enabled"] is False
+    assert body["pi"]["feedforward_gain"] == "0.02"
+    assert body["pi"]["feedforward_smoothing_hours"] == 3
+    assert set(body["pi"]["limits"]) == {
+        "pi_gain_per_k", "pi_integral_time_minutes", "pi_min_on_seconds", "pi_min_off_seconds",
+        "pi_surplus_decay_factor", "pi_integral_separation_k", "pi_feedforward_gain",
+        "pi_feedforward_smoothing_hours",
+    }
     assert body["sensor_failure"]["profile_source"] == "Vorgabe"
     assert body["sensor_failure"]["effective_profile_name"] == "Notbetrieb Vorgabe"
     assert body["sensor_failure"]["profiles"][0]["name"] == "Notbetrieb Vorgabe"
@@ -380,7 +390,12 @@ def test_null_for_non_inheriting_fields_means_unchanged(
             {"valve_protection_interval_days": 1, "valve_protection_duration_minutes": 2000},
             "valve_protection_duration_minutes",
         ),
-        ({"pi_gain_per_k": "0.9"}, "pi_gain_per_k"),
+        ({"pi_gain_per_k": "3.1"}, "pi_gain_per_k"),
+        ({"pi_surplus_decay_factor": "1.05"}, "pi_surplus_decay_factor"),
+        ({"pi_integral_separation_k": "2.1"}, "pi_integral_separation_k"),
+        ({"pi_feedforward_gain": "0.051"}, "pi_feedforward_gain"),
+        ({"pi_feedforward_smoothing_hours": 13}, "pi_feedforward_smoothing_hours"),
+        ({"pi_feedforward_smoothing_hours": "2.5"}, "pi_feedforward_smoothing_hours"),
         ({"pi_integral_time_minutes": 61}, "pi_integral_time_minutes"),
         ({"pi_min_on_seconds": 10}, "pi_min_on_seconds"),
         ({"pi_min_off_seconds": 400}, "pi_min_off_seconds"),
@@ -620,6 +635,11 @@ def test_operation_shows_decisions_with_reasons_and_emergency_per_zone(
     decision.effective_controller = "hysteresis"
     decision.controller_fallback_reason = "fenster_offen"
     decision.scheduled_setpoint_c = Decimal("21.0")
+    decision.pi_integral_before = Decimal("0.200000")
+    decision.pi_integral_after = Decimal("0.210000")
+    decision.pi_raw_duty = Decimal("0.560000")
+    decision.pi_frozen_duty = Decimal("0.550000")
+    decision.pi_feedforward_duty = Decimal("0.320000")
     other = create_zone(session, "keller")
     other_decision = create_shadow_decision(session, other)
     other_decision.requested_controller = "pi"
@@ -639,6 +659,11 @@ def test_operation_shows_decisions_with_reasons_and_emergency_per_zone(
     assert room["decision"]["effective_controller"] == "hysteresis"
     assert room["decision"]["controller_fallback_label"] == "Ein Fenster ist offen."
     assert room["decision"]["planned_setpoint_c"] == "21.0"
+    assert room["decision"]["pi_integral_before"] == "0.200000"
+    assert room["decision"]["pi_integral_after"] == "0.210000"
+    assert room["decision"]["pi_raw_duty"] == "0.560000"
+    assert room["decision"]["pi_frozen_duty"] == "0.550000"
+    assert room["decision"]["pi_feedforward_duty"] == "0.320000"
     assert room["emergency"]["stage"] == "normal"
     assert room["emergency"]["actuators"] == [] and room["emergency"]["comparisons"] == []
     unknown = next(r for r in body["rooms"] if r["id"] == other.id)
