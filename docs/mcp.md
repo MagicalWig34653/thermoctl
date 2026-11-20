@@ -340,7 +340,8 @@ Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
 
 Die PI-Parameter stehen mit Grenzen und Wert in `read_control_parameters` und lassen sich mit
 `set_control_parameters` einzeln setzen: `pi_gain_per_k` (Kp, 0,05 bis 3,00; über 0,5 steigt die
-Schwingneigung, ab 1,0 wird eine Nachstellzeit von mindestens 180 Minuten empfohlen),
+Schwingneigung, ab 1,0 wird eine Nachstellzeit von mindestens 180 Minuten empfohlen; über MCP
+erscheint keine Warnung),
 `pi_surplus_decay_factor`, `pi_integral_separation_k`, `pi_feedforward_enabled`,
 `pi_feedforward_gain` und `pi_feedforward_smoothing_hours` (Bedeutung und Bereiche:
 [REST-Referenz](api.md#regelparameter)). `shadow_decisions` nennt je Entscheidung außerdem

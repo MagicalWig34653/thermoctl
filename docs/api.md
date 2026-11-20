@@ -307,9 +307,12 @@ in der Oberfläche und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md).
 
 `pi_gain_per_k` (Kp) darf von 0,05 bis 3,00 in Schritten von 0,05 liegen. Ein Wert über 0,5
 erhöht die Schwingneigung des Reglers; die Oberfläche warnt davor und empfiehlt ab 1,0 eine
-Nachstellzeit von mindestens 180 Minuten. Die Vorgabe 0,25 ist unverändert.
+Nachstellzeit von mindestens 180 Minuten. Die Vorgabe 0,25 ist unverändert. Dieselbe
+Empfehlung gilt für Aufrufe über REST und MCP, auch wenn dort keine Warnung erscheint.
+`pi_surplus_decay_factor` = 0 lässt den Integralanteil zur Ratsche werden: Er kann im
+Messrauschen nur steigen.
 
-Vier weitere Werte sind Beta-Erweiterungen, deren Vorgaben das bisherige Verhalten lassen:
+Fünf weitere Werte sind Beta-Erweiterungen, deren Vorgaben das bisherige Verhalten lassen:
 
 | Feld | Bereich | Vorgabe | Bedeutung |
 |---|---|---|---|

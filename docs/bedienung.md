@@ -256,6 +256,20 @@ Nachstellzeit von mindestens 180 Minuten. Auf der Betriebsseite zeigt die letzte
 PI Tastgrad (roh und eingefroren), Integralanteil vor und nach dem Zyklus und den Anteil der
 Vorsteuerung.
 
+Zur **Hysterese im PI-Betrieb:** Solange PI für einen Raum wirksam ist, beeinflusst `hysteresis_k`
+die Entscheidung über die Heizpulse nicht; sie folgt allein dem Tastgrad. Die Hysterese gilt weiter
+für den Rückfall (zum Beispiel bei einer Zeitlücke), für die Vorrangregeln (Fenster, Frostschutz,
+Sensorausfall) und für die Haltephase, die unter Hysterese begonnen hat. Im Ein/Aus-Betrieb sind
+die Vergleiche an den Schwellen strikt (kleiner beziehungsweise größer als); das bleibt so, eine
+Änderung auf „kleiner gleich“ würde den Ein/Aus-Betrieb verändern. Der Begründungstext rundet die
+Hysterese auf zwei Nachkommastellen: Bei 0,0001 K steht dort „Hysterese 0,00 K“, der gespeicherte
+und wirksame Wert ist trotzdem 0,0001 K.
+
+**Abbau bei Überschuss auf 0** hält den Integralanteil fest, solange der Raum über dem Sollwert
+liegt. Das hat ein Risiko: Der Integralanteil wird dann zur Ratsche und kann im Messrauschen nur
+steigen, nie sinken. Besser mit kleinen Werten (zum Beispiel 0,3) beginnen und den Verlauf
+beobachten.
+
 **Regelvorgaben** fasst die anlagenweiten Werte zusammen, die ein Raum erbt, solange er
 nichts Eigenes einträgt: Regelzyklus, Hysterese, Mindest-Schaltdauern, Sensor-Timeouts und
 die PI-Regelung. Eigene Seiten gibt es für **Temperaturmodi**, **Fenster & Alarm**
