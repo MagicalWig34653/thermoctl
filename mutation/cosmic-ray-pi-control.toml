@@ -16,7 +16,7 @@
 module-path = "thermoctl/domain/pi_control.py"
 timeout = 10.0
 excluded-modules = []
-test-command = ".venv/bin/python -m pytest --no-cov tests/test_pi_control.py"
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_pi_control.py tests/test_pi_control_extensions.py"
 
 [cosmic-ray.distributor]
 name = "local"

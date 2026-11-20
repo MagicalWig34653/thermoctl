@@ -139,6 +139,9 @@ def pi_arithmetic(
     dt_seconds: Decimal,
     gain_per_k: Decimal,
     integral_time_minutes: Decimal,
+    surplus_decay_factor: Decimal = Decimal(1),
+    integral_separation_k: Decimal = Decimal(0),
+    feedforward_duty: Decimal = Decimal(0),
 ) -> tuple[Decimal, Decimal]:
     """One PI step: `(u, neuer Integralanteil)` (section 2).
 
@@ -147,17 +150,33 @@ def pi_arithmetic(
     is exactly saturated (0 or 1) *and* the error still pushes further into the same
     saturation, the integral is frozen rather than driven further past the bound it
     is already clamped to; in the opposite direction it is free to unwind.
+
+    `surplus_decay_factor` (0..1, default 1 = unchanged) scales every *negative*
+    integral increment, i.e. unwinding while the room is above the setpoint (`e < 0`).
+    With 0 the integral is kept at a surplus (sun heating the room does not erase the
+    heating demand the room will have again at night); with 1 it unwinds as before.
+    It scales only the free unwinding: the lock at `u = 0` above stays as it is. A
+    value outside 0..1 is clamped, a negative one would turn unwinding into winding up.
+
+    `integral_separation_k` (default 0 = off) is integral separation: with a value
+    above 0 and `e > k` (strictly, signed: far *below* the setpoint, never a surplus)
+    the integral is frozen -- neither raised nor unwound -- because a large error that
+    the plant delay has not yet answered would only wind it up (it overshoots when the
+    setpoint is reached). From `e <= k` on it integrates as before.
     """
-    u_before = _clamp01(gain_per_k * error_k + integral)
+    u_before = _clamp01(gain_per_k * error_k + integral + feedforward_duty)
     stuck_high = u_before == 1 and error_k > 0
     stuck_low = u_before == 0 and error_k < 0
-    if stuck_high or stuck_low:
+    separated = integral_separation_k > 0 and error_k > integral_separation_k
+    if stuck_high or stuck_low or separated:
         new_integral = integral
     else:
         ti_seconds = integral_time_minutes * 60
         increment = (gain_per_k / ti_seconds) * error_k * dt_seconds
+        if error_k < 0:
+            increment = increment * _clamp01(surplus_decay_factor)
         new_integral = _clamp01(integral + increment)
-    u = _clamp01(gain_per_k * error_k + new_integral)
+    u = _clamp01(gain_per_k * error_k + new_integral + feedforward_duty)
     return u, new_integral
 
 
@@ -411,6 +430,10 @@ class PiCycleInput:
     integral_time_minutes: Decimal
     pi_min_on_seconds: int
     pi_min_off_seconds: int
+    # Optional rules, all with defaults that reproduce the earlier behaviour exactly.
+    surplus_decay_factor: Decimal = Decimal(1)
+    integral_separation_k: Decimal = Decimal(0)
+    feedforward_duty: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -428,6 +451,9 @@ class PiCycleOutput:
     # `False` whenever no modulator run happened this cycle (awaiting a window
     # boundary, or a time gap/context reset that only resets state).
     switched: bool
+    # The feed-forward share that went into `duty_raw` (0 if none, and 0 in cycles
+    # that computed no duty). `duty_raw` itself includes it.
+    feedforward_duty: Decimal = Decimal(0)
 
 
 def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
@@ -499,6 +525,9 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         dt_seconds=dt,
         gain_per_k=cycle.gain_per_k,
         integral_time_minutes=cycle.integral_time_minutes,
+        surplus_decay_factor=cycle.surplus_decay_factor,
+        integral_separation_k=cycle.integral_separation_k,
+        feedforward_duty=cycle.feedforward_duty,
     )
     modulator_result = window_modulate(
         base.modulator,
@@ -529,6 +558,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         reason_code=modulator_result.reason_code,
         integrator_action=modulator_result.integrator_action,
         switched=modulator_result.switched,
+        feedforward_duty=cycle.feedforward_duty,
     )
 
 
