@@ -41,6 +41,12 @@ class ControlParameters:
     pi_integral_time_minutes: int = 180
     pi_min_on_seconds: int = 60
     pi_min_off_seconds: int = 60
+    # PI-Erweiterungen (Beta); die Vorgaben lassen das bisherige Verhalten unverändert.
+    pi_surplus_decay_factor: Decimal = Decimal("1.00")
+    pi_integral_separation_k: Decimal = Decimal("0.0")
+    pi_feedforward_enabled: bool = False
+    pi_feedforward_gain: Decimal = Decimal("0.020")
+    pi_feedforward_smoothing_hours: int = 3
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
@@ -79,6 +85,11 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
         pi_integral_time_minutes=zone.pi_integral_time_minutes,
         pi_min_on_seconds=zone.pi_min_on_seconds,
         pi_min_off_seconds=zone.pi_min_off_seconds,
+        pi_surplus_decay_factor=zone.pi_surplus_decay_factor,
+        pi_integral_separation_k=zone.pi_integral_separation_k,
+        pi_feedforward_enabled=zone.pi_feedforward_enabled,
+        pi_feedforward_gain=zone.pi_feedforward_gain,
+        pi_feedforward_smoothing_hours=zone.pi_feedforward_smoothing_hours,
     )
 
 
@@ -155,15 +166,12 @@ def validate_pi_parameters(
     eligibility check -- the same reason `validate_valve_protection` lives here and
     not in an adapter.
     """
-    for name in (
-        "pi_gain_per_k",
-        "pi_integral_time_minutes",
-        "pi_min_on_seconds",
-        "pi_min_off_seconds",
-    ):
+    for description in PARAMETERS:
+        if description.group != GROUP_PI:
+            continue
         check_parameter_value(
-            BY_NAME[name],
-            Decimal(values[name]),  # type: ignore[arg-type]
+            description,
+            Decimal(values[description.name]),  # type: ignore[arg-type]
         )
     if values["pi_enabled"]:
         eligibility = pi_eligibility(
@@ -375,7 +383,7 @@ class ParameterDescription:
 
 GROUP_INHERITED = "inherited"  # empty zone value = inherited from the plant default
 GROUP_VALVE_PROTECTION = "valve_protection"  # timing fields; the on-off flag is its own field
-GROUP_PI = "pi"  # PI (Beta) fields; the on-off flag is its own field
+GROUP_PI = "pi"  # PI (Beta) fields; the on-off flags are their own fields
 GROUP_FLAG = "flag"  # on-off flags, handled outside the numeric field lists
 
 # The one description of the bounds. The global defaults that have a zone counterpart
@@ -444,7 +452,7 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
     ),
     ParameterDescription(
         "pi_gain_per_k", "PI-Verstärkung Kp (Beta)", "1/K",
-        Decimal("0.05"), Decimal("0.50"), Decimal("0.05"),
+        Decimal("0.05"), Decimal("3.00"), Decimal("0.05"),
         group=GROUP_PI, binding_step=True,
     ),
     ParameterDescription(
@@ -462,6 +470,36 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         Decimal(60), Decimal(300), Decimal(30),
         group=GROUP_PI, binding_step=True,
     ),
+    ParameterDescription(
+        "pi_surplus_decay_factor", "PI-Abbau bei Überschuss (Beta)", None,
+        Decimal("0.00"), Decimal("1.00"), Decimal("0.05"),
+        group=GROUP_PI, binding_step=True,
+    ),
+    ParameterDescription(
+        "pi_integral_separation_k", "PI-Integraltrennung (Beta)", "K",
+        Decimal("0.0"), Decimal("2.0"), Decimal("0.1"),
+        group=GROUP_PI, binding_step=True,
+    ),
+    ParameterDescription(
+        "pi_feedforward_enabled", "PI-Vorsteuerung Außentemperatur (Beta) eingeschaltet", None,
+        Decimal(0), Decimal(1), Decimal(1),
+        group=GROUP_FLAG,
+    ),
+    ParameterDescription(
+        "pi_feedforward_gain", "PI-Vorsteuerung Faktor (Beta)", "1/K",
+        Decimal("0.005"), Decimal("0.050"), Decimal("0.001"),
+        group=GROUP_PI, binding_step=True,
+    ),
+    ParameterDescription(
+        "pi_feedforward_smoothing_hours", "PI-Vorsteuerung Glättung (Beta)", "h",
+        Decimal(1), Decimal(12), Decimal(1),
+        group=GROUP_PI, binding_step=True,
+    ),
+)
+
+# Schalter (Ein/Aus), die `set_parameter` als Wahrheitswert speichert.
+BOOLEAN_PARAMETERS = tuple(
+    p.name for p in PARAMETERS if p.group == GROUP_FLAG
 )
 
 BY_NAME: dict[str, ParameterDescription] = {p.name: p for p in PARAMETERS}
@@ -517,9 +555,7 @@ def set_parameter(
     values: dict[str, Decimal | int | bool | None] = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values[name] = (
-        bool(rounded) if name in ("valve_protection_enabled", "pi_enabled") else rounded
-    )
+    values[name] = bool(rounded) if name in BOOLEAN_PARAMETERS else rounded
     save_control_parameters(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )

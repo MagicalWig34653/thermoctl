@@ -96,7 +96,7 @@ REASON_FORCE_DRY_RUN = (
 )
 
 _WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
-_BOOLEAN_PARAMETERS = ("valve_protection_enabled", "pi_enabled")
+_BOOLEAN_PARAMETERS = zone_settings_domain.BOOLEAN_PARAMETERS
 _CURVE_PREFIX = "curve_point:"
 _OFFSET_PREFIX = "backup_offset:"
 

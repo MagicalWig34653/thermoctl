@@ -24,6 +24,10 @@ def test_felderlisten_unveraendert() -> None:
         "pi_integral_time_minutes",
         "pi_min_on_seconds",
         "pi_min_off_seconds",
+        "pi_surplus_decay_factor",
+        "pi_integral_separation_k",
+        "pi_feedforward_gain",
+        "pi_feedforward_smoothing_hours",
     )
     assert GANZZAHLEN == frozenset(
         {
@@ -36,6 +40,7 @@ def test_felderlisten_unveraendert() -> None:
             "pi_integral_time_minutes",
             "pi_min_on_seconds",
             "pi_min_off_seconds",
+            "pi_feedforward_smoothing_hours",
         }
     )
 
@@ -45,7 +50,7 @@ def test_jeder_parameter_hat_eine_gruppe() -> None:
     from thermoctl.web.shared.zone_parameters import ERBENDE_FELDER as ABGELEITET
 
     assert ABGELEITET == ERBENDE_FELDER
-    schalter = {"valve_protection_enabled", "pi_enabled"}
+    schalter = {"valve_protection_enabled", "pi_enabled", "pi_feedforward_enabled"}
     assert {p.name for p in PARAMETERS if not p.group} == set()
     assert {p.name for p in PARAMETERS} == {*FELDER, *PI_FELDER, *schalter}
 

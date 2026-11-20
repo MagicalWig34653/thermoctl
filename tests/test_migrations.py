@@ -270,6 +270,101 @@ def test_pi_migration_keeps_existing_zones_off_and_state_neutral(
 
 
 @pytest.mark.migration
+def test_pi_extension_migration_keeps_defaults_and_clamps_kp_on_downgrade(
+    migrations_database_url: str,
+) -> None:
+    """Bestandszonen bekommen die Vorgaben (= bisheriges Verhalten); beim Zurückstufen
+    wird Kp über 0,50 auf 0,50 begrenzt, die neuen Spalten verschwinden, und die alte
+    Obergrenze gilt wieder."""
+    before = _alembic(migrations_database_url, "downgrade", "f7c2a91d4e08")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            operating_mode_id = connection.execute(
+                text("SELECT id FROM operating_mode ORDER BY id LIMIT 1")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone "
+                    "(name, display_name, operating_mode_id, sort_order, created_at, updated_at) "
+                    "VALUES ('pi-erweiterung', 'PI-Erweiterung', :mode_id, 0, "
+                    "'2026-11-20 10:00:00', '2026-11-20 10:00:00')"
+                ),
+                {"mode_id": operating_mode_id},
+            )
+            zone_id = connection.execute(
+                text("SELECT id FROM zone WHERE name = 'pi-erweiterung'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO shadow_decision "
+                    "(decided_at, zone_id, setpoint_reason, would_heat, outcome_code, reason) "
+                    "VALUES ('2026-11-20 10:00:00', :zone_id, 'Zeitplan', false, "
+                    "'aus', 'Sollwert erreicht')"
+                ),
+                {"zone_id": zone_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.begin() as connection:
+            defaults = connection.execute(
+                text(
+                    "SELECT pi_surplus_decay_factor, pi_integral_separation_k, "
+                    "pi_feedforward_enabled, pi_feedforward_gain, "
+                    "pi_feedforward_smoothing_hours FROM zone WHERE id = :zone_id"
+                ),
+                {"zone_id": zone_id},
+            ).one()
+            old_decision = connection.execute(
+                text("SELECT pi_feedforward_duty FROM shadow_decision WHERE zone_id = :z"),
+                {"z": zone_id},
+            ).scalar_one()
+            decay, separation, feedforward, gain, hours = defaults
+            # Rohes SQL: SQLite liefert Gleitkomma, MariaDB Decimal -- als Text vergleichen.
+            assert Decimal(str(decay)) == Decimal("1")
+            assert Decimal(str(separation)) == Decimal("0")
+            assert Decimal(str(gain)) == Decimal("0.02")
+            assert (bool(feedforward), hours) == (False, 3)
+            assert old_decision is None
+            # Kp über 0,50 gilt jetzt, samt einem Wert, den die alte Schrittprüfung unter
+            # SQLite (Gleitkomma) fälschlich abgelehnt hätte.
+            connection.execute(
+                text("UPDATE zone SET pi_gain_per_k = 1.15 WHERE id = :zone_id"),
+                {"zone_id": zone_id},
+            )
+        with pytest.raises(sa.exc.DBAPIError), db_engine.begin() as connection:
+            connection.execute(
+                text("UPDATE zone SET pi_gain_per_k = 3.05 WHERE id = :zone_id"),
+                {"zone_id": zone_id},
+            )
+
+        down = _alembic(migrations_database_url, "downgrade", "f7c2a91d4e08")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            gain = connection.execute(
+                text("SELECT pi_gain_per_k FROM zone WHERE id = :zone_id"),
+                {"zone_id": zone_id},
+            ).scalar_one()
+            assert Decimal(str(gain)) == Decimal("0.5")
+            columns = {column["name"] for column in sa.inspect(connection).get_columns("zone")}
+            assert not {c for c in columns if c.startswith("pi_feedforward")}
+            assert "pi_surplus_decay_factor" not in columns
+        with pytest.raises(sa.exc.DBAPIError), db_engine.begin() as connection:
+            connection.execute(
+                text("UPDATE zone SET pi_gain_per_k = 0.55 WHERE id = :zone_id"),
+                {"zone_id": zone_id},
+            )
+
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
 def test_assumed_relay_lifetime_defaults_to_500000_for_existing_installations(
     migrations_database_url: str,
 ) -> None:
@@ -1072,11 +1167,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # Schaltprotokolls), then `b3f5d7a92c61` (`audit.read` raumbezogen), then
     # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone), then `d4a8e1b73c52`
     # (Laufindizes des Schattenprotokolls), then `e9b4c27a1f60`
-    # (`zone.fault_notifications_enabled`) -- every time the
+    # (`zone.fault_notifications_enabled`), then `f7c2a91d4e08` (Hysterese mit vier
+    # Nachkommastellen), then `a3e8c5d17b94` (PI-Erweiterungen) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["f7c2a91d4e08"]
+    assert scripts.get_heads() == ["a3e8c5d17b94"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

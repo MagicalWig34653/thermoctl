@@ -37,9 +37,13 @@ class Zone(TimestampMixin, Base):
         CheckConstraint(
             "solar_gain_factor BETWEEN 0 AND 1", name="solar_gain_faktor_0_bis_1"
         ),
+        # Schrittprüfung ohne `%` auf dem Produkt: SQLite rechnet mit Gleitkomma, und
+        # `1.15 * 100` ist dort 114.99999..., das `%` auf 114 abschneidet -- ein gültiger
+        # Kp-Wert über 0,5 würde abgelehnt. Gerundet und mit Toleranz verglichen, gilt
+        # dieselbe Regel auf SQLite und MariaDB.
         CheckConstraint(
-            "pi_gain_per_k BETWEEN 0.05 AND 0.50 "
-            "AND (pi_gain_per_k * 100) % 5 = 0",
+            "pi_gain_per_k BETWEEN 0.05 AND 3.00 "
+            "AND ABS(pi_gain_per_k * 20 - ROUND(pi_gain_per_k * 20)) < 0.000001",
             name="pi_gain_per_k_bereich_und_schritt",
         ),
         CheckConstraint(
@@ -54,6 +58,28 @@ class Zone(TimestampMixin, Base):
         CheckConstraint(
             "pi_min_off_seconds BETWEEN 60 AND 300 AND pi_min_off_seconds % 30 = 0",
             name="pi_min_off_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_surplus_decay_factor BETWEEN 0 AND 1 "
+            "AND ABS(pi_surplus_decay_factor * 20 - ROUND(pi_surplus_decay_factor * 20)) "
+            "< 0.000001",
+            name="pi_surplus_decay_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_integral_separation_k BETWEEN 0 AND 2 "
+            "AND ABS(pi_integral_separation_k * 10 - ROUND(pi_integral_separation_k * 10)) "
+            "< 0.000001",
+            name="pi_integral_separation_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_feedforward_gain BETWEEN 0.005 AND 0.050 "
+            "AND ABS(pi_feedforward_gain * 1000 - ROUND(pi_feedforward_gain * 1000)) "
+            "< 0.000001",
+            name="pi_feedforward_gain_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_feedforward_smoothing_hours BETWEEN 1 AND 12",
+            name="pi_feedforward_smoothing_bereich",
         ),
     )
 
@@ -156,6 +182,26 @@ class Zone(TimestampMixin, Base):
     )
     pi_min_off_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
+    )
+    # PI-Erweiterungen (Beta), jeweils mit dem Vorgabewert, der das bisherige Verhalten
+    # lässt: Abbau des Integralanteils bei Überschuss unverändert (Faktor 1), keine
+    # Integraltrennung (0 K), keine Vorsteuerung. Die Spalten sind breiter als der Schritt
+    # (z. B. 4 Nachkommastellen bei Schritt 0,001), damit die Datenbank einen Wert
+    # neben dem Raster auch ablehnen kann, statt ihn still zu runden.
+    pi_surplus_decay_factor: Mapped[Decimal] = mapped_column(
+        Numeric(3, 2), default=Decimal("1.00"), server_default=text("1.00"), nullable=False
+    )
+    pi_integral_separation_k: Mapped[Decimal] = mapped_column(
+        Numeric(4, 2), default=Decimal("0.00"), server_default=text("0.00"), nullable=False
+    )
+    pi_feedforward_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    pi_feedforward_gain: Mapped[Decimal] = mapped_column(
+        Numeric(5, 4), default=Decimal("0.0200"), server_default=text("0.0200"), nullable=False
+    )
+    pi_feedforward_smoothing_hours: Mapped[int] = mapped_column(
+        Integer, default=3, server_default=text("3"), nullable=False
     )
 
 

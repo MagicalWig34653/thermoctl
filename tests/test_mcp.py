@@ -784,8 +784,14 @@ def test_reading_control_parameters_lists_pi_with_its_bounds(session: Session) -
 
     parameter = {p["name"]: p for p in result["parameter"]}  # type: ignore[union-attr]
     assert parameter["pi_gain_per_k"]["minimum"] == "0.05"
-    assert parameter["pi_gain_per_k"]["maximum"] == "0.50"
+    assert parameter["pi_gain_per_k"]["maximum"] == "3.00"
     assert parameter["pi_enabled"]["value"] == "False"
+    # Die Erweiterungen stehen mit Grenzen und Vorgabe in derselben Liste.
+    assert parameter["pi_surplus_decay_factor"]["value"] == "1.00"
+    assert parameter["pi_integral_separation_k"]["maximum"] == "2.0"
+    assert parameter["pi_feedforward_enabled"]["value"] == "False"
+    assert parameter["pi_feedforward_gain"]["minimum"] == "0.005"
+    assert parameter["pi_feedforward_smoothing_hours"]["value"] == "3"
 
 
 def test_regelparameter_setzen_braucht_zone_manage(session: Session) -> None:

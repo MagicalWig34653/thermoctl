@@ -52,10 +52,15 @@ ZONE_TABLE: dict[str, tuple[str, str, str, str]] = {
     "valve_protection_interval_days": ("1", "3650", "1", "Tage"),
     "valve_protection_duration_minutes": ("1", "5256000", "1", "Minuten"),
     "pi_enabled": ("0", "1", "1", ""),
-    "pi_gain_per_k": ("0.05", "0.50", "0.05", "1/K"),
+    "pi_gain_per_k": ("0.05", "3.00", "0.05", "1/K"),
     "pi_integral_time_minutes": ("60", "720", "30", "min"),
     "pi_min_on_seconds": ("60", "300", "30", "s"),
     "pi_min_off_seconds": ("60", "300", "30", "s"),
+    "pi_surplus_decay_factor": ("0.00", "1.00", "0.05", ""),
+    "pi_integral_separation_k": ("0.0", "2.0", "0.1", "K"),
+    "pi_feedforward_enabled": ("0", "1", "1", ""),
+    "pi_feedforward_gain": ("0.005", "0.050", "0.001", "1/K"),
+    "pi_feedforward_smoothing_hours": ("1", "12", "1", "h"),
 }
 
 GLOBAL_LIMITS: dict[str, tuple[str, str]] = {
@@ -98,13 +103,18 @@ BELOW_ABOVE: dict[str, tuple[str, str]] = {
     "solar_setback_max_k": ("-0.1", "10.1"),
     "valve_protection_interval_days": ("0", "3651"),
     "valve_protection_duration_minutes": ("0", "5256001"),
-    "pi_gain_per_k": ("0.04", "0.51"),
+    "pi_gain_per_k": ("0.04", "3.05"),
     "pi_integral_time_minutes": ("59", "721"),
     "pi_min_on_seconds": ("59", "301"),
     "pi_min_off_seconds": ("59", "301"),
+    "pi_surplus_decay_factor": ("-0.05", "1.05"),
+    "pi_integral_separation_k": ("-0.1", "2.1"),
+    "pi_feedforward_gain": ("0.004", "0.051"),
+    "pi_feedforward_smoothing_hours": ("0", "13"),
 }
 
 NUMERIC_ZONE = list(BELOW_ABOVE)
+PI_NUMERIC = [name for name in BELOW_ABOVE if name.startswith("pi_")]
 
 
 def test_zone_table_is_exactly_the_documented_one() -> None:
@@ -358,6 +368,10 @@ def test_zone_set_parameter_refuses_just_outside(session: Session, name: str) ->
         ("pi_integral_time_minutes", "75"),
         ("pi_min_on_seconds", "75"),
         ("pi_min_off_seconds", "75"),
+        ("pi_surplus_decay_factor", "0.07"),
+        ("pi_integral_separation_k", "0.15"),
+        ("pi_feedforward_gain", "0.0055"),
+        ("pi_feedforward_smoothing_hours", "1.5"),
     ],
 )
 def test_zone_binding_steps_are_refused(session: Session, name: str, off_step: str) -> None:
@@ -372,9 +386,17 @@ def test_zone_binding_steps_are_refused(session: Session, name: str, off_step: s
         ("hysteresis_k", "0.0001"),
         ("hysteresis_k", "0.3"),
         ("pi_gain_per_k", "0.25"),
+        # Kp-Vielfache von 0,05, die als Gleitkomma knapp unter dem Raster liegen
+        # (1,15 * 100 = 114,99...): die Datenbank darf sie nicht ablehnen.
+        ("pi_gain_per_k", "1.15"),
+        ("pi_gain_per_k", "2.55"),
         ("pi_integral_time_minutes", "90"),
         ("pi_min_on_seconds", "90"),
         ("pi_min_off_seconds", "270"),
+        ("pi_surplus_decay_factor", "0.35"),
+        ("pi_integral_separation_k", "0.3"),
+        ("pi_feedforward_gain", "0.023"),
+        ("pi_feedforward_smoothing_hours", "4"),
     ],
 )
 def test_zone_values_on_the_step_grid_are_accepted(
@@ -423,10 +445,9 @@ def test_zone_bulk_hysteresis_lower_bound_and_step(session: Session) -> None:
 
 def test_zone_bulk_pi_fields_are_checked_for_range_and_step(session: Session) -> None:
     zone = _zone(session)
-    for name in ("pi_gain_per_k", "pi_integral_time_minutes", "pi_min_on_seconds",
-                 "pi_min_off_seconds"):
+    for name in PI_NUMERIC:
         lo, hi, _, _ = ZONE_TABLE[name]
-        number = Decimal if name == "pi_gain_per_k" else int
+        number = int if BY_NAME[name].integral else Decimal
         _save(session, zone, **{name: number(lo)})
         _save(session, zone, **{name: number(hi)})
         for bad in BELOW_ABOVE[name]:
@@ -640,10 +661,14 @@ def test_rest_bulk_hysteresis_lower_bound_and_step(client: TestClient, session: 
 @pytest.mark.parametrize(
     ("name", "lo", "hi", "below", "above"),
     [
-        ("pi_gain_per_k", "0.05", "0.50", "0.04", "0.51"),
+        ("pi_gain_per_k", "0.05", "3.00", "0.04", "3.05"),
         ("pi_integral_time_minutes", 60, 720, 59, 721),
         ("pi_min_on_seconds", 60, 300, 59, 301),
         ("pi_min_off_seconds", 60, 300, 59, 301),
+        ("pi_surplus_decay_factor", "0.00", "1.00", "-0.05", "1.05"),
+        ("pi_integral_separation_k", "0.0", "2.0", "-0.1", "2.1"),
+        ("pi_feedforward_gain", "0.005", "0.050", "0.004", "0.051"),
+        ("pi_feedforward_smoothing_hours", 1, 12, 0, 13),
     ],
 )
 def test_rest_bulk_pi_limits(
@@ -787,6 +812,8 @@ def test_ui_api_shows_the_zone_limits_to_the_client(
         "hysteresis_k", "min_on_seconds", "min_off_seconds", "sensor_timeout_seconds",
         "temperature_offset_k", "window_resume_delay_seconds", "solar_setback_max_k",
         "pi_gain_per_k", "pi_integral_time_minutes", "pi_min_on_seconds", "pi_min_off_seconds",
+        "pi_surplus_decay_factor", "pi_integral_separation_k", "pi_feedforward_gain",
+        "pi_feedforward_smoothing_hours",
     }
 
 
@@ -807,10 +834,14 @@ def test_ui_api_hysteresis_lower_bound_and_step(
 @pytest.mark.parametrize(
     ("name", "lo", "hi", "below", "above"),
     [
-        ("pi_gain_per_k", "0.05", "0.50", "0.04", "0.51"),
+        ("pi_gain_per_k", "0.05", "3.00", "0.04", "3.05"),
         ("pi_integral_time_minutes", 60, 720, 59, 721),
         ("pi_min_on_seconds", 60, 300, 59, 301),
         ("pi_min_off_seconds", 60, 300, 59, 301),
+        ("pi_surplus_decay_factor", "0.00", "1.00", "-0.05", "1.05"),
+        ("pi_integral_separation_k", "0.0", "2.0", "-0.1", "2.1"),
+        ("pi_feedforward_gain", "0.005", "0.050", "0.004", "0.051"),
+        ("pi_feedforward_smoothing_hours", 1, 12, 0, 13),
     ],
 )
 def test_ui_api_pi_limits(

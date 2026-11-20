@@ -281,6 +281,9 @@ class ShadowDecision(Base):
     pi_min_duration_decision: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pi_reset_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pi_candidate_would_heat: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Beitrag der Außentemperatur-Vorsteuerung zum Tastgrad dieser Entscheidung
+    # (0 bei abgeschalteter Vorsteuerung, NULL ohne PI).
+    pi_feedforward_duty: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
 
 class DeviceCommand(Base):

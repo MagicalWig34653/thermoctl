@@ -199,6 +199,11 @@ class PiOut(BaseModel):
     integral_time_minutes: int
     min_on_seconds: int
     min_off_seconds: int
+    surplus_decay_factor: str
+    integral_separation_k: str
+    feedforward_enabled: bool
+    feedforward_gain: str
+    feedforward_smoothing_hours: int
     eligible: bool
     eligibility_reason: str
     limits: dict[str, ParameterLimitOut]
@@ -299,6 +304,11 @@ class ParametersIn(BaseModel):
     pi_integral_time_minutes: Number = None
     pi_min_on_seconds: Number = None
     pi_min_off_seconds: Number = None
+    pi_surplus_decay_factor: Number = None
+    pi_integral_separation_k: Number = None
+    pi_feedforward_enabled: bool | None = None
+    pi_feedforward_gain: Number = None
+    pi_feedforward_smoothing_hours: Number = None
     window_temp_drop_detection_enabled: bool | None = None
     fault_notifications_enabled: bool | None = None
     sensor_failure_enabled: bool | None = None
@@ -378,6 +388,11 @@ def _parameters(session: Session, principal: Principal, zone: Zone) -> Parameter
             integral_time_minutes=zone.pi_integral_time_minutes,
             min_on_seconds=zone.pi_min_on_seconds,
             min_off_seconds=zone.pi_min_off_seconds,
+            surplus_decay_factor=_num(zone.pi_surplus_decay_factor),
+            integral_separation_k=_num(zone.pi_integral_separation_k),
+            feedforward_enabled=zone.pi_feedforward_enabled,
+            feedforward_gain=_num(zone.pi_feedforward_gain),
+            feedforward_smoothing_hours=zone.pi_feedforward_smoothing_hours,
             eligible=eligibility.eligible,
             eligibility_reason=eligibility.reason,
             limits={name: _limit(name) for name in PI_FELDER},
@@ -483,6 +498,11 @@ def save_parameters(
         else body.valve_protection_enabled
     )
     pi_enabled = zone.pi_enabled if body.pi_enabled is None else body.pi_enabled
+    pi_feedforward_enabled = (
+        zone.pi_feedforward_enabled
+        if body.pi_feedforward_enabled is None
+        else body.pi_feedforward_enabled
+    )
     window_drop = (
         zone.window_temp_drop_detection_enabled
         if body.window_temp_drop_detection_enabled is None
@@ -554,6 +574,7 @@ def save_parameters(
                 "Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird.",
             )
         checked["pi_enabled"] = pi_enabled
+        checked["pi_feedforward_enabled"] = pi_feedforward_enabled
         validate_pi_parameters(session, zone, checked)
 
         try:

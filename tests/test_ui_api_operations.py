@@ -164,7 +164,17 @@ def test_parameters_show_own_and_effective_values_separately(
     assert body["pi"]["enabled"] is False
     assert body["pi"]["eligible"] is False
     assert "Schaltaktor" in body["pi"]["eligibility_reason"]
-    assert body["pi"]["limits"]["pi_gain_per_k"]["maximum"] == "0.50"
+    assert body["pi"]["limits"]["pi_gain_per_k"]["maximum"] == "3.00"
+    assert body["pi"]["surplus_decay_factor"] == "1.00"
+    assert body["pi"]["integral_separation_k"] == "0.00"
+    assert body["pi"]["feedforward_enabled"] is False
+    assert body["pi"]["feedforward_gain"] == "0.02"
+    assert body["pi"]["feedforward_smoothing_hours"] == 3
+    assert set(body["pi"]["limits"]) == {
+        "pi_gain_per_k", "pi_integral_time_minutes", "pi_min_on_seconds", "pi_min_off_seconds",
+        "pi_surplus_decay_factor", "pi_integral_separation_k", "pi_feedforward_gain",
+        "pi_feedforward_smoothing_hours",
+    }
     assert body["sensor_failure"]["profile_source"] == "Vorgabe"
     assert body["sensor_failure"]["effective_profile_name"] == "Notbetrieb Vorgabe"
     assert body["sensor_failure"]["profiles"][0]["name"] == "Notbetrieb Vorgabe"
@@ -380,7 +390,12 @@ def test_null_for_non_inheriting_fields_means_unchanged(
             {"valve_protection_interval_days": 1, "valve_protection_duration_minutes": 2000},
             "valve_protection_duration_minutes",
         ),
-        ({"pi_gain_per_k": "0.9"}, "pi_gain_per_k"),
+        ({"pi_gain_per_k": "3.1"}, "pi_gain_per_k"),
+        ({"pi_surplus_decay_factor": "1.05"}, "pi_surplus_decay_factor"),
+        ({"pi_integral_separation_k": "2.1"}, "pi_integral_separation_k"),
+        ({"pi_feedforward_gain": "0.051"}, "pi_feedforward_gain"),
+        ({"pi_feedforward_smoothing_hours": 13}, "pi_feedforward_smoothing_hours"),
+        ({"pi_feedforward_smoothing_hours": "2.5"}, "pi_feedforward_smoothing_hours"),
         ({"pi_integral_time_minutes": 61}, "pi_integral_time_minutes"),
         ({"pi_min_on_seconds": 10}, "pi_min_on_seconds"),
         ({"pi_min_off_seconds": 400}, "pi_min_off_seconds"),
