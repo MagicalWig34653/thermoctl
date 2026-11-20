@@ -248,6 +248,14 @@ wird, und die Tastenbelegung.
 
 ## Heizung & Regelung
 
+In **Raumtechnik → PI-Regler (Beta)** stehen neben Verstärkung, Nachstellzeit und Mindestdauern
+der Abbau des Integralanteils bei Überschuss, die Integraltrennung und die Vorsteuerung mit der
+Außentemperatur (Standard: aus; Wert und Glättung sind dann ausgegraut). Eine Verstärkung über
+0,5 erhöht die Schwingneigung des Reglers: Die Oberfläche warnt davor und empfiehlt ab 1,0 eine
+Nachstellzeit von mindestens 180 Minuten. Auf der Betriebsseite zeigt die letzte Entscheidung bei
+PI Tastgrad (roh und eingefroren), Integralanteil vor und nach dem Zyklus und den Anteil der
+Vorsteuerung.
+
 **Regelvorgaben** fasst die anlagenweiten Werte zusammen, die ein Raum erbt, solange er
 nichts Eigenes einträgt: Regelzyklus, Hysterese, Mindest-Schaltdauern, Sensor-Timeouts und
 die PI-Regelung. Eigene Seiten gibt es für **Temperaturmodi**, **Fenster & Alarm**

@@ -385,7 +385,7 @@ Siehe auch: [Gruppen und Rechte](#gruppen-und-rechte), [API-Token](#api-token)
 
 *Regelung* — Eine optionale, experimentelle Regelart (Beta); siehe Regelparameter der Zone.
 
-Statt zwischen zwei Schwellen zu wechseln, berechnet der PI-Regler aus der Abweichung einen Tastgrad: den Anteil einer Zeitspanne mit Heizanforderung. Sie wird je Zone in den Regelparametern eingestellt (ab Werk aus). Dort steht auch der Hinweis zum Relaisverschleiß; Reglertyp und ein etwaiger Rückfallgrund stehen auf der Betriebsseite.
+Statt zwischen zwei Schwellen zu wechseln, berechnet der PI-Regler aus der Abweichung einen Tastgrad: den Anteil einer Zeitspanne mit Heizanforderung. Sie wird je Zone in den Regelparametern eingestellt (ab Werk aus). Dort steht auch der Hinweis zum Relaisverschleiß; Reglertyp und ein etwaiger Rückfallgrund stehen auf der Betriebsseite. Weitere Einstellungen: Abbau des Integralanteils bei Überschuss, Integraltrennung und eine Vorsteuerung mit der geglätteten Außentemperatur (ab Werk aus). Eine Verstärkung über 0,5 erhöht die Schwingneigung des Reglers.
 
 Auch: PI, PI-Regler, Tastgrad, Verstärkung Kp, Nachstellzeit Ti, Beta
 
