@@ -9,7 +9,9 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.25.0 — 2026-11-20
+
+**PI-Regelung (Beta) zum Praxistest: alle neuen Regeln sind standardmäßig aus.** Mit den Vorgaben verhält sich die Regelung (PI wie Ein/Aus) bitgleich wie in 0.24.0; ein Test vergleicht das Zyklus für Zyklus mit einer Kopie der alten Formel. Wer PI (Beta) nutzt, aktiviert die neuen Regeln je Raum selbst. **Nicht gemessen:** Die Wirksamkeit ist nur in einer Simulation und einem Replay (offene Schleife) gezeigt, nicht an der Anlage. Offen sind dort **Überschwingen nach Sonne ≤ +0,3 K** (Simulation: +0,6 bis +0,7 K) und **Zeit im Band ±0,2 K ≥ 80 %** auf der trägen Strecke (Simulation: etwa 76 %); I erreicht den nötigen Wert bei fallender Außentemperatur nur mit eingeschalteter Vorsteuerung innerhalb von 1,5 h. Praxisdaten nach dem Update stehen aus. Die Vorsteuerung ist mit **festem** Wert c (`pi_feedforward_gain`) umgesetzt, ein lernender Wert ist nicht enthalten; der Anti-Windup beim Annähern von unten (B) ist als Integraltrennung umgesetzt, nicht als Vorhersage.
 
 ### Beim Upgrade zu wissen
 

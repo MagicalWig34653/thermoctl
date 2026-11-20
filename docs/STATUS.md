@@ -2,14 +2,14 @@
 
 Letzte Aktualisierung: 2026-11-20. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
-- **Letzte Freigabe:** 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
-- **Seit 0.24.0 auf `main`, noch nicht freigegeben:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4–9 offen (Board). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
-- **Parametergrenzen (L1, auf `main` noch nicht):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
+- **Letzte Freigabe:** 0.25.0 (2026-11-20: PI-Beta zum Praxistest mit neuen Regeln standardmäßig aus, Codex-Befunde 1–3, eine Quelle für Parametergrenzen; Einzelheiten `CHANGELOG.md`). Davor 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4–9 offen (Board). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
+- **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
   (AGPL-3.0), Betrieb als Docker-Container und als Home-Assistant-Add-on (eigenes Repository
   `MagicalWig34653/thermoctl-addon`).
-- **PI-Erweiterungen (auf `main` noch nicht, Branch der Karte 964E1EFE):** Kp bis 3,00; neue Zonenparameter
+- **PI-Erweiterungen (in 0.25.0, standardmäßig aus):** Kp bis 3,00; neue Zonenparameter
   `pi_surplus_decay_factor`, `pi_integral_separation_k`, `pi_feedforward_enabled/_gain/_smoothing_hours` (Vorgaben = bisheriges Verhalten);
   Vorsteuerung liest die Außentemperatur aus `measurement` (Quelle der Einstellung „Außenfühler“) mit dem Plan-Sollwert vor der Sonnenabsenkung;
   Entscheidungsdetails (UI-API, MCP) zeigen I vor/nach, Tastgrad roh/eingefroren und `pi_feedforward_duty`. REST hat keinen Entscheidungs-Endpunkt.
