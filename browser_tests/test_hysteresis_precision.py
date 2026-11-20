@@ -53,11 +53,11 @@ def test_room_hysteresis_one_ten_thousandth_survives_save_and_reload(
     field = page.locator("#rt-hysteresis_k")
     field.fill("0,00009")
     page.get_by_role("button", name="Raumtechnik speichern").click()
-    expect(page.get_by_text("mindestens 0.0001").first).to_be_visible()
+    expect(page.get_by_text("Hysterese muss zwischen 0.0001 und 5.0 liegen.").first).to_be_visible()
 
     field.fill("0,0001")
     page.get_by_role("button", name="Raumtechnik speichern").click()
-    expect(page.get_by_text("mindestens 0.0001")).to_have_count(0)
+    expect(page.get_by_text("Hysterese muss zwischen 0.0001 und 5.0 liegen.")).to_have_count(0)
     page.wait_for_load_state("networkidle")
 
     _open_room(page, room_id)
