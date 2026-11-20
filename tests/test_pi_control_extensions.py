@@ -396,3 +396,24 @@ class TestSurroundingRulesAreUnchanged:
     def test_reset_keeps_carrying_the_integral(self) -> None:
         carried = reset_pi_state(RESET_REASON_FROST, now=_at(12), integral=Decimal("0.4"))
         assert carried.integral == Decimal("0.4")
+
+
+class TestStuckHighOnlyAboveTheSetpointDeficit:
+    """Bei `u_before == 1` friert der Integralanteil nur ein, solange der Raum zu kalt ist
+    (`e > 0`); bei `e <= 0` (auch nur knapp über dem Sollwert) wird er weiter abgebaut."""
+
+    def test_a_small_surplus_still_unwinds_when_the_feedforward_saturates_the_output(
+        self,
+    ) -> None:
+        # I = 0,9 plus Vorsteuerung 0,2 ergibt u_before = 1 auch bei e = -0,05.
+        u, integral = _arith("0.9", "-0.05", feedforward_duty=Decimal("0.2"))
+        assert integral < Decimal("0.9")
+        assert u <= Decimal(1)
+
+    def test_a_deficit_freezes_it_at_the_same_saturation(self) -> None:
+        _u, integral = _arith("0.9", "0.05", feedforward_duty=Decimal("0.2"))
+        assert integral == Decimal("0.9")
+
+    def test_zero_error_at_saturation_leaves_it_unchanged(self) -> None:
+        _u, integral = _arith("0.9", "0", feedforward_duty=Decimal("0.2"))
+        assert integral == Decimal("0.9")
