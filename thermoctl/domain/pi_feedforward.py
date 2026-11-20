@@ -57,8 +57,9 @@ def smoothed_outdoor(
     valid sample before the window start counts from the window start on, because it
     was the value in force then.
 
-    Without a valid sample inside the window the last valid value is returned if it is
-    at most `FEEDFORWARD_OUTDOOR_TIMEOUT` old, otherwise `None` (no feed-forward).
+    If the newest valid sample is older than `FEEDFORWARD_OUTDOOR_TIMEOUT` the result is
+    `None` (no feed-forward), independent of `smoothing_hours`. Without a valid sample
+    inside the window the (then fresh enough) last valid value is returned.
     """
     if smoothing_hours <= 0:
         raise ValueError("smoothing_hours muss positiv sein.")
@@ -67,11 +68,14 @@ def smoothed_outdoor(
         ((at, value) for at, value in samples if value is not None and at <= now),
         key=lambda sample: sample[0],
     )
+    # The newest valid value decides the timeout, whatever the smoothing window is: if it
+    # is older than the timeout there is no outdoor value, even if older values would
+    # still lie inside a long window.
+    if not valid or now - valid[-1][0] > FEEDFORWARD_OUTDOOR_TIMEOUT:
+        return None
     inside = [sample for sample in valid if sample[0] >= window_start]
     if not inside:
-        if valid and now - valid[-1][0] <= FEEDFORWARD_OUTDOOR_TIMEOUT:
-            return valid[-1][1]
-        return None
+        return valid[-1][1]
 
     segments: list[tuple[datetime, datetime, Decimal]] = []
     before = [sample for sample in valid if sample[0] < window_start]
