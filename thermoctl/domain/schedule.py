@@ -1126,15 +1126,19 @@ def create_override(
     return entry
 
 
-def cancel_override(session: Session, zone: Zone) -> ZoneOverride | None:
-    """Ends the most recent still-active override, without deleting history."""
-    entry = session.scalars(
-        select(ZoneOverride)
-        .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
-        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
-    ).first()
+def cancel_override(
+    session: Session, zone: Zone, *, now: datetime | None = None
+) -> ZoneOverride | None:
+    """Ends the override that is running at `now`, without deleting history.
+
+    Exactly the one `resolved_setpoint` counts (see `running_override`): a row that
+    has already expired or has not started yet is left alone, and so is an older one
+    below the running one. Returns None, changing nothing, if none is running.
+    """
+    now = now if now is not None else utcnow()
+    entry = running_override(session, zone, now)
     if entry is not None:
-        entry.cancelled_at = utcnow()
+        entry.cancelled_at = now
     return entry
 
 
@@ -1849,7 +1853,7 @@ def jump_to_next_switch(
                 "diese zuerst beenden oder ersetzen.",
                 running_override=running,
             )
-        cancel_override(session, zone)
+        cancel_override(session, zone, now=now)
 
     return create_override(
         session,

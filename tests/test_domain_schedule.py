@@ -1126,18 +1126,63 @@ def test_creating_an_override_creates_a_new_override(session: Session) -> None:
     assert entry.id is not None
 
 
-def test_cancelling_an_override_ends_the_active_one(session: Session) -> None:
+def test_cancelling_an_override_ends_the_active_one_below_an_expired_one(
+    session: Session,
+) -> None:
     zone = zone_with_schedule(
-        session, "aufheben", points=[], override=(Decimal("23.0"), None)
+        session, "aufheben", points=[(1, 360, "tag", Decimal("21.0"))],
     )
-    entry = cancel_override(session, zone)
-    assert entry is not None
-    assert entry.cancelled_at is not None
+    now = datetime(2026, 8, 31, 9)
+    active = create_override(
+        session, zone, Decimal("25.0"), now.replace(hour=18), now=now.replace(hour=7),
+    )
+    expired = create_override(
+        session, zone, Decimal("19.0"), now.replace(hour=8, minute=30),
+        now=now.replace(hour=8),
+    )
+    active.created_at = active.starts_at
+    expired.created_at = expired.starts_at
+    assert resolved_setpoint(session, zone, now).temperature_c == Decimal("25.0")
+
+    assert cancel_override(session, zone, now=now) is active
+
+    assert active.cancelled_at == now
+    assert expired.cancelled_at is None
+    result = resolved_setpoint(session, zone, now)
+    assert result.temperature_c == Decimal("21.0")
+    assert result.mode_code == "tag"
 
 
-def test_cancelling_without_an_active_override_returns_none(session: Session) -> None:
+@pytest.mark.parametrize(
+    ("starts_at", "ends_at"),
+    [
+        pytest.param(datetime(2026, 8, 31, 8), datetime(2026, 8, 31, 9), id="ends-now"),
+        pytest.param(datetime(2026, 8, 31, 10), None, id="starts-later"),
+    ],
+)
+def test_cancelling_without_an_active_override_returns_none(
+    session: Session, starts_at: datetime, ends_at: datetime | None,
+) -> None:
     zone = create_zone(session, "keine-über")
-    assert cancel_override(session, zone) is None
+    now = datetime(2026, 8, 31, 9)
+    entry = create_override(session, zone, Decimal("23.0"), ends_at, now=starts_at)
+
+    assert cancel_override(session, zone, now=now) is None
+    assert entry.cancelled_at is None
+
+
+def test_cancelling_same_second_overrides_picks_highest_running_id(session: Session) -> None:
+    zone = create_zone(session, "gleiche-sekunde")
+    now = datetime(2026, 8, 31, 9)
+    earlier = create_override(session, zone, Decimal("25.0"), None, now=now.replace(hour=8))
+    starts_now = create_override(session, zone, Decimal("23.0"), None, now=now)
+    ends_now = create_override(session, zone, Decimal("19.0"), now, now=now.replace(hour=8))
+    earlier.created_at = starts_now.created_at = ends_now.created_at = now
+
+    assert cancel_override(session, zone, now=now) is starts_now
+    assert starts_now.cancelled_at == now
+    assert earlier.cancelled_at is None
+    assert ends_now.cancelled_at is None
 
 
 def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> None:
@@ -1985,7 +2030,7 @@ def test_jump_to_next_switch_with_replace_ends_the_old_override_first(
     neue = jump_to_next_switch(session, zone, now=now, replace=True)
 
     session.refresh(alte)
-    assert alte.cancelled_at is not None
+    assert alte.cancelled_at == now
     assert neue.id != alte.id
     assert running_override(session, zone, now) is not None
     assert running_override(session, zone, now).id == neue.id
