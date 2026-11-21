@@ -13,6 +13,12 @@ Two decisions are embedded in it:
   point, and the dial would appear to jump back on its own. That is why it changes the
   setpoint of the mode currently in effect -- the same thing the thermostat on the
   start page does.
+* **A dial on a bridge (Matter) sets a temporary override, not the mode.** Where the
+  Home Assistant thermostat means "it should be 21 degrees here", a wheel on a wall
+  panel or in the Home app means "warmer *now*" -- and the schedule is expected to take
+  over again afterward. `set_temporary_setpoint` is that: an override that ends by
+  itself (at the next schedule point, or after a fixed time -- a setting), replacing a
+  running one instead of stacking beside it. `set_setpoint` above is unchanged.
 * **Boost brings the next schedule point forward.** Not "heat at full blast": whatever
   would come next anyway now applies immediately, and exactly until the point in time
   it would have arrived at as scheduled. After that, the plan continues as if nothing
@@ -22,18 +28,20 @@ Two decisions are embedded in it:
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone
-from thermoctl.domain.modes import update_setpoints
+from thermoctl.domain.modes import check_temperature, update_setpoints
 from thermoctl.domain.schedule import (
+    cancel_running_overrides,
     create_override,
     current_point,
     end_of_next_switch,
@@ -57,6 +65,94 @@ class Boost:
     mode_code: str
     temperature: Decimal
     bis: datetime
+
+
+@dataclass(frozen=True)
+class TemporarySetpoint:
+    """What a turn of the dial has done."""
+
+    temperature: Decimal
+    ends_at: datetime
+
+
+def set_temporary_setpoint(
+    session: Session,
+    zone: Zone,
+    temperature: Decimal,
+    now: datetime,
+    *,
+    user_id: int | None = None,
+    token_id: int | None = None,
+    source: str,
+) -> TemporarySetpoint:
+    """A temporary override with `temperature`, replacing whatever the dial set before.
+
+    **Ends by itself, never unbounded.** By setting (`setting.temporary_setpoint_*`):
+    at the next schedule point, or after a fixed number of minutes. Where there is no
+    next point (a zone without a schedule) the same minutes are the fallback -- an
+    override without an end would be the one thing a dial must not leave behind.
+
+    **Replaces, does not stack.** Every override of the zone that is running now is
+    ended first (`cancel_running_overrides`), except an absence's: its setback runs on
+    underneath and applies again once this one is over. Without this, three turns left
+    three running rows, and ending "the" override uncovered the previous dial value
+    instead of the schedule.
+
+    **Refuses a zone that is off.** The operating mode `off` beats every override
+    (`resolved_setpoint`): the value would be accepted and do nothing, and the dial
+    would look as if it had worked. A clear refusal is the honest answer.
+
+    The temperature is checked *before* anything is ended -- a refused turn must not
+    cost the zone the override it had. The ending and the new row happen in one
+    savepoint.
+    """
+    if zone.operating_mode.code == "off":
+        raise RemoteControlError(
+            "Diese Zone ist ausgeschaltet — ein Sollwert würde nichts bewirken. "
+            "Zuerst die Betriebsart ändern."
+        )
+    temperature = check_temperature(temperature)
+    settings = session.get(Setting, 1)
+    if settings is None:
+        raise RemoteControlError("Die Einrichtung ist unvollständig.")
+
+    ends_at = (
+        end_of_next_switch(session, zone, now)
+        if settings.temporary_setpoint_until_next_switch
+        else None
+    )
+    if ends_at is None:
+        ends_at = now + timedelta(minutes=settings.temporary_setpoint_minutes)
+
+    with session.begin_nested():
+        replaced = cancel_running_overrides(session, zone, now)
+        create_override(
+            session, zone, temperature, ends_at,
+            now=now, user_id=user_id, token_id=token_id, source=source,
+        )
+        audit.record(
+            session,
+            source=source,
+            action="update",
+            # The object kind a room's audit scope already knows (keyed by zone id).
+            object_type="zone_setpoint",
+            object_id=str(zone.id),
+            summary=(
+                f"Sollwert für Zone '{zone.display_name}' vorübergehend auf "
+                f"{str(temperature).replace('.', ',')} °C gesetzt"
+            ),
+            detail=(
+                f"bis {ends_at.isoformat()}, {len(replaced)} laufende "
+                "Übersteuerung(en) ersetzt"
+            ),
+            user_id=user_id,
+            token_id=token_id,
+        )
+    log.info(
+        "Befristeter Sollwert gesetzt",
+        extra={"zone_id": zone.id, "temperatur": str(temperature), "bis": ends_at.isoformat()},
+    )
+    return TemporarySetpoint(temperature, ends_at)
 
 
 def set_setpoint(
