@@ -153,10 +153,12 @@ Ist-Zustand (`would_heat`). Die Zuordnung:
 | 3 — Automatik | `operating_mode = auto` |
 | 2 — Kühlen | **nicht vergeben** — kein Weg dorthin, kein Weg von dort |
 
-**„Heizen" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle
-Betriebsart, dass ein fester Sollwert gilt statt eines Zeitplans — das deckt sich mit dem
-Bild, das HomeKits „Heizen" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert
-hält. Diese Deckungsgleichheit ist auch schon in `publication.py` angelegt: Die
+**„Heizen" (1) ist `manual`, nicht `auto`.** Das ist nur eine Namenszuordnung, kein
+Verhaltensunterschied: In thermoctl verhält sich `manual` in der Regelung wie `auto` — der
+Zeitplan läuft in beiden, und besonders ist allein `off` (Frostschutz). Ein Sollwert, den
+man in `auto` oder `manual` verstellt, ändert die Solltemperatur des gerade geltenden Modus
+dauerhaft; er hält nicht „genau diesen Wert" gegen den Zeitplan. Die Zuordnung ist auch
+schon in `publication.py` angelegt: Die
 Home-Assistant-Discovery übersetzt dort exakt so (`mode_command_template`:
 `'manual' if value == 'heat' else value`, `mode_state_template`:
 `'heat' if value == 'manual' else value`) — dieselbe Übersetzung, hier für `mqtt-thing`
