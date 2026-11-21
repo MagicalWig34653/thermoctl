@@ -1163,13 +1163,20 @@ def cancel_running_overrides(session: Session, zone: Zone, now: datetime) -> lis
     """
     running = list(
         session.scalars(
-            select(ZoneOverride).where(
+            select(ZoneOverride)
+            .where(
                 ZoneOverride.zone_id == zone.id,
                 ZoneOverride.absence_id.is_(None),
                 ZoneOverride.cancelled_at.is_(None),
                 ZoneOverride.starts_at <= now,
                 or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
             )
+            # A locking read: it sees the latest committed state, not the snapshot of
+            # the transaction (REPEATABLE READ). Without it, a row another session has
+            # committed since this transaction's first read stays invisible here and
+            # survives as a second running override. SQLite has no row locks and
+            # ignores this; there, writers are serialised by the database itself.
+            .with_for_update()
         )
     )
     for entry in running:

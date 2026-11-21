@@ -103,8 +103,8 @@ def set_temporary_setpoint(
     would look as if it had worked. A clear refusal is the honest answer.
 
     The temperature is checked *before* anything is ended -- a refused turn must not
-    cost the zone the override it had. The ending and the new row happen in one
-    savepoint.
+    cost the zone the override it had. Ending the running ones and creating the new one
+    happen under a zone lock (see below).
     """
     if zone.operating_mode.code == "off":
         raise RemoteControlError(
@@ -129,30 +129,40 @@ def set_temporary_setpoint(
     if ends_at is None or ends_at <= now:
         ends_at = now + timedelta(minutes=settings.temporary_setpoint_minutes)
 
-    with session.begin_nested():
-        replaced = cancel_running_overrides(session, zone, now)
-        create_override(
-            session, zone, temperature, ends_at,
-            now=now, user_id=user_id, token_id=token_id, source=source,
-        )
-        audit.record(
-            session,
-            source=source,
-            action="update",
-            # The object kind a room's audit scope already knows (keyed by zone id).
-            object_type="zone_setpoint",
-            object_id=str(zone.id),
-            summary=(
-                f"Sollwert für Zone '{zone.display_name}' vorübergehend auf "
-                f"{str(temperature).replace('.', ',')} °C gesetzt"
-            ),
-            detail=(
-                f"bis {ends_at.isoformat()}, {len(replaced)} laufende "
-                "Übersteuerung(en) ersetzt"
-            ),
-            user_id=user_id,
-            token_id=token_id,
-        )
+    # Lock order: the zone row first, then the override rows (the locking read in
+    # `cancel_running_overrides`). Turns of the dial for the same zone queue up on the
+    # zone instead of both reading "nothing running" and both inserting; `ui_api_schedule`
+    # takes the zone before its schedule points the same way (parent before dependents,
+    # so two paths cannot wait on each other crosswise). Both are no-ops on SQLite, which
+    # has no row locks. Deliberately **not** inside a savepoint: on MariaDB with snapshot
+    # isolation the locking read can fail with 1020 and end the transaction, and the
+    # savepoint's own rollback would then fail with 1305 and hide the 1020 the caller
+    # reacts to (`app._process_mqtt_message`). Nothing is lost by that: an exception
+    # leaves the caller's transaction, which rolls back as a whole.
+    session.execute(select(Zone.id).where(Zone.id == zone.id).with_for_update())
+    replaced = cancel_running_overrides(session, zone, now)
+    create_override(
+        session, zone, temperature, ends_at,
+        now=now, user_id=user_id, token_id=token_id, source=source,
+    )
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        # The object kind a room's audit scope already knows (keyed by zone id).
+        object_type="zone_setpoint",
+        object_id=str(zone.id),
+        summary=(
+            f"Sollwert für Zone '{zone.display_name}' vorübergehend auf "
+            f"{str(temperature).replace('.', ',')} °C gesetzt"
+        ),
+        detail=(
+            f"bis {ends_at.isoformat()}, {len(replaced)} laufende "
+            "Übersteuerung(en) ersetzt"
+        ),
+        user_id=user_id,
+        token_id=token_id,
+    )
     log.info(
         "Befristeter Sollwert gesetzt",
         extra={"zone_id": zone.id, "temperatur": str(temperature), "bis": ends_at.isoformat()},
