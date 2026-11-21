@@ -17,6 +17,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.datastructures import MutableHeaders, QueryParams
 from starlette.middleware.gzip import GZipMiddleware
@@ -908,6 +909,57 @@ def _apply(session: Session, zone: Zone, command: Command) -> None:
         )
 
 
+_RECORD_CHANGED = 1020  # MariaDB/MySQL: "Record has changed since last read in table ..."
+
+
+def _is_stale_snapshot(exc: OperationalError) -> bool:
+    return exc.orig is not None and exc.orig.args[:1] == (_RECORD_CHANGED,)
+
+
+async def _handle_command(
+    app: FastAPI, settings: Settings, topic: str, payload: bytes
+) -> None:
+    """One command in its own session -- executed, then its zone's state reported back."""
+    with session_scope(app.state.session_factory) as session:
+        zone = _execute_command(session, topic, payload, settings)
+        # Respond immediately, still in the same session. The climate card in Home
+        # Assistant is not optimistic: it waits for the state and shows the old one
+        # until then. If it only arrived on the next control cycle, the mode just
+        # chosen would jump back for a minute -- to the user it looked as if the
+        # operating mode could not be changed.
+        publisher = getattr(app.state, "publisher", None)
+        # In an Aktiv-Bereitschafts-Verbund both instances receive the same
+        # inbound command (each subscribes under its own MQTT client id --
+        # docs/self-hosting.md) and both are free to apply it: a command like
+        # "set operating mode X" is a configuration write, not a switch, and
+        # idempotent besides -- applying it on both sides leaves the same
+        # database row either way, at the cost of one duplicate audit entry.
+        # Confirming it back to Home Assistant is different: it is a publish,
+        # and two instances describing the same retained state topic is
+        # exactly the situation this whole feature exists to avoid (see
+        # `services/cluster.py`, and `docs/self-hosting.md`'s section on the
+        # cluster for the reasoning written out). Only the instance currently
+        # leading answers here; a standby leaves the confirmation to whichever
+        # instance is leading once it next publishes -- the leader's own next
+        # cycle if it is still up, or this same instance's first cycle after
+        # a takeover.
+        if (
+            zone is not None
+            and publisher is not None
+            and cluster.is_leader(session, holder=cluster.instance_id())
+        ):
+            # A fresh moment, not `received_at`: an override the command just
+            # created starts at the clock reading inside `_apply`, a few
+            # milliseconds *after* `received_at`, and `resolved_setpoint` only counts
+            # an override that has started. Reporting at `received_at` sent the old
+            # setpoint and `override_active: false` right after a successful command
+            # (the defect `create_override`'s docstring describes), and the bridge
+            # fell back to the old value until the next control cycle.
+            await _send_zone_state(
+                session, publisher, zone, settings.mqtt_prefix, utcnow()
+            )
+
+
 async def _process_mqtt_message(
     app: FastAPI, settings: Settings, topic: str, payload: bytes
 ) -> None:
@@ -922,44 +974,21 @@ async def _process_mqtt_message(
     # Our own command topics first: they live under our own prefix and have nothing to
     # do with the Zigbee2MQTT parsing.
     if ist_command(topic, settings.mqtt_prefix):
-        with session_scope(app.state.session_factory) as session:
-            zone = _execute_command(session, topic, payload, settings)
-            # Respond immediately, still in the same session. The climate card in Home
-            # Assistant is not optimistic: it waits for the state and shows the old one
-            # until then. If it only arrived on the next control cycle, the mode just
-            # chosen would jump back for a minute -- to the user it looked as if the
-            # operating mode could not be changed.
-            publisher = getattr(app.state, "publisher", None)
-            # In an Aktiv-Bereitschafts-Verbund both instances receive the same
-            # inbound command (each subscribes under its own MQTT client id --
-            # docs/self-hosting.md) and both are free to apply it: a command like
-            # "set operating mode X" is a configuration write, not a switch, and
-            # idempotent besides -- applying it on both sides leaves the same
-            # database row either way, at the cost of one duplicate audit entry.
-            # Confirming it back to Home Assistant is different: it is a publish,
-            # and two instances describing the same retained state topic is
-            # exactly the situation this whole feature exists to avoid (see
-            # `services/cluster.py`, and `docs/self-hosting.md`'s section on the
-            # cluster for the reasoning written out). Only the instance currently
-            # leading answers here; a standby leaves the confirmation to whichever
-            # instance is leading once it next publishes -- the leader's own next
-            # cycle if it is still up, or this same instance's first cycle after
-            # a takeover.
-            if (
-                zone is not None
-                and publisher is not None
-                and cluster.is_leader(session, holder=cluster.instance_id())
-            ):
-                # A fresh moment, not `received_at`: an override the command just
-                # created starts at the clock reading inside `_apply`, a few
-                # milliseconds *after* `received_at`, and `resolved_setpoint` only counts
-                # an override that has started. Reporting at `received_at` sent the old
-                # setpoint and `override_active: false` right after a successful command
-                # (the defect `create_override`'s docstring describes), and the bridge
-                # fell back to the old value until the next control cycle.
-                await _send_zone_state(
-                    session, publisher, zone, settings.mqtt_prefix, utcnow()
-                )
+        try:
+            await _handle_command(app, settings, topic, payload)
+        except OperationalError as exc:
+            if not _is_stale_snapshot(exc):
+                raise
+            # Two instances (or two commands) met on the same zone: MariaDB with
+            # snapshot isolation refuses a locking read of a row the other session has
+            # committed since this transaction's snapshot (1020) and ends the transaction.
+            # Nothing of this attempt is left; a second one in a fresh session starts
+            # after the other's commit and sees it. Once -- a second failure is real.
+            log.info(
+                "Befehl kollidierte mit einem gleichzeitigen -- zweiter Versuch",
+                extra={"topic": topic},
+            )
+            await _handle_command(app, settings, topic, payload)
         return
 
     trimmed = trim(topic, settings.mqtt_base_topic)

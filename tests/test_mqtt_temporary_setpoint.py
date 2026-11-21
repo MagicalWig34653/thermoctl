@@ -5,13 +5,16 @@ Home Assistant bleibt bei `command/setpoint` (Modus-Temperatur, dauerhaft); das 
 Brücke setzt dagegen eine befristete Übersteuerung. Beides muss nebeneinander gelten.
 """
 
+import contextlib
 import logging
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_mode, create_settings, create_zone, operating_mode, source
@@ -322,3 +325,90 @@ async def test_a_successful_turn_reports_the_new_setpoint(session: Session) -> N
 
     assert (f"thermoctl/zones/{zone.id}/state/setpoint", "23.5") in client.messages
     assert (f"thermoctl/zones/{zone.id}/state/override_active", "true") in client.messages
+
+
+# -- Collision with a concurrent command (MariaDB snapshot isolation) --------------------
+
+
+def _operational_error(code: int) -> OperationalError:
+    return OperationalError("UPDATE ...", {}, Exception(code, "boom"))
+
+
+@pytest.fixture
+def _plain_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`session_scope` without the rollback: the fixture's session holds the test's data
+    in a savepoint, and a real rollback would take it along."""
+    @contextlib.contextmanager
+    def scope(factory: object) -> Iterator[Session]:
+        yield factory()  # type: ignore[operator,misc]
+
+    monkeypatch.setattr(app_module, "session_scope", scope)
+
+
+@pytest.mark.anyio
+async def test_a_command_that_hits_a_stale_snapshot_is_repeated_once(
+    session: Session, monkeypatch: pytest.MonkeyPatch, _plain_scope: None
+) -> None:
+    zone = _zone_with_schedule_all_day(session)
+    client = Mitschrift()
+    real = app_module._execute_command
+    calls: list[int] = []
+
+    def flaky(*args: object, **kwargs: object) -> object:
+        calls.append(1)
+        if len(calls) == 1:
+            raise _operational_error(1020)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(app_module, "_execute_command", flaky)
+
+    await _process_mqtt_message(
+        _app(session, client), ENVIRONMENT,
+        f"thermoctl/zones/{zone.id}/command/temporary_setpoint", b"23.5",
+    )
+
+    assert len(calls) == 2
+    assert len(_overrides(session, zone)) == 1
+    assert (f"thermoctl/zones/{zone.id}/state/setpoint", "23.5") in client.messages
+
+
+@pytest.mark.anyio
+async def test_a_second_stale_snapshot_is_a_real_error(
+    session: Session, monkeypatch: pytest.MonkeyPatch, _plain_scope: None
+) -> None:
+    zone = _zone_with_schedule_all_day(session)
+    calls: list[int] = []
+
+    def always(*_a: object, **_k: object) -> object:
+        calls.append(1)
+        raise _operational_error(1020)
+
+    monkeypatch.setattr(app_module, "_execute_command", always)
+
+    with pytest.raises(OperationalError):
+        await _process_mqtt_message(
+            _app(session, Mitschrift()), ENVIRONMENT,
+            f"thermoctl/zones/{zone.id}/command/temporary_setpoint", b"23.5",
+        )
+    assert len(calls) == 2
+
+
+@pytest.mark.anyio
+async def test_another_database_error_is_not_repeated(
+    session: Session, monkeypatch: pytest.MonkeyPatch, _plain_scope: None
+) -> None:
+    zone = _zone_with_schedule_all_day(session)
+    calls: list[int] = []
+
+    def broken(*_a: object, **_k: object) -> object:
+        calls.append(1)
+        raise _operational_error(2013)
+
+    monkeypatch.setattr(app_module, "_execute_command", broken)
+
+    with pytest.raises(OperationalError):
+        await _process_mqtt_message(
+            _app(session, Mitschrift()), ENVIRONMENT,
+            f"thermoctl/zones/{zone.id}/command/temporary_setpoint", b"23.5",
+        )
+    assert len(calls) == 1
