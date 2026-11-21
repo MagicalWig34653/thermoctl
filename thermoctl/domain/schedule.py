@@ -1126,16 +1126,57 @@ def create_override(
     return entry
 
 
-def cancel_override(session: Session, zone: Zone) -> ZoneOverride | None:
-    """Ends the most recent still-active override, without deleting history."""
+def cancel_override(
+    session: Session, zone: Zone, *, now: datetime | None = None
+) -> ZoneOverride | None:
+    """Ends the most recent still-active override, without deleting history.
+
+    `now` is the moment it ends at; callers that already hold one pass it, for the same
+    reason `create_override` takes one -- two separately read clocks do not agree.
+    """
     entry = session.scalars(
         select(ZoneOverride)
         .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
         .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ).first()
     if entry is not None:
-        entry.cancelled_at = utcnow()
+        entry.cancelled_at = now if now is not None else utcnow()
     return entry
+
+
+def cancel_running_overrides(session: Session, zone: Zone, now: datetime) -> list[ZoneOverride]:
+    """Ends **every** override of the zone that is running at `now` -- except an absence's.
+
+    For whoever replaces an override instead of stacking another one beside it (the
+    setpoint dial, `remote_control.set_temporary_setpoint`). Stacked rows were the
+    defect: each turn of the dial added a running row, and ending "the" override then
+    uncovered the previous dial value instead of the schedule.
+
+    "Running" is the window `resolved_setpoint` counts (`running_override`): not
+    cancelled, already started, not yet ended. A row that has not started yet is not
+    running and stays.
+
+    **An absence's rows are not touched** (`absence_id IS NOT NULL`). Their overlap with
+    a short manual override is deliberate (`_running_override`): once the manual one
+    ends, the setback of the absence applies again. Cancelling it here would end an
+    absence the tenant started, as a side effect of turning a dial.
+
+    The rows are ended the usual way, `cancelled_at = now`, never deleted.
+    """
+    running = list(
+        session.scalars(
+            select(ZoneOverride).where(
+                ZoneOverride.zone_id == zone.id,
+                ZoneOverride.absence_id.is_(None),
+                ZoneOverride.cancelled_at.is_(None),
+                ZoneOverride.starts_at <= now,
+                or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
+            )
+        )
+    )
+    for entry in running:
+        entry.cancelled_at = now
+    return running
 
 
 def running_override(session: Session, zone: Zone, now: datetime) -> ZoneOverride | None:
