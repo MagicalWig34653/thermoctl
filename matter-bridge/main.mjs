@@ -1,10 +1,8 @@
-import { ConfigurationError, readConfig } from './config.mjs';
+import { readConfig } from './config.mjs';
+import { info, routeMatterLogsToStderr, warning } from './log.mjs';
 
+// Gilt fuer alles, was Matter.js und SQLite unter dem Speicherverzeichnis anlegen (Fabric-Schluessel).
 process.umask(0o077);
-
-const warning = message => console.error(message);
-// Auf stdout steht ausschliesslich der Kopplungscode (einmalig). Alle Meldungen gehen nach stderr.
-const info = message => console.error(message);
 let stop;
 let stopping = false;
 
@@ -28,6 +26,7 @@ try {
     // Eigene Meldungen der Bridge folgen LOG_LEVEL (Standard info). Matter.js ist laut genug:
     // dort gilt bei info nur warn. Den Kopplungscode gibt Matter.js nie aus (service.mjs ersetzt
     // initiateCommissioning), die Bridge schreibt ihn selbst genau einmal.
+    routeMatterLogsToStderr(Logger);
     Logger.level = config.logLevel === 'info' ? 'warn' : config.logLevel;
     const { startBridge } = await import('./service.mjs');
     const { serveHealth } = await import('./health.mjs');

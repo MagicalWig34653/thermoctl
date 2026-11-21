@@ -80,7 +80,10 @@ export function readConfig(env = process.env) {
 
     const topicPrefix = raw.topicPrefix === undefined ? 'thermoctl'
         : typeof raw.topicPrefix === 'string' ? raw.topicPrefix.replace(/^\/+|\/+$/g, '') : '';
-    if (!topicPrefix || /[+#\x00-\x20\x7f]/.test(topicPrefix) || Buffer.byteLength(topicPrefix) > 1024
+    // Strenger als thermoctl (dort nur: nicht leer, keine Wildcards, kein NUL): keine leeren Ebenen und kein
+    // fuehrendes $ (reserviert fuer Broker-Topics wie $SYS, dort veroeffentlicht thermoctl nie).
+    if (!topicPrefix || topicPrefix.split('/').includes('') || topicPrefix.startsWith('$')
+        || /[+#\x00-\x20\x7f]/.test(topicPrefix) || Buffer.byteLength(topicPrefix) > 1024
         || Buffer.from(topicPrefix).toString() !== topicPrefix) {
         invalid('topicPrefix', 'erwartet ein gültiges MQTT-Präfix ohne Wildcards');
     }

@@ -100,6 +100,7 @@ class ZoneBackend {
     #expiry;
     #debounce;
     #fallback;
+    #modeTimer;
     #syncing;
     #dirty = false;
     #closed = false;
@@ -148,7 +149,10 @@ class ZoneBackend {
     }
 
     receive(key, payload) {
-        if (key === 'operating_mode') this.#modeRequested = undefined;
+        if (key === 'operating_mode') {
+            this.#modeRequested = undefined;
+            clearTimeout(this.#modeTimer);
+        }
         const value = parseState(key, payload, this.#config);
         const previous = this.#cache.get(key);
         if (value === null && previous?.value !== null) {
@@ -168,6 +172,7 @@ class ZoneBackend {
         this.#modeRequested = undefined;
         clearTimeout(this.#debounce);
         clearTimeout(this.#fallback);
+        clearTimeout(this.#modeTimer);
         this.#debounce = undefined;
         this.#sync();
     }
@@ -199,16 +204,23 @@ class ZoneBackend {
             return;
         }
         this.#modeRequested = value;
-        this.#send('operating_mode', value === Off ? 'off' : 'auto', () => { this.#modeRequested = undefined; });
+        this.#send('operating_mode', value === Off ? 'off' : 'auto');
+        // Eigener Timer: Ein Sollwert-Send ersetzt den Abgleich-Timer (#fallback). Haengt das Zuruecksetzen
+        // des Moduswunsches daran, bleibt er bei "Heizen" und Radschritt innerhalb von 500 ms ewig stehen,
+        // und die Bridge nimmt weiter Sollwerte an, obwohl thermoctl "off" meldet.
+        clearTimeout(this.#modeTimer);
+        this.#modeTimer = setTimeout(() => {
+            this.#modeRequested = undefined;
+            this.#sync();
+        }, reconcileMs);
     }
 
-    #send(command, payload, onTimeout) {
+    #send(command, payload) {
         this.#publish(command, payload);
         clearTimeout(this.#fallback);
         // Es gibt keine fachliche Quittung. Nach reconcileMs gilt wieder der zuletzt empfangene
         // Zustand -- ein abgelehntes Rad springt so zurueck, ein angenommenes ist laengst bestaetigt.
         this.#fallback = setTimeout(() => {
-            onTimeout?.();
             this.#sync();
         }, reconcileMs);
     }
@@ -257,6 +269,7 @@ class ZoneBackend {
         clearTimeout(this.#debounce);
         clearTimeout(this.#expiry);
         clearTimeout(this.#fallback);
+        clearTimeout(this.#modeTimer);
         await this.#syncing;
     }
 }
