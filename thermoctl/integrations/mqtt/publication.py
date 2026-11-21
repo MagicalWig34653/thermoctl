@@ -51,6 +51,10 @@ class CommandTopics:
     """The commands of a zone, kept separate from state subscriptions."""
 
     setpoint: str
+    # For bridges with a wheel (Matter): a temporary override, not the mode's
+    # temperature. Deliberately absent from the Home Assistant discovery, which keeps
+    # using `setpoint`.
+    temporary_setpoint: str
     operating_mode: str
     boost: str
     cancel_override: str
@@ -106,6 +110,7 @@ def command_topics(zone_id: int, prefix: str = "thermoctl") -> CommandTopics:
     base = f"{_zone_base(zone_id, prefix)}/command"
     return CommandTopics(
         setpoint=f"{base}/setpoint",
+        temporary_setpoint=f"{base}/temporary_setpoint",
         operating_mode=f"{base}/operating_mode",
         boost=f"{base}/boost",
         cancel_override=f"{base}/cancel_override",

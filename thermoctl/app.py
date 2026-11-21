@@ -60,6 +60,7 @@ from thermoctl.domain.remote_control import (
     RemoteControlError,
     boost,
     set_setpoint,
+    set_temporary_setpoint,
 )
 from thermoctl.domain.schedule import cancel_override, frost_protection_temperature
 from thermoctl.domain.solar_setback import HourlyForecast
@@ -842,8 +843,12 @@ def _execute_command(
     A command has no logged-in user. It runs under the source `system`, because nobody
     logged in for it, and that is meant to show up in the log that way too.
 
-    Returns the zone whose state changed -- the caller reports it back immediately,
-    instead of waiting for the next control cycle.
+    Returns the zone the command was addressed to -- the caller reports its state back
+    immediately, instead of waiting for the next control cycle. That also holds for a
+    command the domain **refused**: the state then goes out unchanged, so a device
+    that just sent a rejected value (the Matter bridge's wheel) falls back to the real
+    one instead of staying on what it sent. Only a command that is unusable or aimed at
+    an unknown zone returns `None` -- there is no zone to report.
     """
     try:
         command = split_topic(topic, payload, settings.mqtt_prefix)
@@ -869,9 +874,8 @@ def _execute_command(
         # silently either: whoever sets 99 degrees in Home Assistant should find the
         # reason in the log.
         log.warning("Befehl abgelehnt: %s", exc, extra={"topic": topic, "zone_id": zone.id})
-        return None
-    # Even a rejected command strictly needs a response -- but the correct response to
-    # it is the unchanged state, and the caller sends that along right after anyway.
+        # No `return None`: the correct response to a rejected command is the unchanged
+        # state, and the caller sends it for every zone this function returns.
     return zone
 
 
@@ -882,6 +886,8 @@ def _apply(session: Session, zone: Zone, command: Command) -> None:
         set_operating_mode(session, zone, command.operating_mode, actor_id=None, source="system")
     elif command.kind == "setpoint" and command.temperature is not None:
         set_setpoint(session, zone, command.temperature, now, source="system")
+    elif command.kind == "temporary_setpoint" and command.temperature is not None:
+        set_temporary_setpoint(session, zone, command.temperature, now, source="system")
     elif command.kind == "boost":
         boost(session, zone, now, source="system")
     elif command.kind == "cancel_override":
@@ -944,8 +950,15 @@ async def _process_mqtt_message(
                 and publisher is not None
                 and cluster.is_leader(session, holder=cluster.instance_id())
             ):
+                # A fresh moment, not `received_at`: an override the command just
+                # created starts at the clock reading inside `_apply`, a few
+                # milliseconds *after* `received_at`, and `resolved_setpoint` only counts
+                # an override that has started. Reporting at `received_at` sent the old
+                # setpoint and `override_active: false` right after a successful command
+                # (the defect `create_override`'s docstring describes), and the bridge
+                # fell back to the old value until the next control cycle.
                 await _send_zone_state(
-                    session, publisher, zone, settings.mqtt_prefix, received_at
+                    session, publisher, zone, settings.mqtt_prefix, utcnow()
                 )
         return
 

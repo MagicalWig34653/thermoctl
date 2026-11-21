@@ -316,6 +316,23 @@ def test_no_tracked_file_carries_leftover_merge_conflict_markers() -> None:
     assert not guilty, f"Konfliktmarken stehen noch in: {', '.join(guilty)}"
 
 
+def test_mqtt_documentation_names_every_command_and_state_topic_of_the_contract() -> None:
+    """docs/mqtt.md lists the topic tree in section 2. A topic added to
+    `publication.py` (like `command/temporary_setpoint`) without a line there would
+    leave the contract undocumented -- and a bridge author reading the page would never
+    learn it exists. The topics are built by the production functions, with the zone id
+    written the way the page writes it (`<id>`)."""
+    from thermoctl.integrations.mqtt.publication import command_topics, states_topics
+
+    text = (ROOT / "docs" / "mqtt.md").read_text(encoding="utf-8")
+    topics = [
+        *vars(states_topics(1, "thermoctl")).values(),
+        *vars(command_topics(1, "thermoctl")).values(),
+    ]
+    missing = [t for t in topics if t.replace("zones/1/", "zones/<id>/") not in text]
+    assert not missing, "docs/mqtt.md nennt diese Topics des Vertrags nicht: " + ", ".join(missing)
+
+
 def test_homebridge_documentation_topics_match_the_code() -> None:
     """docs/homebridge.md names six MQTT topics for the `mqtt-thing` accessory.
 

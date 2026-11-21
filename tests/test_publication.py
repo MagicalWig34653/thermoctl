@@ -56,6 +56,7 @@ def test_state_topics_have_no_get_suffix() -> None:
 def test_command_topics_live_in_their_own_tree() -> None:
     assert command_topics(17, "haus_nord") == CommandTopics(
         setpoint="haus_nord/zones/17/command/setpoint",
+        temporary_setpoint="haus_nord/zones/17/command/temporary_setpoint",
         operating_mode="haus_nord/zones/17/command/operating_mode",
         boost="haus_nord/zones/17/command/boost",
         cancel_override="haus_nord/zones/17/command/cancel_override",

@@ -19,8 +19,8 @@ from decimal import Decimal, InvalidOperation
 OPERATING_MODES = {"auto", "manual", "off"}
 
 # The sub-key carries what a command refers to: the mode's id for `modus`, the control
-# parameter's name for `parameter`. Setpoint, operating mode, and boost refer to the
-# zone as a whole and have none.
+# parameter's name for `parameter`. Setpoint, temporary setpoint, operating mode, and
+# boost refer to the zone as a whole and have none.
 _PATTERN = re.compile(
     r"^(?P<prefix>[^/]+)/zones/(?P<zone>\d+)/command/(?P<kind>[a-z_]+)"
     r"(?:/(?P<schluessel>[A-Za-z0-9_]+))?$"
@@ -30,7 +30,8 @@ _PATTERN = re.compile(
 @dataclass(frozen=True)
 class Command:
     zone_id: int
-    # "setpoint", "operating_mode", "boost", "cancel_override", "mode", or "parameter"
+    # "setpoint", "temporary_setpoint", "operating_mode", "boost", "cancel_override",
+    # "mode", or "parameter"
     kind: str
     temperature: Decimal | None = None
     operating_mode: str | None = None
@@ -78,10 +79,18 @@ def split_topic(topic: str, payload: bytes, prefix: str) -> Command:
     key = match.group("schluessel")
     text = payload.decode("utf-8", errors="replace").strip()
 
-    if kind in ("setpoint", "operating_mode", "boost", "cancel_override") and key is not None:
+    if (
+        kind in ("setpoint", "temporary_setpoint", "operating_mode", "boost", "cancel_override")
+        and key is not None
+    ):
         raise CommandError(f"Die Befehlsart {kind!r} kennt keinen Unterschluessel")
 
     if kind == "setpoint":
+        return Command(zone_id, kind, temperature=_number(text, "Temperatur"))
+
+    if kind == "temporary_setpoint":
+        # For bridges such as Matter: a wheel sets a temporary override, where
+        # `setpoint` (Home Assistant) changes the mode for good. Parsed alike.
         return Command(zone_id, kind, temperature=_number(text, "Temperatur"))
 
     if kind == "operating_mode":

@@ -80,8 +80,8 @@ Home-Assistant-Entsprechung des Hinweischips auf der Startseite.
 `<präfix>/state/outdoor_temperature` liegt außerhalb des
 Zonenbaums: es gibt genau eine Außentemperatur für die ganze Anlage, keine je
 Zone. Der Befehlsbaum nimmt genau
-`setpoint`, `operating_mode`, `boost`, `cancel_override`, `mode/<mode_id>` und
-`parameter/<name>` entgegen. Die beiden Abonnementmuster sind absichtlich getrennt:
+`setpoint`, `temporary_setpoint`, `operating_mode`, `boost`, `cancel_override`,
+`mode/<mode_id>` und `parameter/<name>` entgegen. Die beiden Abonnementmuster sind absichtlich getrennt:
 MQTT-`+` steht für genau eine Ebene.
 
 ### Kurzes EMQX-Beispiel
@@ -217,7 +217,8 @@ thermoctl/zones/<id>/state/sensor_fault             ON | OFF, samt .../attribute
 thermoctl/zones/<id>/state/window_alarm             ON | OFF, samt .../attributes -- eigene Entität, teilt sich nichts mit sensor_fault
 thermoctl/zones/<id>/state/mode/<mode_id>           Solltemperatur dieses Modus
 thermoctl/zones/<id>/state/parameter/<name>         wirksamer Regelparameter
-thermoctl/zones/<id>/command/setpoint
+thermoctl/zones/<id>/command/setpoint              ändert die Solltemperatur des geltenden Modus (dauerhaft) -- Home Assistant
+thermoctl/zones/<id>/command/temporary_setpoint     befristete Übersteuerung (Sollwertrad) -- für Brücken wie Matter
 thermoctl/zones/<id>/command/operating_mode
 thermoctl/zones/<id>/command/boost                  zieht die nächste Schaltung vor
 thermoctl/zones/<id>/command/cancel_override        hebt eine laufende Übersteuerung auf
@@ -249,6 +250,29 @@ die Oberfläche benutzt, mit denselben Grenzen:
   Temperatur, gibt es keinen Modus, den man verstellen könnte — dann wird sie selbst
   gesetzt. Steht die Zone auf *Aus*, gilt der Frostschutz, und der Regler verstellt
   folgerichtig dessen Sollwert: Verstellt wird immer der Wert, der angezeigt wird.
+- **Befristeter Sollwert** (`temporary_setpoint`) ist das Sollwertrad einer Brücke wie der
+  Matter-Brücke (Apple Home, Google Home); **Home Assistant nutzt weiterhin `setpoint`** und
+  bekommt `temporary_setpoint` nicht in seiner Discovery. Die Nutzlast ist eine Dezimalzahl in
+  °C wie bei `setpoint` (ein Punkt, ein Komma wird ebenfalls gelesen), ohne Unterschlüssel.
+  Der Befehl legt eine **Übersteuerung** an, die von selbst endet -- danach gilt wieder der
+  Zeitplan; die Modus-Temperaturen bleiben unverändert (Domänenfunktion
+  `set_temporary_setpoint`). Verhalten im Einzelnen:
+  - **Ende** nach einer Einstellung der Anlage (Regelvorgaben, global): standardmäßig an der
+    nächsten Schaltung des Zeitplans, alternativ nach einer festen Dauer in Minuten. Gibt es
+    keine nächste Schaltung (Raum ohne Zeitplan), gilt dieselbe Minutenzahl als Ersatzfrist --
+    die Übersteuerung ist nie unbefristet. Standard 120 Minuten, erlaubt 5 bis 1440.
+  - **Ersetzt statt zu stapeln:** Jeder Befehl beendet die gerade laufenden Übersteuerungen
+    des Raums und legt eine neue an; drei Radumdrehungen hinterlassen genau eine. Ein
+    „Übersteuerung beenden“ (`cancel_override`) führt dann zum Zeitplan zurück, nicht zum
+    vorigen Radwert. Die Absenkung einer laufenden **Abwesenheit** bleibt unberührt und gilt
+    nach Ablauf der kurzen Übersteuerung wieder.
+  - **Betriebsart `off` wird abgelehnt:** Die Betriebsart Aus geht jeder Übersteuerung vor,
+    der Wert bliebe wirkungslos. Ebenso abgelehnt: Werte außerhalb der Temperaturgrenzen und
+    mehr als eine Nachkommastelle.
+  - **Auch nach einer Ablehnung wird der unveränderte Zustand zurückgemeldet** (nur die
+    führende Instanz antwortet, siehe [self-hosting.md](self-hosting.md), Abschnitt 6d), damit ein Gerät, das den abgelehnten Wert eben gesendet
+    hat, auf den wirklichen zurückfällt. Das gilt für jeden Befehl, nicht nur für diesen.
+    Nutzlast, die keine Zahl ist, und eine unbekannte Zone werden verworfen, ohne Rückmeldung.
 - **Boost** zieht die nächste Schaltung vor. Was als Nächstes ohnehin käme, gilt ab
   sofort — und genau bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre. Danach läuft
   der Plan weiter, als wäre nichts gewesen. Ein Boost auf einen festen Wert müsste dagegen
