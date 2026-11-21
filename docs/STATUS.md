@@ -142,6 +142,8 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   unbefristet). Betriebsart „Aus" wird abgelehnt. Audit wie bei `set_setpoint` (`zone_setpoint`, Quelle `system`). Einziger Weg
   derzeit: MQTT `command/temporary_setpoint` (für die Matter-Brücke); `command/setpoint` ändert unverändert die Modus-Temperatur.
   Einstellung nur in der Oberfläche (nicht in REST/MCP; `TEMPORARY_SETPOINT_LIMITS` bewusst außerhalb von `LIMITS`).
+  **Bekannte Eigenschaft (Entscheidung des Projektinhabers, 2026-11-21):** Das Rad darf wie jede andere Übersteuerung unter den
+  Frostschutz der Zone drehen (Grenzen nur −20 bis 35 °C); die Regelkette hebt das nicht an. Bewusst so gelassen, nicht ablehnen und nicht anheben.
   Gleichzeitige Radbefehle (beide Instanzen im Aktiv-Bereitschafts-Verbund wenden jeden Befehl an) sind abgesichert: Zonenzeile
   zuerst, dann die laufenden Übersteuerungen mit sperrendem Lesen (`FOR UPDATE`); trifft MariaDB mit Snapshot-Isolation dabei
   Fehler 1020, wiederholt `_process_mqtt_message` den Befehl einmal. Geprüft nur unter MariaDB (`tests/test_remote_control_race.py`,
