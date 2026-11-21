@@ -36,7 +36,6 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.db.models.operations import Setting
-from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone
 from thermoctl.domain.modes import check_temperature, update_setpoints
@@ -47,6 +46,7 @@ from thermoctl.domain.schedule import (
     end_of_next_switch,
     next_point,
     resolved_setpoint,
+    running_override,
     temperature_for_mode,
 )
 from thermoctl.domain.time import local_time
@@ -187,15 +187,7 @@ def set_setpoint(
 
 def _rounded_end(session: Session, zone: Zone, now: datetime) -> datetime | None:
     """The end of the currently running override -- so the new one lasts no longer."""
-    running = session.scalars(
-        select(ZoneOverride)
-        .where(
-            ZoneOverride.zone_id == zone.id,
-            ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= now,
-        )
-        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
-    ).first()
+    running = running_override(session, zone, now)
     return running.ends_at if running is not None else None
 
 

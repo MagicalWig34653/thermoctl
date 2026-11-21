@@ -20,6 +20,7 @@ from thermoctl.domain.remote_control import RemoteControlError, boost, set_setpo
 from thermoctl.domain.schedule import (
     create_override,
     resolved_setpoint,
+    running_override,
     temperature_for_mode,
 )
 
@@ -106,6 +107,32 @@ def test_a_running_override_is_changed_instead(session: Session) -> None:
     assert entry is not None and entry.temperature_c == Decimal("23.0")
     # And the mode was left alone -- that is what "no mode to change" means.
     assert temperature_for_mode(session, zone, day.id) == before
+
+
+def test_dial_keeps_the_end_of_the_running_override_below_an_expired_one(
+    session: Session,
+) -> None:
+    zone, day, _ = _zone_with_plan(session)
+    now = MONDAY_EIGHT.replace(hour=9)
+    end = now.replace(hour=18)
+    active = create_override(
+        session, zone, Decimal("25.0"), end, now=now.replace(hour=7), source="system",
+    )
+    expired = create_override(
+        session, zone, Decimal("19.0"), now.replace(hour=8, minute=30),
+        now=MONDAY_EIGHT, source="system",
+    )
+    active.created_at = active.starts_at
+    expired.created_at = expired.starts_at
+    assert resolved_setpoint(session, zone, now).temperature_c == Decimal("25.0")
+
+    set_setpoint(session, zone, Decimal("23.0"), now=now, source="system")
+
+    assert resolved_setpoint(session, zone, now).temperature_c == Decimal("23.0")
+    adjusted = running_override(session, zone, now)
+    assert adjusted is not None and adjusted.ends_at == end
+    assert temperature_for_mode(session, zone, day.id) == Decimal("21.0")
+    assert resolved_setpoint(session, zone, end).temperature_c == Decimal("21.0")
 
 
 def test_boost_brings_forward_the_next_switch_point(session: Session) -> None:

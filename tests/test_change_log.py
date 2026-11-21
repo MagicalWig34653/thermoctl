@@ -775,6 +775,31 @@ def test_revert_override_ignores_a_newer_one_that_already_expired(session: Sessi
     assert newer.result.cancelled_at is None
 
 
+def test_revert_override_that_has_not_started_yet_ends_exactly_that_row(
+    session: Session,
+) -> None:
+    """Zurücknehmen trifft die protokollierte Zeile -- auch wenn sie erst später beginnt.
+
+    `schedule.cancel_override` beendet nur die gerade laufende Übersteuerung; die
+    ältere, laufende darf dabei nicht stellvertretend beendet werden.
+    """
+    zone, _point = _schedule_zone(session, "spaeter")
+    actor = _actor(session)
+    running = cl.create_override(
+        session, actor, zone, D("22"), None, now=utcnow() - timedelta(minutes=10)
+    )
+    later = cl.create_override(
+        session, actor, zone, D("25"), None, now=utcnow() + timedelta(hours=1)
+    )
+    principal = _principal(("override.create", zone.id), ("override.cancel", zone.id))
+
+    view = cl.revert_change(session, principal, later.change_id, actor=actor)  # type: ignore[arg-type]
+
+    assert view.forced is False
+    assert later.result.cancelled_at is not None
+    assert running.result.cancelled_at is None
+
+
 def test_revert_override_for_a_deleted_override_row(session: Session) -> None:
     zone, _point = _schedule_zone(session, "weg")
     actor = _actor(session)
