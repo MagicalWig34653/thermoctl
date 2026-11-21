@@ -154,6 +154,7 @@
       "- **Die Betriebsart folgt aus den Linien der Zuordnungskarte** (Zone → Ventil): nur Heizbefehl = `controlled`;",
       "- **Ein Gerät, eine Zone als Aktor** (Entscheidung des Eigners): ein Gerät, das schon Aktor einer anderen Zone ist,",
       "- **Hysterese und Mindestschaltdauer** sind Pflicht (Altsystem hatte beides nicht). Ein Ventilschutzlauf, der seinen",
+      "- **Integrationstest Brücke ↔ echte Befehlsverarbeitung (`tests/test_matter_bridge_integration.py`, Treiber `matter-bridge/integration/driver.mjs`):** Ein Node-Unterprozess hält Aedes-Broker (127.0.0.1), die echte Brücke im virtuellen Matter-Netz und einen Matter-Controller; thermoctl hängt mit dem echten `MqttClient` (aiomqtt) am selben Broker und führt jeden Befehl durch `_process_mqtt_message` → Domäne → Audit → `_send_zone_state` (retained, zurück über den Broker), mit echter SQLite-Datenbank und Zonen mit Zeitplan (Tag 21,0 / Nacht 18,0). Beweist: Lesen konsistent mit `zone_state`; Rad = genau eine laufende Übersteuerung mit Ende an der nächsten Schaltung, Plan unverändert, Audit; Entprellung; Beenden/Zeitablauf → Planwert; Aus → `off` (Rad gesperrt, keine Übersteuerung), Heizen → `auto`; abgelehnter Befehl (auch 99 per Direktbefehl, auch Aus-Wettlauf) → unveränderter Zustand kommt zurück; Abwesenheit bleibt unberührt; Brücke sendet nie `command/setpoint`; zwei Zonen unabhängig. Beweist nicht: Broker mit Zugangsdaten/ACLs (Aedes erlaubt alles), echtes Apple/Google Home, mDNS, MariaDB (die Datenbank ist hier immer SQLite). Skipt ohne node oder `matter-bridge/node_modules` (`npm ci`). Laufzeit ca. 40 s.",
       "- **PI-Regelung** je Zone optional (nur für Zonen mit gewöhnlichen Schaltaktoren). Invariante: Eine Phase, die unter",
       "- Sind alle offen, veröffentlicht der Dienst: Sollwerte an selbstregelnde Thermostatventile, Ein/Aus an gewöhnliche",
       "Aktoren, Fensterkontakte, Außentemperatur-Quelle (genau eine für die Anlage, wie ein Zonensensor auf Alter/Ausfall",
@@ -161,10 +162,12 @@
       "EIN/AUS-Zonen** (Fußboden, kein selbstregelndes Ventil) schalten wegen eines offenen Fensters nicht ab; gemischte",
       "Eintrag, keine Übergabe); `self_regulating` an einem Ventil ohne beschreibbaren Sollwert schreibt gar nichts.",
       "Zigbee2MQTT-Aktoren, Sollwert/`system_mode` an Zigbee2MQTT-Thermostate ohne eigene Regelung, Schaltbefehle an",
+      "`command/setpoint`), Aus → `operating_mode off`, Heizen → `auto`. Die thermoctl-Seite (`command/temporary_setpoint`) ist im Zweig des Sollwertrads gebaut und mit diesem Stand zusammengeführt.",
       "`reading_only` an einem echten Ventil.",
       "`thermostat_mode`. **Nicht an der echten Anlage ausprobiert:** Karte auf Handy/Touch, Datenfluss bei vielen Aktoren,",
       "bei SQLite, Wartezeit `THERMOCTL_MIGRATION_LOCK_TIMEOUT_SECONDS`, Vorgabe 60 s); Anleitungen für Swarm und",
-      "nimmt keinen zweiten Heizbefehl; mehrere Aktoren je Zone gehen, eine ODER-Regel gibt es nicht. Gilt nur für **neue**"
+      "nimmt keinen zweiten Heizbefehl; mehrere Aktoren je Zone gehen, eine ODER-Regel gibt es nicht. Gilt nur für **neue**",
+      "und optional Google Home, je Zone ein Heating-only-Thermostat (nur Aus/Heizen). Sollwertrad → `command/temporary_setpoint` (befristete Übersteuerung, nie"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",

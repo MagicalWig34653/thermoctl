@@ -1,0 +1,11 @@
+node_modules
+test
+.test-*
+.npm-cache
+matter-storage
+.env
+*.local.json
+Dockerfile
+.dockerignore
+README.md
+HERKUNFT.md
