@@ -1,0 +1,26 @@
+{
+  "name": "thermoctl-matter-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optionale Matter-Bridge fuer thermoctl (Apple Home, Google Home) als eigener Node-Dienst",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "start": "node main.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:network": "node test/network.mjs"
+  },
+  "dependencies": {
+    "@matter/main": "0.18.0",
+    "@matter/nodejs": "0.18.0",
+    "@matter/protocol": "0.18.0",
+    "@matter/types": "0.18.0",
+    "mqtt": "5.16.1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "aedes": "1.2.0"
+  }
+}
