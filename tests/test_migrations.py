@@ -469,7 +469,9 @@ def test_dial_override_settings_default_for_existing_installations_and_are_const
         assert tuple(row) == (1, 120)
 
         for until, minutes in ((2, 120), (-1, 120), (1, 4), (1, 1441)):
-            with pytest.raises(sa.exc.IntegrityError), db_engine.begin() as connection:
+            # SQLite reports a failed CHECK as IntegrityError, MariaDB as OperationalError
+            # (4025): both are DBAPIErrors.
+            with pytest.raises(sa.exc.DBAPIError), db_engine.begin() as connection:
                 connection.execute(
                     text(
                         "UPDATE setting SET temporary_setpoint_until_next_switch = :until, "
