@@ -1042,8 +1042,7 @@ def _revert_override(ctx: _Context) -> list[Change] | None:
     now = utcnow()
     if row.cancelled_at is not None or (row.ends_at is not None and row.ends_at <= now):
         return None
-    # Die Domänenfunktion beendet die jüngste nicht beendete Übersteuerung der Zone --
-    # nicht zwingend diese. Ist es eine andere, die noch läuft, ist das ein Konflikt.
+    # Eine neuere, noch nicht beendete Übersteuerung kann einen Konflikt auslösen.
     latest = ctx.session.scalars(
         select(ZoneOverride)
         .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
@@ -1063,10 +1062,8 @@ def _revert_override(ctx: _Context) -> list[Change] | None:
                     ),
                 )
             )
-        # Beendet wird diese Übersteuerung wie dort: durch `cancelled_at`, die Zeile bleibt.
-        row.cancelled_at = now
-    else:
-        schedule_domain.cancel_override(ctx.session, zone)
+    # Rückgängig betrifft die protokollierte Zeile, auch wenn sie erst später beginnt.
+    row.cancelled_at = now
     return _swapped(ctx.fields)
 
 
