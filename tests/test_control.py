@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, source
@@ -241,6 +241,135 @@ def test_the_window_temp_drop_thresholds_never_reach_limits_or_the_rest_schema()
         assert field not in ControlResponse.model_fields
 
 
+
+
+def test_the_dial_override_settings_never_reach_limits_or_the_rest_schema() -> None:
+    """Nothing new reaches REST or MCP: both build their field list from `LIMITS`, and
+    the REST `PUT /control/defaults` requires every field of it -- merging the two
+    dial settings in would have turned them into mandatory fields for every client."""
+    from thermoctl.api.schemas import ControlResponse, WriteControl
+    from thermoctl.domain.control import TEMPORARY_SETPOINT_LIMITS
+
+    assert set(TEMPORARY_SETPOINT_LIMITS) == {
+        "temporary_setpoint_until_next_switch",
+        "temporary_setpoint_minutes",
+    }
+    for field in TEMPORARY_SETPOINT_LIMITS:
+        assert field not in LIMITS
+        assert field not in ControlResponse.model_fields
+        assert field not in WriteControl.model_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "text", "expected"),
+    [
+        ("temporary_setpoint_until_next_switch", "0", Decimal(0)),
+        ("temporary_setpoint_until_next_switch", "1", Decimal(1)),
+        ("temporary_setpoint_minutes", "5", Decimal(5)),
+        ("temporary_setpoint_minutes", "1440", Decimal(1440)),
+    ],
+)
+def test_the_dial_override_settings_accept_their_bounds(
+    field: str, text: str, expected: Decimal
+) -> None:
+    from thermoctl.domain.control import (
+        TEMPORARY_SETPOINT_GANZZAHLIG,
+        TEMPORARY_SETPOINT_LIMITS,
+    )
+
+    assert check_number(
+        field, text, limits=TEMPORARY_SETPOINT_LIMITS, ganzzahlig=TEMPORARY_SETPOINT_GANZZAHLIG
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [
+        ("temporary_setpoint_until_next_switch", "2"),
+        ("temporary_setpoint_until_next_switch", "-1"),
+        ("temporary_setpoint_until_next_switch", "0.5"),
+        ("temporary_setpoint_minutes", "4"),
+        ("temporary_setpoint_minutes", "1441"),
+        ("temporary_setpoint_minutes", "90.5"),
+        ("temporary_setpoint_minutes", "abc"),
+    ],
+)
+def test_the_dial_override_settings_refuse_values_outside_their_bounds(
+    field: str, text: str
+) -> None:
+    from thermoctl.domain.control import (
+        TEMPORARY_SETPOINT_GANZZAHLIG,
+        TEMPORARY_SETPOINT_LIMITS,
+    )
+
+    with pytest.raises(ControlError) as caught:
+        check_number(
+            field, text,
+            limits=TEMPORARY_SETPOINT_LIMITS, ganzzahlig=TEMPORARY_SETPOINT_GANZZAHLIG,
+        )
+    assert caught.value.field == field
+
+
+def test_the_defaults_of_a_fresh_installation_end_the_dial_override_at_the_next_switch(
+    session: Session,
+) -> None:
+    row = create_settings(session)
+    session.refresh(row)
+    assert row.temporary_setpoint_until_next_switch == 1
+    assert row.temporary_setpoint_minutes == 120
+
+
+def test_save_settings_writes_the_dial_override_settings_with_the_rest(
+    session: Session,
+) -> None:
+    source(session, "web")
+    row = create_settings(session)
+    values = {k: v for k, v in _defaults().items() if k != "timezone"}
+    values["temporary_setpoint_until_next_switch"] = "0"
+    values["temporary_setpoint_minutes"] = "90"
+
+    save_settings(session, values, "Europe/Berlin", user_id=None)
+
+    assert row.temporary_setpoint_until_next_switch == 0
+    assert row.temporary_setpoint_minutes == 90
+
+
+def test_save_settings_without_the_dial_override_settings_leaves_them_alone(
+    session: Session,
+) -> None:
+    """The REST path passes only `LIMITS`: it must neither reset nor reject them."""
+    source(session, "web")
+    row = create_settings(session)
+    session.execute(
+        update(Setting).values(
+            temporary_setpoint_until_next_switch=0, temporary_setpoint_minutes=45
+        )
+    )
+    session.refresh(row)
+    values = {k: v for k, v in _defaults().items() if k != "timezone"}
+
+    save_settings(session, values, "Europe/Berlin", user_id=None)
+
+    session.refresh(row)
+    assert row.temporary_setpoint_until_next_switch == 0
+    assert row.temporary_setpoint_minutes == 45
+
+
+def test_a_bad_dial_override_setting_writes_nothing_at_all(session: Session) -> None:
+    """All values are checked before the first is written -- also the ones of `LIMITS`."""
+    source(session, "web")
+    row = create_settings(session)
+    before = row.default_min_on_seconds
+    values = {k: v for k, v in _defaults().items() if k != "timezone"}
+    values["default_min_on_seconds"] = "450"
+    values["temporary_setpoint_minutes"] = "2000"
+
+    with pytest.raises(ControlError) as caught:
+        save_settings(session, values, "Europe/Berlin", user_id=None)
+
+    assert caught.value.field == "temporary_setpoint_minutes"
+    assert row.default_min_on_seconds == before
+    assert row.temporary_setpoint_minutes == 120
 
 
 # --- Notbetrieb bei Sensorausfall (Auftrag 8a) ------------------------------

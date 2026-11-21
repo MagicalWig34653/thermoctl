@@ -1253,6 +1253,67 @@ def test_defaults_reject_a_missing_value_an_unknown_key_and_an_empty_timezone(
     assert _ereignisse(session, "setting") == []
 
 
+def test_the_settings_list_offers_the_dial_override_settings_with_their_bounds(
+    client_als: Als, session: Session
+) -> None:
+    """They travel with the defaults, so the existing Regelvorgaben page shows and saves
+    them without a page of their own."""
+    _anlage(session)
+    fields = {f["name"]: f for f in client_als(ALLES).get("/ui-api/settings").json()["defaults"]}
+
+    until = fields["temporary_setpoint_until_next_switch"]
+    minutes = fields["temporary_setpoint_minutes"]
+    assert (until["value"], until["minimum"], until["maximum"], until["integer"]) == (
+        "1", "0", "1", True,
+    )
+    assert (minutes["value"], minutes["minimum"], minutes["maximum"], minutes["integer"]) == (
+        "120", "5", "1440", True,
+    )
+
+
+def test_the_dial_override_settings_are_saved_with_the_defaults(
+    client_als: Als, session: Session
+) -> None:
+    row, _ = _anlage(session)
+    client = client_als(ALLES)
+    values = _alle_vorgaben(client)
+    values["temporary_setpoint_until_next_switch"] = "0"
+    values["temporary_setpoint_minutes"] = "60"
+
+    response = _call(
+        client, "PUT", "/ui-api/settings/defaults", {"values": values, "timezone": "UTC"}
+    )
+
+    assert response.status_code == 200, response.text
+    session.refresh(row)
+    assert row.temporary_setpoint_until_next_switch == 0
+    assert row.temporary_setpoint_minutes == 60
+    shown = {f["name"]: f["value"] for f in response.json()["defaults"]}
+    assert shown["temporary_setpoint_minutes"] == "60"
+
+
+def test_a_bad_dial_override_value_is_422_with_its_field_and_writes_nothing(
+    client_als: Als, session: Session
+) -> None:
+    row, _ = _anlage(session)
+    client = client_als(ALLES)
+    values = {
+        **_alle_vorgaben(client),
+        "default_min_on_seconds": "450",
+        "temporary_setpoint_minutes": "3",
+    }
+
+    _fehler(
+        _call(client, "PUT", "/ui-api/settings/defaults", {"values": values, "timezone": "UTC"}),
+        422, "validation", "temporary_setpoint_minutes",
+    )
+
+    session.refresh(row)
+    assert row.default_min_on_seconds == 300
+    assert row.temporary_setpoint_minutes == 120
+    assert _ereignisse(session, "setting") == []
+
+
 def test_defaults_that_would_break_an_active_notbetrieb_profile_are_refused(
     client_als: Als, session: Session
 ) -> None:

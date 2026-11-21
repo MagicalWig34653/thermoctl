@@ -195,6 +195,35 @@ WINDOW_TEMP_DROP_GANZZAHLIG = frozenset(
     }
 )
 
+# A fourth such dict, for the temporary override a setpoint dial sets
+# (`domain.remote_control.set_temporary_setpoint`). Kept out of `LIMITS` for the same
+# reason as the window dicts above, and for a sharper one: REST's `PUT /control/defaults`
+# requires **every** field of `LIMITS`, so merging these in would have made two new
+# mandatory fields out of nothing for each existing client. The interface sends them
+# together with the other defaults (`save_settings` takes them if present), which is how
+# the existing Regelvorgaben page offers them without a page of their own.
+TEMPORARY_SETPOINT_LIMITS: dict[str, tuple[Decimal, Decimal]] = {
+    # 1 = until the next schedule switch, 0 = fixed duration. A number with a check
+    # constraint, not a text or an enum (principle 3) and not a boolean: the form only
+    # knows numeric fields.
+    "temporary_setpoint_until_next_switch": (Decimal(0), Decimal(1)),
+    # Five minutes is the shortest span in which a dial turn is still an override and
+    # not a flicker; a day is the longest one that is still "temporary". Also the
+    # fallback end for a zone without a schedule -- never unbounded.
+    "temporary_setpoint_minutes": (Decimal(5), Decimal(1440)),
+}
+
+TEMPORARY_SETPOINT_LABELS: dict[str, str] = {
+    "temporary_setpoint_until_next_switch": (
+        "Sollwertrad: Übersteuerung endet an der nächsten Schaltung (1 = ja, 0 = feste Dauer)"
+    ),
+    "temporary_setpoint_minutes": (
+        "Sollwertrad: feste Dauer und Ersatzfrist ohne Zeitplan (Minuten)"
+    ),
+}
+
+TEMPORARY_SETPOINT_GANZZAHLIG = frozenset(TEMPORARY_SETPOINT_LIMITS)
+
 LABELS: dict[str, str] = {
     "polling_interval_seconds": "Abfrageintervall (Sekunden)",
     "shadow_interval_seconds": "Regelzyklus (Sekunden)",
@@ -303,6 +332,17 @@ def save_settings(
     if not timezone_name.strip():
         raise ControlError("timezone", "Bitte eine Zeitzone angeben.")
     checked = {field: check_number(field, values.get(field, "")) for field in LIMITS}
+    # The dial override settings are optional here: REST passes only `LIMITS`, and a
+    # caller that leaves them out must neither reset nor be refused for them. Checked
+    # together with the rest, before anything is written.
+    checked_dial = {
+        field: check_number(
+            field, values[field],
+            limits=TEMPORARY_SETPOINT_LIMITS, ganzzahlig=TEMPORARY_SETPOINT_GANZZAHLIG,
+        )
+        for field in TEMPORARY_SETPOINT_LIMITS
+        if field in values
+    }
 
     row = settings(session)
     try:
@@ -312,6 +352,8 @@ def save_settings(
     row.timezone = timezone_name.strip()
     for field, value in checked.items():
         setattr(row, field, value if field not in GANZZAHLIG else int(value))
+    for field, value in checked_dial.items():
+        setattr(row, field, int(value))
     audit.record(
         session,
         source=source,

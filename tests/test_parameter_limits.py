@@ -317,9 +317,11 @@ def test_ui_api_defaults_show_the_limits_to_the_client(
     _anlage(session)
     body = client_als(ALLES).get("/ui-api/settings").json()
     shown = {f["name"]: (Decimal(f["minimum"]), Decimal(f["maximum"])) for f in body["defaults"]}
-    assert shown == {
-        name: (Decimal(lo), Decimal(hi)) for name, (lo, hi) in GLOBAL_LIMITS.items()
-    }
+    # Plus the two dial override settings, which travel with the defaults but are not
+    # part of `LIMITS` (REST and MCP do not know them).
+    expected = {**GLOBAL_LIMITS, "temporary_setpoint_until_next_switch": ("0", "1"),
+                "temporary_setpoint_minutes": ("5", "1440")}
+    assert shown == {name: (Decimal(lo), Decimal(hi)) for name, (lo, hi) in expected.items()}
 
 
 # -- Zone: Domäne (einzelner Parameter) --------------------------------------------------

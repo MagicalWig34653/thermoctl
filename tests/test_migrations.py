@@ -418,6 +418,85 @@ def test_assumed_relay_lifetime_defaults_to_500000_for_existing_installations(
         db_engine.dispose()
 
 
+@pytest.mark.migration
+def test_dial_override_settings_default_for_existing_installations_and_are_constrained(
+    migrations_database_url: str,
+) -> None:
+    """Sollwertrad: eine bestehende Anlage endet die Übersteuerung an der nächsten
+    Schaltung (1), Ersatzfrist 120 Minuten; die Datenbank hält die Wertemengen ein und
+    das Zurückstufen nimmt beide Spalten wieder heraus."""
+    before = _alembic(migrations_database_url, "downgrade", "a3e8c5d17b94")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            # Earlier tests of this file may have left the single row behind; an
+            # existing installation has one either way.
+            if connection.execute(text("SELECT COUNT(*) FROM setting")).scalar_one() == 0:
+                connection.execute(
+                    text(
+                        "INSERT INTO setpoint_mode "
+                        "(code, name, sort_order, is_builtin) "
+                        "VALUES ('rad-migration-frost', 'Migration Frost', 0, false)"
+                    )
+                )
+                mode_id = connection.execute(
+                    text("SELECT id FROM setpoint_mode WHERE code = 'rad-migration-frost'")
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        "INSERT INTO setting "
+                        "(id, timezone, polling_interval_seconds, default_hysteresis_k, "
+                        "default_min_on_seconds, default_min_off_seconds, "
+                        "default_sensor_timeout_seconds, default_window_resume_delay_seconds, "
+                        "frost_protection_mode_id, session_lifetime_seconds, updated_at) "
+                        "VALUES (1, 'UTC', 30, 0.30, 300, 300, 1800, 120, :mode_id, "
+                        "1209600, '2026-09-03 08:00:00')"
+                    ),
+                    {"mode_id": mode_id},
+                )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT temporary_setpoint_until_next_switch, temporary_setpoint_minutes "
+                    "FROM setting WHERE id = 1"
+                )
+            ).one()
+        assert tuple(row) == (1, 120)
+
+        for until, minutes in ((2, 120), (-1, 120), (1, 4), (1, 1441)):
+            with pytest.raises(sa.exc.IntegrityError), db_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE setting SET temporary_setpoint_until_next_switch = :until, "
+                        "temporary_setpoint_minutes = :minutes WHERE id = 1"
+                    ),
+                    {"until": until, "minutes": minutes},
+                )
+        # Die Grenzen selbst sind erlaubt.
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE setting SET temporary_setpoint_until_next_switch = 0, "
+                    "temporary_setpoint_minutes = 1440 WHERE id = 1"
+                )
+            )
+
+        down = _alembic(migrations_database_url, "downgrade", "a3e8c5d17b94")
+        assert down.returncode == 0, down.stderr
+        columns = {c["name"] for c in sa.inspect(db_engine).get_columns("setting")}
+        assert "temporary_setpoint_minutes" not in columns
+        assert "temporary_setpoint_until_next_switch" not in columns
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()
+
+
 def test_foreign_keys_are_enforced_under_sqlite(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         pytest.skip("only meaningful for SQLite")
@@ -1168,11 +1247,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `c7e2a4f91d38` (mehrere Temperaturfühler je Zone), then `d4a8e1b73c52`
     # (Laufindizes des Schattenprotokolls), then `e9b4c27a1f60`
     # (`zone.fault_notifications_enabled`), then `f7c2a91d4e08` (Hysterese mit vier
-    # Nachkommastellen), then `a3e8c5d17b94` (PI-Erweiterungen) -- every time the
+    # Nachkommastellen), then `a3e8c5d17b94` (PI-Erweiterungen), then `b5d1f8a3c264`
+    # (Einstellungen für die befristete Übersteuerung am Sollwertrad) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["a3e8c5d17b94"]
+    assert scripts.get_heads() == ["b5d1f8a3c264"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

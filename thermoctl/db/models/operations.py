@@ -27,7 +27,20 @@ class Setting(Base):
     """
 
     __tablename__ = "setting"
-    __table_args__ = (CheckConstraint("id = 1", name="genau_eine_zeile"),)
+    __table_args__ = (
+        CheckConstraint("id = 1", name="genau_eine_zeile"),
+        # Wertemengen der Sollwertrad-Einstellungen (unten); die Grenzen stehen in
+        # `domain.control.TEMPORARY_SETPOINT_LIMITS` und werden dort geprüft -- die
+        # Datenbank hält sie nur ein zweites Mal, falls jemand an der Domäne vorbeischreibt.
+        CheckConstraint(
+            "temporary_setpoint_until_next_switch IN (0, 1)",
+            name="temporary_setpoint_until_next_switch_wertemenge",
+        ),
+        CheckConstraint(
+            "temporary_setpoint_minutes BETWEEN 5 AND 1440",
+            name="temporary_setpoint_minutes_bereich",
+        ),
+    )
 
     # autoincrement=False is mandatory here, not cosmetic: MariaDB otherwise assigns
     # AUTO_INCREMENT and then forbids any CHECK constraint on the same column (error
@@ -115,6 +128,21 @@ class Setting(Base):
     # `domain.control.LIMITS`.
     assumed_relay_lifetime_operations: Mapped[int] = mapped_column(
         Integer, default=500_000, server_default=text("500000"), nullable=False
+    )
+    # --- Befristete Übersteuerung am Sollwertrad ----------------------------------
+    # Wie lange eine Übersteuerung gilt, die ein Gerät mit Sollwertrad (Matter-Brücke
+    # über `command/temporary_setpoint`) setzt: 1 = bis zur nächsten Schaltung des
+    # Zeitplans, 0 = feste Dauer von `temporary_setpoint_minutes`. Ein Ganzzahlwert mit
+    # CHECK statt eines Textes oder einer Aufzählung (Grundsatz 3) und statt eines
+    # Wahrheitswerts, weil die Regelvorgaben-Seite nur Zahlenfelder kennt. Die Minuten
+    # sind zugleich die Ersatzfrist, wenn es keine nächste Schaltung gibt (Zone ohne
+    # Zeitplan) -- die Übersteuerung ist nie unbefristet. Grenzen:
+    # `domain.control.TEMPORARY_SETPOINT_LIMITS`.
+    temporary_setpoint_until_next_switch: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
+    temporary_setpoint_minutes: Mapped[int] = mapped_column(
+        Integer, default=120, server_default=text("120"), nullable=False
     )
     # --- Solar setback ---------------------------------------------------------
     # Off by default, and effectively off regardless of this flag while latitude or

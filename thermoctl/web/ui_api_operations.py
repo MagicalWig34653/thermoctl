@@ -50,6 +50,9 @@ from thermoctl.domain.control import (
     GANZZAHLIG,
     LABELS,
     LIMITS,
+    TEMPORARY_SETPOINT_GANZZAHLIG,
+    TEMPORARY_SETPOINT_LABELS,
+    TEMPORARY_SETPOINT_LIMITS,
     WINDOW_ALARM_GANZZAHLIG,
     WINDOW_ALARM_LABELS,
     WINDOW_ALARM_LIMITS,
@@ -1046,7 +1049,8 @@ class NotificationTestOut(BaseModel):
 
 class DefaultsIn(BaseModel):
     """Alle Felder aus `domain.control.LIMITS` plus Zeitzone; was fehlt, meldet die Domäne
-    ("Bitte einen Wert angeben") -- hier wird nichts aufgefüllt."""
+    ("Bitte einen Wert angeben") -- hier wird nichts aufgefüllt. Die Felder aus
+    `TEMPORARY_SETPOINT_LIMITS` dürfen dazukommen, müssen es aber nicht."""
 
     values: dict[str, str | int]
     timezone: str
@@ -1118,7 +1122,15 @@ def _settings_out(session: Session, principal: Principal) -> SettingsOut:
     reading = outdoor_reading(session, row, utcnow())
     return SettingsOut(
         may_edit=has_permission(principal, "setting.manage"),
-        defaults=_number_fields(row, LIMITS, LABELS, GANZZAHLIG),
+        defaults=[
+            *_number_fields(row, LIMITS, LABELS, GANZZAHLIG),
+            # Travel with the defaults, so the Regelvorgaben page shows and saves them
+            # without a page of its own (`domain.control.TEMPORARY_SETPOINT_LIMITS`).
+            *_number_fields(
+                row, TEMPORARY_SETPOINT_LIMITS, TEMPORARY_SETPOINT_LABELS,
+                TEMPORARY_SETPOINT_GANZZAHLIG,
+            ),
+        ],
         timezone=row.timezone,
         solar=SolarOut(
             enabled=row.solar_forecast_enabled,
@@ -1206,7 +1218,7 @@ def save_defaults(body: DefaultsIn, principal: Prin, session: Sess) -> SettingsO
     """Regelvorgaben und Zeitzone (`domain.control.save_settings`)."""
     _need(principal, "setting.manage")
     _settings_or_error(session)
-    values = _known_fields(body.values, LIMITS)
+    values = _known_fields(body.values, {**LIMITS, **TEMPORARY_SETPOINT_LIMITS})
     try:
         save_settings(
             session,
