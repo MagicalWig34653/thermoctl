@@ -136,6 +136,11 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   unbefristet). Betriebsart „Aus" wird abgelehnt. Audit wie bei `set_setpoint` (`zone_setpoint`, Quelle `system`). Einziger Weg
   derzeit: MQTT `command/temporary_setpoint` (für die Matter-Brücke); `command/setpoint` ändert unverändert die Modus-Temperatur.
   Einstellung nur in der Oberfläche (nicht in REST/MCP; `TEMPORARY_SETPOINT_LIMITS` bewusst außerhalb von `LIMITS`).
+  Gleichzeitige Radbefehle (beide Instanzen im Aktiv-Bereitschafts-Verbund wenden jeden Befehl an) sind abgesichert: Zonenzeile
+  zuerst, dann die laufenden Übersteuerungen mit sperrendem Lesen (`FOR UPDATE`); trifft MariaDB mit Snapshot-Isolation dabei
+  Fehler 1020, wiederholt `_process_mqtt_message` den Befehl einmal. Geprüft nur unter MariaDB (`tests/test_remote_control_race.py`,
+  unter SQLite übersprungen -- dort gibt es keine Zeilensperren). In der Wiederholstunde der Zeitumstellung gilt die Ersatzfrist
+  (Vorfehler in `end_of_next_switch`, auch für `boost`, bleibt offen).
   Nicht an der Anlage gemessen.
 - **Hysterese und Mindestschaltdauer** sind Pflicht (Altsystem hatte beides nicht). Ein Ventilschutzlauf, der seinen
   Vorrang mitten im Lauf verliert, hebt die Mindestschaltdauer nicht auf; `tests/test_control_loop_state_table.py` prüft

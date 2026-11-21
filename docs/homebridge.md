@@ -157,7 +157,7 @@ Ist-Zustand (`would_heat`). Die Zuordnung:
 Verhaltensunterschied: In thermoctl verhält sich `manual` in der Regelung wie `auto` — der
 Zeitplan läuft in beiden, und besonders ist allein `off` (Frostschutz). Ein Sollwert, den
 man in `auto` oder `manual` verstellt, ändert die Solltemperatur des gerade geltenden Modus
-dauerhaft; er hält nicht „genau diesen Wert" gegen den Zeitplan. Die Zuordnung ist auch
+dauerhaft; er hält nicht „genau diesen Wert" gegen den Zeitplan. Läuft gerade eine Übersteuerung mit fester Temperatur, gibt es keinen Modus zum Verstellen — dann wird stattdessen die Temperatur dieser Übersteuerung geändert. Die Zuordnung ist auch
 schon in `publication.py` angelegt: Die
 Home-Assistant-Discovery übersetzt dort exakt so (`mode_command_template`:
 `'manual' if value == 'heat' else value`, `mode_state_template`:
