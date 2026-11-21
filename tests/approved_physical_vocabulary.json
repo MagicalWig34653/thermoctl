@@ -225,8 +225,7 @@
       "| B11 | `services/publishing.py` (1866 Z.) | UK | Aufzeichnen **und** Schalten **und** MQTT-Veröffentlichung in einem Modul (Fan-out 27). |"
     ],
     "docs/homebridge.md": [
-      "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
-      "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
+      "**„Heizen\" (1) ist `manual`, nicht `auto`.** Das ist nur eine Namenszuordnung, kein",
       "HomeKit kennt vier feste Heiz-/Kühlzustände: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik.",
       "HomeKits Zahl: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik. Ohne dieses Feld gilt die Vorgabe",
       "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
@@ -604,6 +603,9 @@
     ],
     "thermoctl/domain/reading.py": [
       "switch"
+    ],
+    "thermoctl/domain/remote_control.py": [
+      "Diese Zone ist ausgeschaltet — ein Sollwert würde nichts bewirken. Zuerst die Betriebsart ändern."
     ],
     "thermoctl/domain/schedule.py": [
       "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte."

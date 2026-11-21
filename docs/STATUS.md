@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-20. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-21. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.25.0 (2026-11-20: PI-Beta zum Praxistest mit neuen Regeln standardmäßig aus, Codex-Befunde 1–3, eine Quelle für Parametergrenzen; Einzelheiten `CHANGELOG.md`). Davor 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
 - **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4–9 offen (Board). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
@@ -14,7 +14,7 @@ Letzte Aktualisierung: 2026-11-20. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Vorsteuerung liest die Außentemperatur aus `measurement` (Quelle der Einstellung „Außenfühler“) mit dem Plan-Sollwert vor der Sonnenabsenkung;
   Entscheidungsdetails (UI-API, MCP) zeigen I vor/nach, Tastgrad roh/eingefroren und `pi_feedforward_duty`. REST hat keinen Entscheidungs-Endpunkt.
   Die Kp-Schrittprüfung der Datenbank ist neu gefasst (die alte `% 5` lehnte unter SQLite Werte wie 1,15 ab). Nicht an der Anlage gemessen.
-- **Migrationskopf:** `a3e8c5d17b94` (PI-Erweiterungen; davor `f7c2a91d4e08`, Hysterese-Spalten mit vier Nachkommastellen).
+- **Migrationskopf:** `b5d1f8a3c264` (Sollwertrad-Einstellungen; davor `a3e8c5d17b94`, PI-Erweiterungen).
 - **Inhalt von 0.24.0 gegenüber 0.23.0:** Hysterese bis 0,0001 K (Migration `f7c2a91d4e08`; Raumwert strikt ab 0,0001 K geprüft); PI behält den Integralanteil bei Gates und Neustart; Verbindungsanzeige mit Schreibsperre; Fehler- und Leerzustände; Touch-Ziele am Handy; lesbare deaktivierte Primärknöpfe; Raumseite (Ausfallschalter, Erben erklärt, Raumtechnik eingeklappt). Einzelheiten: `CHANGELOG.md`, Abschnitt 0.24.0.
 - **Browsertests (`browser_tests/`):** 49 Tests (2026-11-20, lokal; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
@@ -127,6 +127,15 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 - **Entscheidung** trifft `decide()` in `thermoctl/domain/control_loop.py` als feste Vorrangkette; jede Entscheidung
   trägt einen Code und eine lesbare Begründung (Grundsatz 5). Vorrang des Sollwerts in `resolved_setpoint()`:
   Betriebsart „Aus" > laufende Übersteuerung > Urlaub > Zeitplan > Frostschutz.
+- **Befristete Übersteuerung (Sollwertrad, noch nicht freigegeben):** `remote_control.set_temporary_setpoint` legt eine Übersteuerung
+  an, die von selbst endet, und **ersetzt** dabei laufende Übersteuerungen des Raums statt zu stapeln
+  (`schedule.cancel_running_overrides`); die der **Abwesenheit** bleiben unberührt und gelten nach Ablauf wieder. Ende nach
+  Einstellung (global, Regelvorgaben-Seite: `setting.temporary_setpoint_until_next_switch`, Standard 1 = nächste Schaltung, sonst
+  feste Dauer; `temporary_setpoint_minutes`, 5–1440, Standard 120, zugleich **Ersatzfrist** ohne nächste Schaltung -- nie
+  unbefristet). Betriebsart „Aus" wird abgelehnt. Audit wie bei `set_setpoint` (`zone_setpoint`, Quelle `system`). Einziger Weg
+  derzeit: MQTT `command/temporary_setpoint` (für die Matter-Brücke); `command/setpoint` ändert unverändert die Modus-Temperatur.
+  Einstellung nur in der Oberfläche (nicht in REST/MCP; `TEMPORARY_SETPOINT_LIMITS` bewusst außerhalb von `LIMITS`).
+  Nicht an der Anlage gemessen.
 - **Hysterese und Mindestschaltdauer** sind Pflicht (Altsystem hatte beides nicht). Ein Ventilschutzlauf, der seinen
   Vorrang mitten im Lauf verliert, hebt die Mindestschaltdauer nicht auf; `tests/test_control_loop_state_table.py` prüft
   die Vorrangkette erschöpfend.
@@ -321,7 +330,9 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
 
 - Optionale Integration per MQTT (Discovery, Zustände, Befehle), **keine** Voraussetzung. Zustände werden nur von der
   primären Instanz veröffentlicht. Entitäten u. a.: Außentemperatur, `state/window_open_by_temperature`,
-  `state/override_active`, Befehl `command/cancel_override`; Störungen getrennt pro Art (`sensor:`, `fenster:`,
+  `state/override_active`, Befehl `command/cancel_override`, Befehl `command/temporary_setpoint` (nur für Brücken, nicht in der
+  Discovery); nach einem von der Domäne **abgelehnten** Befehl geht der unveränderte Zustand zurück (nur die primäre Instanz),
+  der Zustand nach einem Befehl wird mit frischem Zeitpunkt gemeldet; Störungen getrennt pro Art (`sensor:`, `fenster:`,
   `notbetrieb:`-Schlüssel). Wer den Webhook stilllegt, verliert den Problemsensor in Home Assistant nicht.
 - **Schalter je Raum** (`zone.fault_notifications_enabled`, Vorgabe an, Recht `zone.manage`; UI, REST, MCP `set_fault_notifications`): unterdrückt nur die
   Webhook-Zustellung der Störungsmeldungen des Raums (Sensor, Notbetrieb samt Entwarnung, festhängender Messwert, Fenster-Alarm, Schaltbefehl);
