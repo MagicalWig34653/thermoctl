@@ -326,3 +326,74 @@ def test_set_setpoint_still_changes_the_mode_and_creates_no_override(session: Se
 
     assert temperature_for_mode(session, zone, day.id) == Decimal("22.5")
     assert _rows(session, zone) == []
+
+
+# -- Wiederholstunde der Zeitumstellung ---------------------------------------------------
+
+
+def _berlin_zone_with_point_at(session: Session, weekday: int, minute: int) -> Zone:
+    create_settings(session).timezone = "Europe/Berlin"
+    source(session, "system")
+    zone = create_zone(session, "wiederholstunde")
+    night = create_mode(session, "nacht")
+    day = create_mode(session, "tag")
+    session.add_all(
+        [
+            SchedulePoint(
+                zone_id=zone.id, weekday=weekday, minute_of_day=minute,
+                setpoint_mode_id=night.id,
+            ),
+            SchedulePoint(
+                zone_id=zone.id, weekday=weekday, minute_of_day=600, setpoint_mode_id=day.id
+            ),
+            ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=day.id, temperature_c=Decimal("21.0")),
+            ZoneSetpoint(
+                zone_id=zone.id, setpoint_mode_id=night.id, temperature_c=Decimal("18.0")
+            ),
+        ]
+    )
+    session.flush()
+    return zone
+
+
+def test_in_the_repeated_hour_the_fallback_applies_instead_of_an_end_in_the_past(
+    session: Session,
+) -> None:
+    """2026-10-25, Europe/Berlin: 02:00-03:00 happens twice. now = 01:15 UTC is 02:15 CET,
+    the *second* pass; the schedule point at 02:30 is 15 minutes away. `end_of_next_switch`
+    reads the doubled local time as its first occurrence (02:30 CEST = 00:30 UTC) and
+    returns an end *before* now. An override that ends before it starts would end the
+    running one and never apply itself."""
+    zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
+    first = set_temporary_setpoint(
+        session, zone, Decimal("22.0"), datetime(2026, 10, 24, 12, 0), source="system"
+    )
+    assert first.ends_at > datetime(2026, 10, 24, 12, 0)
+    now = datetime(2026, 10, 25, 1, 15)
+
+    result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
+
+    assert result.ends_at == now + timedelta(minutes=120)
+    assert resolved_setpoint(session, zone, now).temperature_c == Decimal("23.0")
+    assert _running(session, zone, now + timedelta(minutes=1)) != []
+
+
+def test_in_the_repeated_hour_the_fallback_follows_the_setting(session: Session) -> None:
+    zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
+    _setting(session).temporary_setpoint_minutes = 45
+    now = datetime(2026, 10, 25, 1, 15)
+
+    result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
+
+    assert result.ends_at == now + timedelta(minutes=45)
+
+
+def test_one_hour_earlier_the_end_is_still_the_next_switch(session: Session) -> None:
+    """Counter-check: the first pass of the same night (00:15 UTC = 02:15 CEST) has an
+    end in the future, and it stays the schedule point, not the fallback."""
+    zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
+    now = datetime(2026, 10, 25, 0, 15)
+
+    result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
+
+    assert result.ends_at == datetime(2026, 10, 25, 0, 30)

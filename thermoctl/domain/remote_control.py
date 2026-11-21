@@ -121,7 +121,12 @@ def set_temporary_setpoint(
         if settings.temporary_setpoint_until_next_switch
         else None
     )
-    if ends_at is None:
+    # Not strictly after `now` counts as "no next switch" too: in the repeated hour of
+    # the clock change, `end_of_next_switch` reads a doubled local time as its first
+    # occurrence and can return an end *before* now. An override that ends before it
+    # starts would end the running one and never apply itself. (The cause sits in
+    # `end_of_next_switch`, which boost uses as well -- left alone here on purpose.)
+    if ends_at is None or ends_at <= now:
         ends_at = now + timedelta(minutes=settings.temporary_setpoint_minutes)
 
     with session.begin_nested():
