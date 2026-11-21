@@ -230,6 +230,59 @@ test('virtuelle Matter-Fabric mit zwei simulierten MQTT-Zonen', { timeout: 120_0
         for (const message of warnings.slice(warned)) assert.match(message, /^Zone \d+: ungültiger Wert für [a-z_]+ \(\d+ Bytes\) verworfen$/);
     });
 
+    await t.test('setpointRaiseLower: relative Schritte laufen über denselben Befehlsweg und dieselben Prüfungen', async () => {
+        await simulator.set(11, 'setpoint', '21.0');
+        await until(() => a.stateOf(thermostat).occupiedHeatingSetpoint === 2100, 'Ausgangswert 21,0 fehlt');
+        const first = commands.length;
+        const raise = (endpoint, mode, amount) => endpoint.commandsOf('thermostat').setpointRaiseLower({ mode, amount });
+        // amount zaehlt in Zehntelgrad: +5 = +0,5 Grad (21,0 -> 21,5), nicht +5 Grad und nicht +0,05.
+        await raise(a, Thermostat.SetpointRaiseLowerMode.Heat, 5);
+        await until(() => simulator.state(11).setpoint === '21.5', 'Relativer Schritt +0,5 fehlt');
+        await until(() => a.stateOf(thermostat).occupiedHeatingSetpoint === 2150, 'Bestätigter Wert 21,5 fehlt');
+        await raise(a, Thermostat.SetpointRaiseLowerMode.Heat, -5);
+        await until(() => simulator.state(11).setpoint === '21', 'Relativer Schritt -0,5 fehlt');
+        await until(() => a.stateOf(thermostat).occupiedHeatingSetpoint === 2100, 'Bestätigter Wert 21,0 fehlt');
+        assert.deepEqual(commands.slice(first), [command(11, 'temporary_setpoint', '21.5'), command(11, 'temporary_setpoint', '21')]);
+        // Kuehlen und Beide sind nicht verfuegbar; Werte ausserhalb der Grenzen (max. 30,1) werden abgelehnt.
+        const rejected = commands.length;
+        await assert.rejects(raise(a, Thermostat.SetpointRaiseLowerMode.Cool, 5));
+        await assert.rejects(raise(a, Thermostat.SetpointRaiseLowerMode.Both, 5));
+        await assert.rejects(raise(a, Thermostat.SetpointRaiseLowerMode.Heat, 100), { code: Status.ConstraintError });
+        await assert.rejects(raise(a, Thermostat.SetpointRaiseLowerMode.Heat, -200), { code: Status.ConstraintError });
+        // Bei Matter-Modus Aus wird auch ein relativer Schritt abgelehnt.
+        await simulator.set(11, 'operating_mode', 'off');
+        await until(() => a.stateOf(thermostat).systemMode === Off, 'Off fehlt');
+        await assert.rejects(raise(a, Thermostat.SetpointRaiseLowerMode.Heat, 5), { code: Status.InvalidInState });
+        await simulator.set(11, 'operating_mode', 'auto');
+        await until(() => a.stateOf(thermostat).systemMode === Heat, 'Heat fehlt');
+        await pause(300);
+        assert.equal(commands.length, rejected, 'Abgelehnte relative Schritte dürfen nichts senden');
+        assert.equal((await read(a)).occupiedHeatingSetpoint, 2100);
+    });
+
+    await t.test('Heizen abgelehnt, Rad innerhalb von 500 ms: der Moduswunsch läuft trotzdem ab, danach keine Sollwerte mehr', async () => {
+        await simulator.set(22, 'operating_mode', 'off');
+        await until(() => b.stateOf(thermostat).systemMode === Off, 'Off der zweiten Zone fehlt');
+        const first = commands.length;
+        simulator.rejected.add(22);
+        await write(b, { systemMode: Heat });
+        await pause(80);
+        // Der Moduswunsch gilt noch: das Rad wird angenommen und (nach Entprellung) gesendet.
+        await write(b, { occupiedHeatingSetpoint: 2000 });
+        await until(() => commands.length === first + 2, 'Befehle von Modus und Rad fehlen');
+        await until(() => b.stateOf(thermostat).systemMode === Off, 'Abgelehntes Heizen springt nicht zurück', 2500);
+        // Nach Ablauf (500 ms nach dem Moduswunsch, unabhängig vom Sollwert-Send) ist der Wunsch vergessen.
+        await pause(700);
+        await assert.rejects(write(b, { occupiedHeatingSetpoint: 2010 }), { code: Status.InvalidInState });
+        await pause(300);
+        assert.equal(commands.length, first + 2, 'Nach Ablauf darf kein temporary_setpoint mehr hinausgehen');
+        assert.deepEqual(commands.slice(first), [command(22, 'operating_mode', 'auto'), command(22, 'temporary_setpoint', '20')]);
+        simulator.rejected.delete(22);
+        await simulator.set(22, 'operating_mode', 'auto');
+        await simulator.set(22, 'setpoint', '19.0');
+        await until(() => b.stateOf(thermostat).systemMode === Heat && b.stateOf(thermostat).occupiedHeatingSetpoint === 1900, 'Zone 22 nicht zurückgesetzt');
+    });
+
     await t.test('Verbindungswechsel verwirft ungequittete und entprellte Befehle sowie Retained-Zustände', async () => {
         const first = commands.length;
         holdAcks(true);
@@ -238,10 +291,15 @@ test('virtuelle Matter-Fabric mit zwei simulierten MQTT-Zonen', { timeout: 120_0
         await write(b, { occupiedHeatingSetpoint: 2310 });
         dropConnection();
         await until(() => a.stateOf(thermostat).localTemperature === null, 'Offline-Meldung fehlt');
+        // Die echte healthy()-Logik: ohne Broker nicht gesund, obwohl der Matter-Knoten online ist.
+        assert.equal(bridge.node.lifecycle.isOnline, true);
+        assert.equal(bridge.healthy(), false, 'Ohne MQTT-Verbindung ist die Bridge nicht gesund');
+        assert.equal(bridge.allZonesReachable(), false);
         assert.equal(await reachable(a), false);
         await assert.rejects(write(a, { occupiedHeatingSetpoint: 2070 }), { code: Status.InvalidInState });
         holdAcks(false);
         await until(connected, 'Bridge verbindet sich nicht erneut');
+        await until(bridge.healthy, 'Nach Wiederverbindung wieder gesund');
         await pause(250);
         // Retained-Zustaende aus der Zeit vor dem Verbindungsverlust gelten nicht als frisch.
         assert.equal(await reachable(a), false);
@@ -279,7 +337,7 @@ test('virtuelle Matter-Fabric mit zwei simulierten MQTT-Zonen', { timeout: 120_0
         await until(bridge.allZonesReachable, 'Frische Zustände nach Neustart fehlen');
         assert.equal((await a.getStateOf(basic)).nodeLabel, 'Umbenannte Testzone');
         assert.equal((await a.getStateOf(basic)).uniqueId, beforeA.uniqueId);
-        assert.equal((await read(a)).occupiedHeatingSetpoint, 2070);
+        assert.equal((await read(a)).occupiedHeatingSetpoint, 2100);
         await assert.rejects(read(b), 'Die entfernte Zone darf nicht mehr erreichbar sein');
         assert.deepEqual([...(await [...peer.parts][0].getStateOf('descriptor'))?.partsList ?? []].sort(),
             [oldA, bridge.zones.get(33).endpoint.number].sort());

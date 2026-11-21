@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { temp, zoneFixtures } from './fixtures.mjs';
 import { Logger, config, virtualHost } from './matter.mjs';
 
 const { describe, startBridge } = await import('../service.mjs');
+const log = await import('../log.mjs');
 const { StorageError } = await import('../storage.mjs');
 await virtualHost(11);
 
@@ -207,4 +208,69 @@ test('die Startmeldung nennt die Ursache, maskiert aber lange Ziffernfolgen und 
     assert.equal(message, 'TypeError: Port 5540 belegt, Code *** und ***');
     assert.equal(describe(new Error('x'.repeat(1000))).length, 200);
     assert.equal(describe(undefined), 'Error: ');
+});
+
+const mode = async path => (await lstat(path)).mode & 0o777;
+
+test('Speicherrechte: Verzeichnis 0700, Register 0600 unabhängig von der umask; mit umask 077 nichts für Gruppe oder andere zugänglich', async t => {
+    const old = process.umask(0o022);
+    t.after(() => process.umask(old));
+    // 1) Großzügige umask: die explizit gesetzten Modi müssen trotzdem gelten.
+    const open = join(await temp(t), 'bridge');
+    const first = await startBridge(config(open, URL), quiet);
+    await first.close();
+    assert.equal(await mode(open), 0o700);
+    assert.equal(await mode(join(open, 'instance.json')), 0o600);
+    const again = await startBridge(config(open, URL), quiet);
+    await again.close();
+    assert.equal(await mode(join(open, 'instance.json')), 0o600, 'atomares Ersetzen behält den Modus');
+    // 2) umask 077 wie in main.mjs: auch alle Matter.js/SQLite-Dateien sind privat (am echten Prozess in test:network).
+    process.umask(0o077);
+    const dir = join(await temp(t), 'bridge');
+    const bridge = await startBridge(config(dir, URL), quiet);
+    await bridge.close();
+    async function walk(path) {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+            const full = join(path, entry.name);
+            assert.equal(await mode(full) & 0o077, 0, `${full} ist für Gruppe oder andere zugänglich`);
+            if (entry.isDirectory()) await walk(full);
+        }
+    }
+    await walk(dir);
+});
+
+test('Standard-Loglevel: stdout enthält ausschließlich den Kopplungscode, Meldungen und Matter.js-Logs gehen nach stderr', async t => {
+    const dir = join(await temp(t), 'bridge');
+    const stdout = [];
+    const stderr = [];
+    const realOut = process.stdout.write;
+    const realErr = process.stderr.write;
+    const level = Logger.level;
+    const destination = Logger.destinations.default;
+    const write = destination.write;
+    process.stdout.write = (chunk, ...rest) => { stdout.push(String(chunk)); rest.find(f => typeof f === 'function')?.(); return true; };
+    process.stderr.write = (chunk, ...rest) => { stderr.push(String(chunk)); rest.find(f => typeof f === 'function')?.(); return true; };
+    try {
+        log.routeMatterLogsToStderr(Logger);
+        Logger.level = 'debug';
+        // Genau die Senken, die main.mjs verwendet.
+        const bridge = await startBridge(config(dir, URL), {
+            warning: log.warning, info: log.info,
+            output: code => new Promise(resolve => process.stdout.write(`Matter-Kopplungscode: ${code}\n`, resolve)),
+        });
+        log.info('Probe-Info');
+        log.warning('Probe-Warnung');
+        await bridge.close();
+    } finally {
+        process.stdout.write = realOut;
+        process.stderr.write = realErr;
+        destination.write = write;
+        Logger.level = level;
+    }
+    assert.equal(stdout.length, 1, `stdout: ${stdout.join('|').slice(0, 300)}`);
+    assert.match(stdout[0], /^Matter-Kopplungscode: \d{11}\n$/);
+    assert.ok(stderr.join('').length > 500, 'Matter.js-debug-Ausgabe und Bridge-Meldungen müssen auf stderr stehen');
+    assert.match(stderr.join(''), /NOTICE Node thermoctl-bridge is online/, 'Matter.js-Log fehlt auf stderr');
+    assert.match(stderr.join(''), /Probe-Info\nProbe-Warnung\n/, 'Bridge-Meldungen fehlen auf stderr');
+    assert.equal(stderr.join('').includes(stdout[0].slice(-12, -1)), false, 'Der Code steht nie auf stderr');
 });

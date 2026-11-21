@@ -87,7 +87,10 @@ angezeigten Namen (beim nächsten Start). Eine Zone aus der Liste zu **entfernen
 Home unerreichbar; ihre Endpoint-Nummer wird nie an eine andere Zone vergeben. Eine **neue** Zone bekommt eine neue
 Nummer. Eine später wieder eingetragene Zone bekommt ihre alte Nummer und Identität zurück.
 
-Meldungen gehen nach stderr, auf stdout steht ausschließlich der Kopplungscode (einmalig).
+Meldungen der Bridge **und** die Logausgabe von Matter.js gehen nach stderr (bei jedem `LOG_LEVEL`, auch `debug`); auf
+stdout steht ausschließlich der Kopplungscode, und der genau einmal. Das Präfix darf keine leeren Ebenen (`a//b`) und
+kein führendes `$` haben (strenger als thermoctl, das nur Wildcards und leere Präfixe ablehnt; ein Präfix mit mehreren
+Ebenen verarbeitet thermoctls Befehlsparser ohnehin nicht, siehe `commands.py`: eine Ebene).
 
 ## Kopplung
 
@@ -180,6 +183,11 @@ nur diese Topics, nie Wildcards. Über das Netz gelten die Hinweise in `docs/mqt
 
 ## Betrieb (Compose-Beispiel)
 
+Das Basisabbild (`node:22-bookworm-slim`) ist **nicht per Digest gepinnt**: ein Neubau übernimmt das aktuelle 22er-
+Abbild samt Sicherheitsupdates, ist dafür aber nicht bitgleich reproduzierbar. Wer das braucht, pinnt den Digest selbst.
+Wird `/data` als **Bind-Mount** statt als Volume eingebunden, muss das Host-Verzeichnis dem Benutzer `node` (UID 1000)
+gehören (`chown 1000:1000`, Modus 700); sonst bricht die Bridge mit „nicht beschreibbar“ ab.
+
 Ein Abbild ist **nicht veröffentlicht**; die Bridge wird lokal gebaut (`docker build -t thermoctl-matter-bridge
 matter-bridge/`, Node 22, unprivilegierter Benutzer `node`).
 
@@ -250,5 +258,8 @@ Produktivanlage) prüfen und festhalten (App-Version, UI-Modus, angebotene Grenz
 2. Google Home: Test-VID/Entwicklerkonto, zweites Kopplungsfenster, Darstellung eines Heat-only-Thermostats unter
    einem Aggregator.
 3. mDNS im echten Netz (Host-Netz/macvlan, VLAN, Firewall), Wiederfinden nach Neustart und IP-Wechsel.
-4. Zusammenspiel mit der echten thermoctl-Domäne (`command/temporary_setpoint`, Dauer der Übersteuerung) und den
+4. Moduswechsel und Sollwert: offen, ob Apple Home oder Google Home beim Wechsel Aus → Heizen zusätzlich den Sollwert
+   mitschreiben. Die Bridge sendet bewusst auch bei unverändertem Wert einen Befehl (sonst ginge „Heizen“ bei schon
+   angezeigtem Heizen verloren); ein solcher Mitschreib-Write erzeugte in thermoctl eine **befristete Übersteuerung**.
+5. Zusammenspiel mit der echten thermoctl-Domäne (`command/temporary_setpoint`, Dauer der Übersteuerung) und den
    echten Broker-ACLs.

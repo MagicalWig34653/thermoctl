@@ -50,3 +50,17 @@ test('Heizbedarf: nur true und false; Nutzlast als Nicht-Buffer, leer oder riesi
     // Nicht-ASCII-Ziffern gelten nicht als Ziffern.
     assert.equal(parseState('setpoint', Buffer.from('٢١', 'utf8'), limits), null);
 });
+
+test('Rundreise Matter-Hundertstel -> MQTT-Zeichenkette -> Parser ergibt für alle 551 Zehntelwerte von -20,0 bis 35,0 denselben Wert', () => {
+    const wide = { minSetpoint: -2000, maxSetpoint: 3500 };
+    for (let tenth = -200; tenth <= 350; tenth++) {
+        const hundredths = tenth * 10;
+        // So bildet die Bridge die Nutzlast (bridge.mjs, command()): String(value / 100).
+        const sent = String(hundredths / 100);
+        // Ganze Grad gehen als "23" hinaus, nicht als "23.0"; thermoctl liest beides (Decimal("23")).
+        assert.match(sent, /^-?\d+(?:\.\d)?$/, `Format von ${hundredths}: ${sent}`);
+        assert.equal(parseState('setpoint', Buffer.from(sent), wide), hundredths, `Rundreise ${sent}`);
+    }
+    // Der Fall, an dem Math.trunc scheitert: -19.9 * 100 ist -1989.9999999999998.
+    assert.equal(parseState('setpoint', Buffer.from('-19.9'), { minSetpoint: -2000, maxSetpoint: 3500 }), -1990);
+});

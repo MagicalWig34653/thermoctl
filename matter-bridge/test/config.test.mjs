@@ -117,10 +117,12 @@ test('Port, Maximalalter, Präfix und Speicherverzeichnis werden geprüft', () =
         assert.throws(() => read({ MATTER_BRIDGE_MAX_AGE_SECONDS: age }), ConfigurationError, age);
     }
     assert.equal(read({ MATTER_BRIDGE_MAX_AGE_SECONDS: '90' }).maxAgeMs, 90_000);
-    for (const prefix of ['', '/', 'a/+/b', 'a/#', 'mit leerzeichen', 'a\nb', 'a\u0000b']) {
+    for (const prefix of ['', '/', 'a/+/b', 'a/#', 'mit leerzeichen', 'a\nb', 'a\u0000b', 'a//b', '$SYS', '$SYS/thermoctl']) {
         assert.throws(() => read({ MATTER_BRIDGE_TOPIC_PREFIX: prefix }), ConfigurationError, JSON.stringify(prefix));
     }
     assert.equal(read({ MATTER_BRIDGE_TOPIC_PREFIX: 'haus/heizung' }).topicPrefix, 'haus/heizung');
+    assert.equal(read({ MATTER_BRIDGE_TOPIC_PREFIX: 'a/$b' }).topicPrefix, 'a/$b', 'nur ein führendes $ ist reserviert');
+    assert.equal(read({ MATTER_BRIDGE_TOPIC_PREFIX: '//haus//' }).topicPrefix, 'haus', 'äußere Schrägstriche wie in thermoctl entfernt');
     assert.throws(() => read({ MATTER_BRIDGE_STORAGE_DIR: '   ' }), ConfigurationError);
     assert.throws(() => read({ MATTER_BRIDGE_LOG_LEVEL: 'laut' }), ConfigurationError);
 });

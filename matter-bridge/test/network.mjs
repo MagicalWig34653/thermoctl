@@ -114,7 +114,7 @@ test('echter Prozess auf Loopback-UDP: Start, Kopplungscode einmalig, Healthchec
         MATTER_BRIDGE_ZONES: '[{"id":5,"name":"Netzwerktest"}]',
         MATTER_BRIDGE_STORAGE_DIR: join(dir, 'bridge'),
         MATTER_BRIDGE_MATTER_PORT: String(port),
-        MATTER_BRIDGE_LOG_LEVEL: 'info',
+        MATTER_BRIDGE_LOG_LEVEL: 'debug', // Matter.js schreibt dann viel; stdout muss trotzdem nur den Code enthalten
     };
     const healthy = () => new Promise(resolve => {
         const probe = spawn(process.execPath, [join(root, 'healthcheck.mjs')], { env: { PATH: process.env.PATH, ...env } });
@@ -155,6 +155,19 @@ test('echter Prozess auf Loopback-UDP: Start, Kopplungscode einmalig, Healthchec
     assert.ok(error, 'Ohne mDNS kann der operative Schritt hier nicht gelingen');
     assert.match(error.message, /Operative reconnection/, `Kopplung muss erst am operativen Schritt scheitern: ${error.message}`);
     await controller.close();
+
+    // --- Dateirechte des echten Prozesses (umask 077 aus main.mjs)
+    const { readdir, lstat } = await import('node:fs/promises');
+    const walk = async path => {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+            const full = join(path, entry.name);
+            if (entry.isSocket()) continue;
+            assert.equal((await lstat(full)).mode & 0o077, 0, `${full} ist für Gruppe oder andere zugänglich`);
+            if (entry.isDirectory()) await walk(full);
+        }
+    };
+    await walk(join(dir, 'bridge'));
+    assert.ok(first.stderr.length > 500, 'debug-Ausgabe von Matter.js muss auf stderr stehen');
 
     // --- sauberes Beenden und Neustart mit demselben Speicher
     first.child.kill('SIGTERM');
