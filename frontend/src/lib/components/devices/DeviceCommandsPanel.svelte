@@ -7,7 +7,7 @@
   import { createQuery } from '$lib/history/query.svelte';
   import { emptyListText } from '$lib/history/reports';
   import { formatInstant } from '$lib/rooms/logic';
-  import { commandKind, type CommandKind } from '$lib/devices/commands';
+  import { commandCard, commandKind, commandRowKey, type CommandKind } from '$lib/devices/commands';
 
   // Schaltprotokoll: jeder gesendete oder zurückgehaltene Befehl an einen Aktor (nur Lesen).
   const { api } = useApp();
@@ -31,14 +31,34 @@
     absenkung: 'bg-amber-500/20',
   };
   const field = 'h-9 rounded-lg border bg-background px-2';
+
+  // Ab `lg` gilt die Desktop-Ansicht (wie die Navigation in Shell.svelte): Tabelle und offene
+  // Erläuterung. Darunter steht jede Zeile als Karte und die Erläuterung ist eingeklappt.
+  const wideQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 1024px)');
+  let wide = $state(wideQuery?.matches ?? true);
+  $effect(() => {
+    if (!wideQuery) return;
+    const update = () => (wide = wideQuery.matches);
+    wideQuery.addEventListener('change', update);
+    return () => wideQuery.removeEventListener('change', update);
+  });
 </script>
 
-<p class="mb-4 max-w-3xl text-sm text-muted-foreground" data-testid="commands-explainer">
+{#snippet explainer()}
   Jeder Befehl, der wirklich an ein Gerät hinausging oder im Trockenlauf unterdrückt oder verworfen wurde, mit Zeitpunkt, Raum, Gerät, Nutzlast, Ergebnis und Begründung.
   Im scharfen Betrieb nach einem Neustart gehen Sollwerte und Ein/Aus-Befehle an die zugeordneten Aktoren.
   Notbetriebsentscheidungen (z. B. „bewusst nicht gesendet“, Übergabe, Rückstellung) stehen zusätzlich hier, als <strong>Entscheidung</strong> gekennzeichnet, auch wenn ihnen kein eigener Sendeversuch folgte.
   Senkt die Sonnenabsenkung den Sollwert eines Raums ab, steht Beginn, Änderung des Betrags und Ende jeweils einmal hier, als <strong>Absenkung</strong> gekennzeichnet, mit dem Sollwert vor der Absenkung und dem wirksamen Sollwert, damit nachvollziehbar bleibt, warum die Regelung gegen einen niedrigeren Wert als den eigentlichen Sollwert gearbeitet hat.
-</p>
+{/snippet}
+
+{#if wide}
+  <p class="mb-4 max-w-3xl text-sm text-muted-foreground" data-testid="commands-explainer">{@render explainer()}</p>
+{:else}
+  <details class="mb-4 rounded-lg border px-3 text-sm text-muted-foreground" data-testid="commands-explainer">
+    <summary class="flex min-h-11 cursor-pointer items-center font-medium text-foreground">Erläuterung zum Schaltprotokoll</summary>
+    <p class="mt-0 mb-3">{@render explainer()}</p>
+  </details>
+{/if}
 
 <form class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onsubmit={(e) => e.preventDefault()} aria-label="Filter Schaltprotokoll">
   <label class="grid gap-1 text-sm"><span class="text-muted-foreground">Von</span><input type="date" class={field} bind:value={fromDate} onchange={reset} /></label>
@@ -68,6 +88,28 @@
       )}
     </p>
   {:else}
+    {#if !wide}
+      <ul class="m-0 grid list-none gap-3 p-0" role="list" aria-label="Schaltprotokoll, Seite {data.page}" data-testid="commands-list">
+        {#each data.entries as e (commandRowKey(e))}
+          {@const card = commandCard(e, data)}
+          <li class="rounded-xl border bg-card p-4" data-testid="command-card" data-kind={card.kind.kind}>
+            <div class="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span class="rounded-md px-1.5 py-0.5 text-xs {kindTone[card.kind.kind]}">{card.kind.label}</span>
+              <time class="font-medium" datetime={card.iso ?? undefined}>{card.time}</time>
+            </div>
+            <dl class="m-0 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+              {#each card.rows as r (r.key)}
+                <dt class="text-muted-foreground">{r.label}</dt>
+                <dd class="m-0 wrap-anywhere {r.tone === 'fehler' ? 'text-destructive' : ''}" data-field={r.key}>
+                  {r.value}{#if r.key === 'ergebnis' && card.simulated} <span class="rounded-md bg-muted px-1.5 py-0.5 text-xs">Trockenlauf</span>{/if}
+                  {#if r.detail}<span class="block text-xs text-muted-foreground">{r.detail}</span>{/if}
+                </dd>
+              {/each}
+            </dl>
+          </li>
+        {/each}
+      </ul>
+    {:else}
     <div class="overflow-x-auto rounded-xl border">
       <table class="w-full min-w-[48rem] border-collapse text-sm" data-testid="commands-table">
         <caption class="sr-only">Schaltprotokoll, Seite {data.page}</caption>
@@ -83,7 +125,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each data.entries as e (e.id)}
+          {#each data.entries as e (commandRowKey(e))}
             {@const art = commandKind(e.kind)}
             <tr class="border-t align-top">
               <td class="px-3 py-2" data-testid="entry-kind" data-kind={art.kind}>
@@ -104,6 +146,7 @@
         </tbody>
       </table>
     </div>
+    {/if}
     <div class="mt-3 flex items-center gap-2">
       <Button variant="outline" size="sm" disabled={page <= 1} onclick={() => (page -= 1)}>Neuere</Button>
       <span class="text-sm text-muted-foreground">Seite {data.page}</span>
