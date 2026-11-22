@@ -15,7 +15,12 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.modes import check_temperature
-from thermoctl.domain.time import local_day_start_utc, local_time, wall_clock_reached_at
+from thermoctl.domain.time import (
+    local_day_start_utc,
+    local_time,
+    schedule_clock,
+    wall_clock_reached_at,
+)
 
 MINUTES_PER_WEEK = 7 * 24 * 60
 
@@ -1484,14 +1489,16 @@ def _schedule_setpoint(
     `resolved_setpoint`.
     """
     # Schedules are stored in local time, so the night setback does not shift when
-    # clocks change for daylight saving.
-    local = local_time(now_utc, settings.timezone)
+    # clocks change for daylight saving. They are evaluated against the schedule clock,
+    # which is the wall clock except in the second pass of a repeated hour, where it
+    # stands still: the plan runs over real time and never steps back.
+    plan_clock = schedule_clock(now_utc, settings.timezone)
     points = (
         ctx.points_by_zone.get(zone.id, [])
         if ctx is not None
         else list(session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)))
     )
-    gilt = current_point(points, local.replace(tzinfo=None))
+    gilt = current_point(points, plan_clock)
     if gilt is None:
         return None
     temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id, ctx)
@@ -1639,12 +1646,12 @@ def schedule_forecast(
     drift out of sync with it. Summer time needs no special case either: `now_utc`
     and the horizon are real UTC instants (24 real hours, not "24 on the wall
     clock"), and every local-time lookup along the way goes through `zoneinfo` via
-    `local_time`/`next_switch_utc`, the same conversion `resolved_setpoint` and
+    `schedule_clock`/`next_switch_utc`, the same conversion `resolved_setpoint` and
     `end_of_next_switch` rely on -- so a 23- or 25-hour local day changes how many bars
-    come out, never whether the instants themselves are correct. (In the repeated hour
-    the wall clock jumps back, so `resolved_setpoint` itself is not monotonic there: a
-    bar spans from one switch to the next and carries the value at its start. That
-    limitation is older than `next_switch_utc` and unchanged by it.)
+    come out, never whether the instants themselves are correct. In the repeated hour
+    the plan runs over real time (the schedule clock stands still in the second pass),
+    so the setpoint never steps back there: one bar per real switch, and a bar spans
+    from one switch to the next with the value at its start.
 
     A zone without any schedule point is not a special case either: `next_switch_utc`
     returns `None`, the loop below draws one bar for the remaining window, and
@@ -1745,18 +1752,21 @@ def next_switch_utc(
 ) -> datetime | None:
     """The next schedule switch as a real moment (naive UTC), strictly after `now_utc`.
 
-    Defined as: the earliest real moment after `now_utc` at which the local wall clock
-    reaches the weekday and minute of a schedule point -- or `None` without any point.
-    This is the single place that turns the wall-clock schedule into an instant; the
-    end of a boost or dial override, the "next switch" display and the forecast all
-    use it, so they cannot disagree about when a point falls.
+    Defined as: the earliest real moment after `now_utc` at which the schedule clock
+    (`time.schedule_clock`) reaches the weekday and minute of a schedule point -- or
+    `None` without any point. This is the single place that turns the wall-clock schedule
+    into an instant; the end of a boost or dial override, the "next switch" display and
+    the forecast all use it, so they cannot disagree about when a point falls, and it
+    agrees with `_schedule_setpoint`, which evaluates the plan against the same clock.
 
-    **Repeated hour** (clocks go back): the wall clock shows a time twice, and both
-    readings are candidates; the earliest one that lies after `now_utc` wins. At
-    02:15 CET in the second pass, a point at 02:30 falls 15 minutes away, not in the
-    past (its first reading, 02:30 CEST, is gone). Conversely, in the *first* pass a
-    point at 02:10 that the clock already passed falls again within the hour, in the
-    second pass: that really is the next moment the wall clock reads 02:10.
+    **Repeated hour** (clocks go back): the wall clock shows a time twice, but the plan
+    runs over real time -- a point inside the repeated hour fires once, in the *first*
+    pass; only that reading counts (`wall_clock_reached_at` returns it first). At 02:15
+    CET in the second pass, a point at 02:30 has already fired (as 02:30 CEST) and is next
+    due a week later, not 15 minutes ahead; conversely, in the first pass at 02:15 CEST a
+    point at 02:10 has fired and does *not* come again within the hour. The next switch in
+    the second pass is the next point after the repeated hour -- at 03:00 CET and later the
+    wall clock is the schedule clock again.
 
     **Skipped hour** (clocks go forward): a point inside the gap never shows on the
     clock. It applies from the moment the clock jumps past it, exactly like
@@ -1770,12 +1780,11 @@ def next_switch_utc(
     The candidates are the occurrences of every point in the current and the next week
     of the local calendar (the next always holds a moment after `now_utc`). Week starts
     are built by wall-clock arithmetic on naive local time, which is what a weekly
-    schedule means. Not covered, deliberately: a clock that jumps *back* across the
-    Sunday/Monday boundary would give a late point of the previous week a second reading
-    after `now_utc`; no zone is known to do that (clock changes fall inside a day; the
-    Sunday-night ones step back within Sunday), and a margin nobody can exercise is not
-    a safeguard. The cost is a few hundred cheap conversions per call (two weeks times
-    the distinct point minutes), small next to the database read before it.
+    schedule means. With only the first reading of a point counting, a clock change near
+    the Sunday/Monday boundary needs no extra margin: a late point of the previous week
+    has no second reading after `now_utc`. The cost is a few hundred cheap conversions per
+    call (two weeks times the distinct point minutes), small next to the database read
+    before it.
     """
     if not points:
         return None
@@ -1784,18 +1793,14 @@ def next_switch_utc(
         hour=0, minute=0, second=0, microsecond=0
     )
     minutes = {_point_minute(point) for point in points}
-    return min(
-        (
-            moment
-            for week in (0, 1)
-            for minute in minutes
-            for moment in wall_clock_reached_at(
-                week_start + timedelta(weeks=week, minutes=minute), timezone_name
-            )
-            if moment > now_utc
-        ),
-        default=None,
+    first_readings = (
+        wall_clock_reached_at(
+            week_start + timedelta(weeks=week, minutes=minute), timezone_name
+        )[0]
+        for week in (0, 1)
+        for minute in minutes
     )
+    return min((moment for moment in first_readings if moment > now_utc), default=None)
 
 
 def end_of_next_switch(

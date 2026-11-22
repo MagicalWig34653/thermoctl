@@ -359,22 +359,26 @@ def _berlin_zone_with_point_at(session: Session, weekday: int, minute: int) -> Z
 
 def test_in_the_repeated_hour_the_dial_ends_at_the_schedule_point(session: Session) -> None:
     """2026-10-25, Europe/Berlin: 02:00-03:00 happens twice. now = 01:15 UTC is 02:15 CET,
-    the *second* pass; the schedule point at 02:30 is 15 minutes away (01:30 UTC). It used
-    to be read as its first occurrence (00:30 UTC, before now), so the fallback applied;
-    now the end is the schedule point itself, and the override applies and runs."""
+    the *second* pass; the schedule point at 02:30 fired in the first pass (00:30 UTC) and
+    does not fire again, so the next switch is the point after the repeated hour, 10:00 CET
+    (09:00 UTC). It used to be read as its first occurrence (before now), so the fallback
+    applied; the end is the schedule point itself, and the override applies and runs."""
     zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
     first = set_temporary_setpoint(
         session, zone, Decimal("22.0"), datetime(2026, 10, 24, 12, 0), source="system"
     )
     assert first.ends_at > datetime(2026, 10, 24, 12, 0)
     now = datetime(2026, 10, 25, 1, 15)
+    next_switch_after_the_hour = datetime(2026, 10, 25, 9, 0)
 
     result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
 
-    assert result.ends_at == datetime(2026, 10, 25, 1, 30)
+    assert result.ends_at == next_switch_after_the_hour
     assert resolved_setpoint(session, zone, now).temperature_c == Decimal("23.0")
     assert _running(session, zone, now + timedelta(minutes=1)) != []
-    assert _running(session, zone, datetime(2026, 10, 25, 1, 30)) == []
+    assert _running(session, zone, datetime(2026, 10, 25, 1, 30)) != []
+    assert _running(session, zone, next_switch_after_the_hour - timedelta(seconds=1)) != []
+    assert _running(session, zone, next_switch_after_the_hour) == []
 
 
 @pytest.mark.parametrize("offset", [timedelta(hours=-1), timedelta(0)], ids=["before", "equal"])

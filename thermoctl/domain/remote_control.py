@@ -48,7 +48,7 @@ from thermoctl.domain.schedule import (
     running_override,
     temperature_for_mode,
 )
-from thermoctl.domain.time import local_time
+from thermoctl.domain.time import schedule_clock
 
 log = logging.getLogger(__name__)
 
@@ -237,11 +237,12 @@ def boost(
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
 
     # The point that applies from `end_at` onward -- the one we are bringing forward:
-    # whatever `current_point` returns for the wall clock at that very moment, which is
+    # whatever `current_point` returns for the schedule clock at that very moment, which is
     # exactly what `_schedule_setpoint` will deliver then. (In the skipped hour of a
     # clock change that is the last point at or before the clock's new reading, the
-    # same one the schedule itself applies from there.)
-    upcoming = current_point(points, local_time(end_at, settings.timezone).replace(tzinfo=None))
+    # same one the schedule itself applies from there; in the repeated hour the schedule
+    # clock stands still, so the point after it is the one that comes next.)
+    upcoming = current_point(points, schedule_clock(end_at, settings.timezone))
     if upcoming is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
     mode = session.get(SetpointMode, upcoming.setpoint_mode_id)

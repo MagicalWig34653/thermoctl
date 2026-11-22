@@ -8,10 +8,14 @@ Vergangenheit, und eine Frühjahrslücke wurde um die Lückenbreite zu spät get
 Boost und das Sollwertrad endeten dadurch sofort bzw. wirkten nie.
 
 Festgelegt ist: Der nächste Schaltzeitpunkt ist der früheste echte Zeitpunkt strikt nach
-`now`, zu dem die Wanduhr die Zeit eines Zeitplanpunkts erreicht. Die Tabelle unten ist
-von Hand gegen `zoneinfo` gerechnet; dazu kommt ein Gegenrechner, der Minute für Minute
-durch die echte Zeit läuft und die Wanduhr beobachtet (er teilt keinen Code mit der
-Umsetzung). Feste Zeiten per `now`, nie die echte Uhr.
+`now`, zu dem die Plan-Uhr die Zeit eines Zeitplanpunkts erreicht. Die Plan-Uhr ist die
+Wanduhr, steht aber im zweiten Durchlauf einer Wiederholstunde still: ein Punkt in der
+Wiederholstunde feuert nur im ersten Durchlauf (Entscheidung des Projektinhabers, "Plan
+über echte Zeit führen"; die Plan-Uhr selbst prüft `test_schedule_plan_clock.py`). Die
+Tabelle unten ist von Hand gegen `zoneinfo` gerechnet; dazu kommt ein Gegenrechner, der
+Minute für Minute durch die echte Zeit läuft und die Plan-Uhr als laufendes Maximum der
+Wanduhr führt (er teilt keinen Code mit der Umsetzung). Feste Zeiten per `now`, nie die
+echte Uhr.
 """
 
 from datetime import datetime, timedelta
@@ -82,16 +86,20 @@ def _zone_with_minutes(
 # zoneinfo gerechnet; die Fälle der Karte stehen vorn.
 CASES = {
     "karte_zweiter_durchlauf": (
+        # 02:30 hat im ersten Durchlauf (00:30 UTC) schon gefeuert und feuert nicht noch
+        # einmal: nächste Schaltung ist die Woche darauf
         "Europe/Berlin", [(SUNDAY, 150)],
-        datetime(2026, 10, 25, 1, 15), datetime(2026, 10, 25, 1, 30),
+        datetime(2026, 10, 25, 1, 15), datetime(2026, 11, 1, 1, 30),
     ),
     "erster_durchlauf_bleibt": (
         "Europe/Berlin", [(SUNDAY, 150)],
         datetime(2026, 10, 25, 0, 15), datetime(2026, 10, 25, 0, 30),
     ),
     "jetzt_genau_auf_erstem_auftreten": (
+        # jetzt = 02:30 CEST, der Punkt ist soeben gefeuert; die zweite Lesart (01:30 UTC)
+        # feuert nicht, nächste Schaltung ist 02:30 CET am Sonntag darauf
         "Europe/Berlin", [(SUNDAY, 150)],
-        datetime(2026, 10, 25, 0, 30), datetime(2026, 10, 25, 1, 30),
+        datetime(2026, 10, 25, 0, 30), datetime(2026, 11, 1, 1, 30),
     ),
     "jetzt_genau_auf_zweitem_auftreten": (
         "Europe/Berlin", [(SUNDAY, 150)],
@@ -103,9 +111,27 @@ CASES = {
         datetime(2026, 10, 25, 1, 15), datetime(2026, 11, 1, 1, 10),
     ),
     "punkt_vor_wandzeit_erster_durchlauf": (
-        # 00:15 UTC = 02:15 CEST; 02:10 war schon, kommt aber im zweiten Durchlauf wieder
+        # 00:15 UTC = 02:15 CEST; 02:10 ist schon gefeuert (00:10 UTC) und kommt im zweiten
+        # Durchlauf nicht wieder -> nächste Woche
         "Europe/Berlin", [(SUNDAY, 130)],
-        datetime(2026, 10, 25, 0, 15), datetime(2026, 10, 25, 1, 10),
+        datetime(2026, 10, 25, 0, 15), datetime(2026, 11, 1, 1, 10),
+    ),
+    "punkt_in_wiederholstunde_noch_ausstehend": (
+        # 00:15 UTC = 02:15 CEST; 02:30 gilt ab 00:30 UTC (erste Lesart), bleibt
+        "Europe/Berlin", [(SUNDAY, 150)],
+        datetime(2026, 10, 25, 0, 15), datetime(2026, 10, 25, 0, 30),
+    ),
+    "punkt_nach_wiederholstunde_im_zweiten_durchlauf": (
+        # 03:00 CET feuert erst, wenn die Wanduhr 03:00 erreicht (02:00 UTC), nicht im
+        # zweiten Durchlauf
+        "Europe/Berlin", [(SUNDAY, 180)],
+        datetime(2026, 10, 25, 1, 15), datetime(2026, 10, 25, 2, 0),
+    ),
+    "mehrere_punkte_naechster_nach_wiederholstunde": (
+        # 02:10 und 02:30 liegen in der Wiederholstunde und haben gefeuert; "bis zur nächsten
+        # Schaltung" ist der Punkt NACH der Wiederholstunde: 03:30 CET = 02:30 UTC
+        "Europe/Berlin", [(SUNDAY, 130), (SUNDAY, 150), (SUNDAY, 210)],
+        datetime(2026, 10, 25, 1, 15), datetime(2026, 10, 25, 2, 30),
     ),
     "fruehjahr_luecke": (
         # 02:30 gibt es nicht; die Wanduhr springt um 01:00 UTC von 01:59 auf 03:00
@@ -167,7 +193,7 @@ CASES = {
     "new_york_wiederholstunde_zweiter_durchlauf": (
         # 01:00-02:00 am 2026-11-01: erst EDT (05:00-06:00 UTC), dann EST (06:00-07:00 UTC)
         "America/New_York", [(SUNDAY, 90)],
-        datetime(2026, 11, 1, 6, 15), datetime(2026, 11, 1, 6, 30),
+        datetime(2026, 11, 1, 6, 15), datetime(2026, 11, 8, 6, 30),
     ),
     "new_york_wiederholstunde_erster_durchlauf": (
         "America/New_York", [(SUNDAY, 90)],
@@ -180,7 +206,7 @@ CASES = {
     "lord_howe_wiederholstunde_zweiter_durchlauf": (
         # 30-Minuten-Sprung: 01:30-02:00 doppelt; 14:30-15:00 UTC, dann 15:00-15:30 UTC
         "Australia/Lord_Howe", [(SUNDAY, 105)],
-        datetime(2026, 4, 4, 15, 10), datetime(2026, 4, 4, 15, 15),
+        datetime(2026, 4, 4, 15, 10), datetime(2026, 4, 11, 15, 15),
     ),
     "lord_howe_wiederholstunde_erster_durchlauf": (
         "Australia/Lord_Howe", [(SUNDAY, 105)],
@@ -216,35 +242,32 @@ def _week_minute(wall: datetime) -> int:
     return (wall.isoweekday() - 1) * 1440 + wall.hour * 60 + wall.minute
 
 
-def _oracle(points: list[tuple[int, int]], now: datetime, timezone_name: str) -> datetime:
-    """Läuft Minute für Minute durch die echte Zeit ab `now` und beobachtet die Wanduhr.
-
-    Ein Punkt gilt als erreicht, wenn die Wanduhr seine Minute zeigt (auch beim Rücksprung
-    der Wiederholstunde) oder ihn beim Vorwärtssprung der Lücke übersprungen hat.
-    """
+def _fired_moments(
+    points: list[tuple[int, int]], timezone_name: str, start: datetime, minutes: int
+) -> list[datetime]:
+    """Läuft Minute für Minute durch die echte Zeit und führt die Plan-Uhr als laufendes
+    Maximum der Wanduhr seit Wochenbeginn. Ein Punkt feuert, wenn die Plan-Uhr seine Minute
+    erreicht oder überspringt (Vorwärtssprung der Lücke); im zweiten Durchlauf der
+    Wiederholstunde steht die Plan-Uhr, dort feuert nichts. Am Wochenwechsel feuern die
+    Punkte bis zur neuen Plan-Minute."""
     wanted = {(weekday - 1) * 1440 + minute for weekday, minute in points}
-    moment = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
-    previous = _wall(moment - timedelta(minutes=1), timezone_name)
-    for _ in range(2 * 10080):
-        current = _wall(moment, timezone_name)
-        if _week_minute(current) in wanted or _skipped_over(wanted, previous, current):
-            return moment
-        previous = current
-        moment += timedelta(minutes=1)
-    raise AssertionError("kein Schaltpunkt in zwei Wochen")  # pragma: no cover
-
-
-def _skipped_over(wanted: set[int], previous: datetime, current: datetime) -> bool:
-    """Liegt eine Punktminute strikt zwischen zwei aufeinanderfolgenden Wanduhrwerten,
-    die mehr als eine Minute auseinanderliegen (Vorwärtssprung)?"""
-    if current - previous <= timedelta(minutes=1):
-        return False
-    probe = previous + timedelta(minutes=1)
-    while probe < current:
-        if _week_minute(probe) in wanted:
-            return True
-        probe += timedelta(minutes=1)
-    return False
+    fired: list[datetime] = []
+    week: datetime | None = None
+    plan = 0
+    for offset in range(minutes):
+        moment = start + timedelta(minutes=offset)
+        wall = _wall(moment, timezone_name)
+        wall_minute = _week_minute(wall)
+        wall_week = wall - timedelta(
+            days=wall.isoweekday() - 1, hours=wall.hour, minutes=wall.minute
+        )
+        if week != wall_week:
+            low, plan, week = -1, wall_minute, wall_week
+        else:
+            low, plan = plan, max(plan, wall_minute)
+        if offset and any(low < m <= plan for m in wanted):
+            fired.append(moment)
+    return fired
 
 
 # Sonntag dicht besetzt: deckt Wiederholstunde und Lücke der drei Zonen ab; dazu Montag 00:00.
@@ -270,13 +293,18 @@ def test_next_switch_agrees_with_a_minute_by_minute_walk_through_real_time(
 ) -> None:
     timezone_name, start, hours = WINDOWS[name]
     zone = _zone_with_minutes(session, timezone_name, DENSE)
+    # Der Gegenrechner startet 36 Stunden vor dem Fenster (außerhalb jeder Umstellung), damit
+    # das laufende Maximum der Wanduhr an dessen Beginn stimmt, und läuft über zwei Wochen.
+    fired = _fired_moments(
+        DENSE, timezone_name, start - timedelta(hours=36), (36 + hours) * 60 + 2 * 10080
+    )
 
     moment = start
     checked = 0
     while moment < start + timedelta(hours=hours):
         for now in (moment, moment + timedelta(seconds=30)):
             result = end_of_next_switch(session, zone, now)
-            assert result == _oracle(DENSE, now, timezone_name), (name, now)
+            assert result == next(m for m in fired if m > now), (name, now)
             assert result is not None and result > now
             checked += 1
         moment += timedelta(minutes=7)
@@ -294,8 +322,8 @@ def test_the_end_coincides_with_the_schedule_change_in_the_repeated_hour(
     session: Session,
 ) -> None:
     """02:30 'nacht' (18), 10:00 'tag' (21). Im zweiten Durchlauf (01:15 UTC = 02:15 CET)
-    gilt noch 'tag'; um 01:30 UTC zeigt die Wanduhr 02:30, und genau dann liefert der
-    Zeitplan 'nacht'."""
+    gilt 'nacht' schon (02:30 CEST hat gefeuert) und bleibt; das Ende ist der nächste echte
+    Schaltpunkt, 10:00 CET (09:00 UTC), und genau dann liefert der Zeitplan 'tag'."""
     zone = _zone(
         session, "Europe/Berlin", [(SUNDAY, 150, "nacht"), (SUNDAY, 600, "tag")]
     )
@@ -303,9 +331,10 @@ def test_the_end_coincides_with_the_schedule_change_in_the_repeated_hour(
 
     end = end_of_next_switch(session, zone, now)
 
-    assert end == datetime(2026, 10, 25, 1, 30)
-    assert _schedule_value_at(session, zone, end - timedelta(seconds=1)) == DAY_C
-    assert _schedule_value_at(session, zone, end) == NIGHT_C
+    assert end == datetime(2026, 10, 25, 9, 0)
+    assert _schedule_value_at(session, zone, now) == NIGHT_C
+    assert _schedule_value_at(session, zone, end - timedelta(seconds=1)) == NIGHT_C
+    assert _schedule_value_at(session, zone, end) == DAY_C
 
 
 def test_the_end_coincides_with_the_schedule_change_in_the_spring_gap(
@@ -330,7 +359,8 @@ def test_the_end_coincides_with_the_schedule_change_in_the_spring_gap(
 
 
 FOLD_NOW = datetime(2026, 10, 25, 1, 15)  # 02:15 CET, zweiter Durchlauf
-FOLD_END = datetime(2026, 10, 25, 1, 30)  # 02:30 CET
+# Der Punkt 02:30 hat im ersten Durchlauf gefeuert; die nächste Schaltung ist 10:00 CET.
+FOLD_NEXT = datetime(2026, 10, 25, 9, 0)
 
 
 def _fold_zone(session: Session) -> Zone:
@@ -342,24 +372,31 @@ def _overrides(session: Session, zone: Zone) -> list[ZoneOverride]:
 
 
 def test_boost_in_the_repeated_hour_ends_at_the_schedule_point(session: Session) -> None:
+    """Im zweiten Durchlauf gilt 'nacht' (18); der Boost zieht die nächste echte Schaltung
+    vor -- 'tag' ab 10:00 CET, nicht den Punkt 02:30, der schon gefeuert hat."""
     zone = _fold_zone(session)
+    assert _schedule_value_at(session, zone, FOLD_NOW) == NIGHT_C
 
     result = boost(session, zone, FOLD_NOW, source="system")
 
-    assert result.bis == FOLD_END
-    assert result.mode_code == "nacht"
-    assert result.temperature == NIGHT_C
+    assert result.bis == FOLD_NEXT
+    assert result.mode_code == "tag"
+    assert result.temperature == DAY_C
     (row,) = _overrides(session, zone)
-    assert row.ends_at == FOLD_END and row.starts_at == FOLD_NOW
-    assert resolved_setpoint(session, zone, FOLD_NOW).temperature_c == NIGHT_C
-    assert resolved_setpoint(session, zone, FOLD_END).temperature_c == NIGHT_C
+    assert row.ends_at == FOLD_NEXT and row.starts_at == FOLD_NOW
+    assert resolved_setpoint(session, zone, FOLD_NOW).temperature_c == DAY_C
+    before_end = resolved_setpoint(session, zone, FOLD_NEXT - timedelta(seconds=1))
+    assert before_end.temperature_c == DAY_C and "Übersteuerung" in before_end.reason
+    after = resolved_setpoint(session, zone, FOLD_NEXT)
+    assert after.temperature_c == DAY_C and "Zeitplan" in after.reason
 
 
 def test_the_dial_in_the_repeated_hour_ends_at_the_schedule_point_not_at_the_fallback(
     session: Session,
 ) -> None:
-    """Die Ersatzfrist (120 Minuten) ist nur Absicherung. Das Ende muss der Schaltpunkt
-    (in 15 Minuten) sein, sonst hätte sie die Ursache verdeckt."""
+    """Die Ersatzfrist (120 Minuten) ist nur Absicherung. Das Ende muss der nächste echte
+    Schaltpunkt sein (in 7 Stunden 45 Minuten, also weit hinter der Ersatzfrist), sonst
+    hätte sie die Ursache verdeckt."""
     zone = _fold_zone(session)
     settings = session.get(Setting, 1)
     assert settings is not None
@@ -367,9 +404,9 @@ def test_the_dial_in_the_repeated_hour_ends_at_the_schedule_point_not_at_the_fal
 
     result = set_temporary_setpoint(session, zone, Decimal("23.0"), FOLD_NOW, source="system")
 
-    assert result.ends_at == FOLD_END
+    assert result.ends_at == FOLD_NEXT
     assert result.ends_at != FOLD_NOW + timedelta(minutes=settings.temporary_setpoint_minutes)
-    assert result.ends_at - FOLD_NOW == timedelta(minutes=15)
+    assert result.ends_at - FOLD_NOW == timedelta(hours=7, minutes=45)
 
 
 def test_the_dial_fallback_still_applies_when_the_setting_says_fixed_duration(
@@ -400,12 +437,12 @@ def test_jumping_to_the_next_switch_in_the_repeated_hour(session: Session) -> No
 
     switch = next_switch(session, zone, FOLD_NOW)
     assert switch is not None
-    assert switch.at == FOLD_END
-    assert switch.setpoint.temperature_c == NIGHT_C
+    assert switch.at == FOLD_NEXT
+    assert switch.setpoint.temperature_c == DAY_C
 
     override = jump_to_next_switch(session, zone, now=FOLD_NOW, source="system")
-    assert override.ends_at == FOLD_END
-    assert override.temperature_c == NIGHT_C
+    assert override.ends_at == FOLD_NEXT
+    assert override.temperature_c == DAY_C
 
 
 def test_boost_in_the_spring_gap_ends_when_the_schedule_changes(session: Session) -> None:
@@ -419,20 +456,19 @@ def test_boost_in_the_spring_gap_ends_when_the_schedule_changes(session: Session
     assert resolved_setpoint(session, zone, result.bis).temperature_c == NIGHT_C
 
 
-def test_the_forecast_in_the_repeated_hour_has_a_bar_edge_at_the_second_pass(
+def test_the_forecast_in_the_repeated_hour_has_no_bar_edge_in_the_second_pass(
     session: Session,
 ) -> None:
-    """Im zweiten Durchlauf lag die nächste Schaltung in der Vergangenheit; die Vorschau
-    fiel auf einen einzigen breiten Balken zurück. Jetzt endet der erste Balken um 01:30
-    UTC, und 'nacht' läuft bis 10:00 CET (09:00 UTC)."""
+    """Im zweiten Durchlauf gibt es keine Schaltung (02:30 hat im ersten gefeuert): 'nacht'
+    läuft ohne Balkenkante bis 10:00 CET (09:00 UTC), dann 'tag'. Früher lag dort eine
+    Kante um 01:30 UTC mit dem Rücksprung des Sollwerts."""
     zone = _fold_zone(session)
 
     result = schedule_forecast(session, zone, FOLD_NOW)
 
     assert [(s.starts_at, s.ends_at, s.setpoint.temperature_c) for s in result] == [
-        (FOLD_NOW, FOLD_END, DAY_C),
-        (FOLD_END, datetime(2026, 10, 25, 9, 0), NIGHT_C),
-        (datetime(2026, 10, 25, 9, 0), FOLD_NOW + timedelta(hours=24), DAY_C),
+        (FOLD_NOW, FOLD_NEXT, NIGHT_C),
+        (FOLD_NEXT, FOLD_NOW + timedelta(hours=24), DAY_C),
     ]
 
 

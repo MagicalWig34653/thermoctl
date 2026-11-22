@@ -9,10 +9,65 @@ UTC = ZoneInfo("UTC")
 
 
 def local_time(moment_utc: datetime, timezone_name: str | None) -> datetime:
-    """Convert the project's naive UTC representation to an aware local moment."""
-    return moment_utc.replace(tzinfo=UTC).astimezone(
+    """Convert the project's naive UTC representation to an aware local moment.
+
+    `fold=0` is set explicitly: a naive datetime can carry `fold=1` (the readings of
+    `wall_clock_reached_at` do), and `astimezone` into the very same zone object returns
+    its input unchanged -- for UTC that would hand a `fold` of 1 on to the result, where
+    `schedule_clock` reads it as "second pass of a repeated hour". The `fold` of the
+    result is the local fold, never one inherited from the input.
+    """
+    return moment_utc.replace(tzinfo=UTC, fold=0).astimezone(
         ZoneInfo(timezone_name) if timezone_name is not None else UTC
     )
+
+
+def schedule_clock(moment_utc: datetime, timezone_name: str | None) -> datetime:
+    """The clock the weekly schedule runs on: naive local time that never runs backwards.
+
+    A schedule point is written in wall-clock terms ("Sunday 02:30"), but the wall clock
+    is not monotone: when clocks go back, the repeated hour (Europe/Berlin 02:00-03:00 in
+    October) shows the same readings twice. Evaluated against the wall clock, the plan
+    would step *back* in the second pass -- the point at 02:30 applies from 00:30 UTC, and
+    from 01:00 UTC the wall clock reads 02:00 again, so the predecessor applies once more.
+    The plan runs over real time instead: every switch fires exactly once and the setpoint
+    never steps back (decision of the project owner, "Plan über echte Zeit führen").
+
+    The schedule clock equals the wall clock everywhere except in the *second* pass of a
+    repeated hour (the local `datetime` has `fold == 1` there). In it, the clock stands
+    still on the last wall-clock reading of the first pass: the wall clock at the moment
+    of the change `T` plus the width of the step back, minus one microsecond (Berlin:
+    02:59:59.999999). So points inside the repeated hour fire in the first pass only, and
+    a point at 03:00 does not fire in the second pass but when the wall clock reaches
+    03:00 -- the wall clock is simply ahead of the schedule clock until then.
+
+    Skipped hours (clocks go forward) need nothing: the wall clock jumps past a point and
+    `current_point` lets the point apply from there on. Zones without daylight saving never
+    have `fold == 1`; for them (and for `None` = UTC) this is the wall clock unchanged.
+
+    `zoneinfo` does not expose its transition table, so `T` is found by bisection in whole
+    seconds -- only in the second pass of a repeated hour, about an hour a year; every other
+    moment costs a single `fold` test. `T` lies in `(moment - width, moment]`: in the first
+    pass `fold` is 0, from `T` on it is 1 (monotone in that interval).
+    """
+    local = local_time(moment_utc, timezone_name)
+    if not local.fold:
+        return local.replace(tzinfo=None)
+    first_pass_offset = local.replace(fold=0).utcoffset()
+    second_pass_offset = local.utcoffset()
+    assert first_pass_offset is not None and second_pass_offset is not None
+    width = first_pass_offset - second_pass_offset
+    before = (moment_utc - width).replace(microsecond=0)
+    after = moment_utc.replace(microsecond=0)
+    while after - before > timedelta(seconds=1):
+        middle = before + timedelta(seconds=(after - before).total_seconds() // 2)
+        if local_time(middle, timezone_name).fold:
+            after = middle
+        else:
+            before = middle
+    # `after` is the moment of the change; the wall clock shows its new reading there.
+    changed_at = local_time(after, timezone_name).replace(tzinfo=None)
+    return changed_at + width - timedelta(microseconds=1)
 
 
 def wall_clock_reached_at(wall: datetime, timezone_name: str | None) -> tuple[datetime, ...]:
@@ -42,7 +97,7 @@ def wall_clock_reached_at(wall: datetime, timezone_name: str | None) -> tuple[da
     """
     zone = ZoneInfo(timezone_name) if timezone_name is not None else UTC
     readings = [
-        wall.replace(tzinfo=zone, fold=fold).astimezone(UTC).replace(tzinfo=None)
+        wall.replace(tzinfo=zone, fold=fold).astimezone(UTC).replace(tzinfo=None, fold=0)
         for fold in (1, 0)
     ]
     genuine = {
