@@ -10,7 +10,7 @@ Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Tests: `npm test` im Verzeichnis (virtuelles Matter-Netz, Simulator statt thermoctl), `npm run test:network` (Loopback, nur macOS). Nicht an Apple Home, Google Home und
   mDNS im echten Netz geprüft; nicht zertifiziert (Test-VID). Einzelheiten und offene Geräteprüfungen: `matter-bridge/README.md`.
 - **Integrationstest Brücke ↔ echte Befehlsverarbeitung (`tests/test_matter_bridge_integration.py`, Treiber `matter-bridge/integration/driver.mjs`):** Ein Node-Unterprozess hält Aedes-Broker (127.0.0.1), die echte Brücke im virtuellen Matter-Netz und einen Matter-Controller; thermoctl hängt mit dem echten `MqttClient` (aiomqtt) am selben Broker und führt jeden Befehl durch `_process_mqtt_message` → Domäne → Audit → `_send_zone_state` (retained, zurück über den Broker), mit echter SQLite-Datenbank und Zonen mit Zeitplan (Tag 21,0 / Nacht 18,0). Beweist: Lesen konsistent mit `zone_state`; Rad = genau eine laufende Übersteuerung mit Ende an der nächsten Schaltung, Plan unverändert, Audit; Entprellung; Beenden/Zeitablauf → Planwert; Aus → `off` (Rad gesperrt, keine Übersteuerung), Heizen → `auto`; abgelehnter Befehl (auch 99 per Direktbefehl, auch Aus-Wettlauf) → unveränderter Zustand kommt zurück; Abwesenheit bleibt unberührt; Brücke sendet nie `command/setpoint`; zwei Zonen unabhängig. Beweist nicht: Broker mit Zugangsdaten/ACLs (Aedes erlaubt alles), echtes Apple/Google Home, mDNS, MariaDB (die Datenbank ist hier immer SQLite). Skipt ohne node oder `matter-bridge/node_modules` (`npm ci`). Laufzeit ca. 40 s.
-- **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4, 5, 9 offen (Board); 6, 7 und 8 (Wiederholstunde der Zeitumstellung, siehe „Nächste Schaltung“) sind nach 0.25.0 behoben (unveröffentlicht). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
+- **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4, 5, 9 offen (Board); 6, 7 und 8 (Wiederholstunde der Zeitumstellung, siehe „Zeitplan über echte Zeit“) sind nach 0.25.0 behoben (unveröffentlicht). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich
@@ -150,23 +150,38 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   zuerst, dann die laufenden Übersteuerungen mit sperrendem Lesen (`FOR UPDATE`); trifft MariaDB mit Snapshot-Isolation dabei
   Fehler 1020, wiederholt `_process_mqtt_message` den Befehl einmal. Geprüft nur unter MariaDB (`tests/test_remote_control_race.py`,
   unter SQLite übersprungen -- dort gibt es keine Zeilensperren). Das Ende ist die nächste Schaltung als echter Zeitpunkt
-  (`schedule.next_switch_utc`, siehe unten, auch in der Wiederholstunde der Zeitumstellung); die Ersatzfrist greift nur noch ohne
+  (`schedule.next_switch_utc`, siehe unten; in der Wiederholstunde der Zeitumstellung gilt der Plan über echte Zeit); die Ersatzfrist greift nur noch ohne
   Zeitplan, bei fester Dauer und als Absicherung, falls je ein Ende nicht nach „jetzt“ läge.
   Nicht an der Anlage gemessen.
-- **Nächste Schaltung und Zeitumstellung (unveröffentlicht, behebt Codex-Befund 8):** Die nächste Schaltung ist der früheste echte
-  Zeitpunkt **strikt nach „jetzt“**, zu dem die Wanduhr Wochentag und Minute eines Zeitplanpunkts erreicht (`schedule.next_switch_utc`,
-  Bausteine `time.wall_clock_reached_at`; eine Stelle für `end_of_next_switch`, `boost`, Sollwertrad, Sprung, „Als Nächstes“, MQTT-Thema
-  `next_switch` und Vorschau). Wiederholstunde (Herbst): beide Lesarten gelten, die frühere nach „jetzt“ gewinnt -- im zweiten Durchlauf von 02:15
-  liegt 02:30 also 15 Minuten voraus; ein Punkt, den die Uhr im ersten Durchlauf schon passiert hat, kommt im zweiten noch einmal.
-  Ausgefallene Stunde (Frühjahr): ein Punkt in der Lücke gilt ab dem Umstellungsmoment, wie ihn `current_point`/`_schedule_setpoint` anwenden;
-  das Ende der Übersteuerung fällt damit auf den Moment, ab dem der Zeitplan den neuen Wert liefert (vorher 30 Minuten zu spät);
-  ebenso beginnt in der Vorschau der Zeitplanseite eine Phase in der Lücke im Umstellungsmoment (01:00 UTC) statt 30 Minuten später.
-  Geprüft gegen einen Gegenrechner, der Minute für Minute durch die echte Zeit läuft (`tests/test_dst_next_switch.py`; Europe/Berlin,
-  America/New_York, Australia/Lord_Howe, UTC, Asia/Kolkata). **Bekannt, bewusst nicht geändert (Entscheidung des Projektinhabers):** Die
-  Wanduhr springt im zweiten Durchlauf zurück, daher liefert `resolved_setpoint` dort zeitweise wieder den Wert vor dem Punkt (02:30 gilt ab
-  00:30 UTC, ab 01:00 UTC steht die Uhr wieder auf 02:00, ab 01:30 UTC wieder 02:30). Die Vorschau zeichnet einen Balken je Schaltung mit dem
-  Wert am Balkenanfang und zeigt diesen Rücksprung nicht. Nicht betroffen von der Behebung: `current_point`, `_schedule_setpoint`,
-  `resolved_setpoint`.
+- **Zeitplan über echte Zeit, nächste Schaltung und Zeitumstellung (unveröffentlicht, behebt Codex-Befund 8; Entscheidung des
+  Projektinhabers „Plan über echte Zeit führen“):** Der Zeitplan wird nicht gegen die Wanduhr, sondern gegen eine monotone **Plan-Uhr**
+  ausgewertet (`time.schedule_clock`; eine Stelle für `_schedule_setpoint` und damit `resolved_setpoint`, für den Modus am Ende von
+  `boost` und, über `next_switch_utc`, für die nächste Schaltung). Plan-Uhr = Wanduhr, außer im zweiten Durchlauf der Wiederholstunde
+  im Herbst (Europe/Berlin 02:00–03:00 kommt zweimal, `datetime.fold == 1`): dort steht sie auf dem letzten Wanduhrwert des ersten
+  Durchlaufs (Berlin 02:59:59,999999; Lord Howe mit 30 Minuten Rücksprung 01:59:59,999999). Folgen: Der Plan-Sollwert springt nie
+  zurück; Punkte in der Wiederholstunde feuern nur im ersten Durchlauf; ein Punkt um 03:00 feuert erst, wenn die Wanduhr 03:00
+  (Winterzeit) erreicht. Den Umstellungsmoment findet `schedule_clock` per Bisektion in ganzen Sekunden (`zoneinfo` bietet keine
+  Übergangstabelle), nur im zweiten Durchlauf (etwa eine Stunde im Jahr); sonst ist es ein `fold`-Test. Zonen ohne Sommerzeit und
+  UTC: Plan-Uhr = Wanduhr. `current_point` und `next_point` bleiben reine Wanduhr-/Ringrechnung.
+  Die nächste Schaltung ist der früheste echte Zeitpunkt **strikt nach „jetzt“**, zu dem die Plan-Uhr Wochentag und Minute eines
+  Zeitplanpunkts erreicht (`schedule.next_switch_utc`, Baustein `time.wall_clock_reached_at`; eine Stelle für `end_of_next_switch`,
+  `boost`, Sollwertrad, Sprung, „Als Nächstes“, MQTT-Thema `next_switch` und Vorschau). Liegt ein Punkt in der Wiederholstunde, zählt
+  nur seine erste Lesart: Im zweiten Durchlauf bei 02:15 ist ein Punkt um 02:30 erst eine Woche später wieder dran, und im ersten
+  Durchlauf feuert ein schon passierter Punkt (02:10) nicht noch einmal; bei mehreren Punkten ist das Ende einer Übersteuerung
+  „bis zur nächsten Schaltung“ der nächste Punkt nach der Wiederholstunde. Sichtbare Folge: In der Wiederholstunde bleibt der
+  Plan-Sollwert stehen, „Als Nächstes“, Boost, Sollwertrad und Sprung nennen nur Schaltungen, die noch kommen, und die Vorschau
+  zeichnet einen Balken je echter Schaltung ohne Rücksprung.
+  Ausgefallene Stunde (Frühjahr): ein Punkt in der Lücke gilt ab dem Umstellungsmoment, wie ihn `current_point`/`_schedule_setpoint`
+  anwenden; das Ende der Übersteuerung fällt damit auf den Moment, ab dem der Zeitplan den neuen Wert liefert, und in der Vorschau
+  beginnt eine Phase in der Lücke im Umstellungsmoment (01:00 UTC).
+  Geprüft gegen ein unabhängiges Orakel, das Minute für Minute durch die echte Zeit läuft und die Plan-Uhr als laufendes Maximum der
+  Wanduhr seit Wochenbeginn führt (`tests/test_schedule_plan_clock.py`: Europe/Berlin, America/New_York, Europe/London,
+  Australia/Lord_Howe, Pacific/Chatham, UTC, Asia/Kolkata; alle Umstellungen 2026 und 2027 in beiden Richtungen; feste Seeds; Laufzeit
+  etwa 10 s), dazu ein Differenztest gegen die alte Wanduhr-Rechnung (außerhalb des zweiten Durchlaufs unverändert), die Reproduktion
+  an der Umstellung (`tests/test_schedule_real_time.py`) und `tests/test_dst_next_switch.py`. Nicht berührt: Regelschleife,
+  Hysterese, Vorrangkette von `resolved_setpoint`. **Bekannt, bewusst nicht geändert:** Die Jetzt-Markierung im Tagesverlauf der
+  Startseite (`zone_status`, `now_fraction`/Wochentag) zeigt die Wanduhr, nicht die Plan-Uhr, und springt im zweiten Durchlauf mit ihr
+  zurück (reine Anzeige, wirkt nicht auf Sollwert oder Schaltung). Nicht an der Anlage gemessen.
 - **Hysterese und Mindestschaltdauer** sind Pflicht (Altsystem hatte beides nicht). Ein Ventilschutzlauf, der seinen
   Vorrang mitten im Lauf verliert, hebt die Mindestschaltdauer nicht auf; `tests/test_control_loop_state_table.py` prüft
   die Vorrangkette erschöpfend.

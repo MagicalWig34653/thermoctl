@@ -332,7 +332,7 @@ def _oracle_run(
     ctx, zone, schedule_points, modes = _context(transition.zone, points)
     settings = ctx.settings
     near = timedelta(hours=3)
-    close_by = timedelta(minutes=75)
+    close_by = timedelta(hours=3)
 
     # (1) aktiver Punkt, Minute für Minute nahe der Umstellung, sonst im 3-Minuten-Raster
     for index, step in enumerate(steps):
@@ -368,7 +368,7 @@ def _oracle_run(
     for index, step in enumerate(steps):
         if step.moment >= window_end:
             break
-        if abs(step.moment - transition.at) > close_by and index % 47:
+        if abs(step.moment - transition.at) > close_by and index % 13:
             continue
         later = next(m for m in fired if m > step.moment)
         now = step.moment + timedelta(seconds=30 * (index % 2))
@@ -529,7 +529,7 @@ def test_outside_the_second_pass_nothing_changed_against_the_old_wall_clock_resu
         for points in _plans(transition):
             ctx, zone, schedule_points, _ = _context(transition.zone, points)
             for index, step in enumerate(_walk(transition.zone, transition.at - WINDOW, 72 * 60)):
-                if abs(step.moment - transition.at) > timedelta(minutes=90) and index % 29:
+                if abs(step.moment - transition.at) > timedelta(hours=3) and index % 13:
                     continue
                 now = step.moment + timedelta(seconds=17 * (index % 2))
                 in_second_pass = bool(local_time(now, transition.zone).fold)

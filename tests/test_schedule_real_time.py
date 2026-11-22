@@ -24,6 +24,7 @@ from tests.helpers import create_mode, create_settings, create_zone, source
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
+from thermoctl.domain import remote_control
 from thermoctl.domain.remote_control import boost, set_temporary_setpoint
 from thermoctl.domain.schedule import (
     end_of_next_switch,
@@ -188,3 +189,24 @@ def test_the_forecast_has_one_bar_per_real_switch_and_none_steps_back(
         (datetime(2026, 10, 25, 0, 10), datetime(2026, 10, 25, 0, 30), A_C),
         (datetime(2026, 10, 25, 0, 30), now + timedelta(hours=24), B_C),
     ]
+
+
+def test_boost_reads_the_mode_for_its_end_from_the_plan_clock(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Schutzprüfung: `next_switch_utc` liefert nie einen Zeitpunkt im zweiten Durchlauf,
+    daher fallen Wanduhr und Plan-Uhr am Ende eines Boosts heute immer zusammen. Läge das
+    Ende doch dort (hier erzwungen: 02:00 CET = 01:00 UTC, die Wanduhr steht auf 02:00),
+    muss der Modus aus der Plan-Uhr kommen -- 'B' ab 02:30 gilt dann schon, nicht die
+    Wanduhr-Lesart 'Nacht'. Es ist derselbe Modus, den `_schedule_setpoint` an diesem
+    Zeitpunkt liefert."""
+    zone = _three_mode_zone(session, "Europe/Berlin", 130, 150)
+    end = datetime(2026, 10, 25, 1, 0)
+    monkeypatch.setattr(remote_control, "end_of_next_switch", lambda session, zone, now: end)
+
+    result = boost(session, zone, datetime(2026, 10, 25, 0, 40), source="system")
+
+    assert result.bis == end
+    assert result.mode_code == "b"
+    assert result.temperature == B_C
+    assert _value(session, zone, end) == B_C

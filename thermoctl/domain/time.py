@@ -79,9 +79,11 @@ def wall_clock_reached_at(wall: datetime, timezone_name: str | None) -> tuple[da
 
     * **Normal time:** exactly one moment.
     * **Repeated hour** (clocks go back, Europe/Berlin 02:00-03:00 in October): the wall
-      clock shows `wall` twice, so two moments come back, earliest first. Taking only
-      the first one is the defect this replaces -- in the second pass it lies in the
-      past.
+      clock shows `wall` twice, so two moments come back, earliest first. A caller that
+      only wants the instant a *schedule point* fires takes the first one: the plan runs
+      over real time (`schedule_clock`), a point in the repeated hour fires in the first
+      pass only (`schedule.next_switch_utc`). This function reports both readings and
+      leaves that choice to the caller.
     * **Skipped hour** (clocks go forward, 02:00-03:00 in March): the wall clock never
       shows `wall`. Whoever asks "when does the schedule point apply" is answered by
       the moment the clock jumps past it, because `current_point` lets a point apply as
