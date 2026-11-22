@@ -17,6 +17,41 @@ export function zoneFromSearch(search: string, zones: readonly { id: number }[])
   return zones.some((z) => z.id === id) ? id : null;
 }
 
+/** Wert von `?zone=` für „alle Räume“ auf der Verlaufsseite. */
+export const ALL_ZONES = 'alle';
+
+/** Der Standardraum der Verlaufsseite: der erste sichtbare Raum in der Reihenfolge der Seite. */
+export function defaultZoneId(zones: readonly { id: number }[]): number | null {
+  return zones.length > 0 ? zones[0].id : null;
+}
+
+/** Die ausdrückliche Wahl aus `?zone=`: ein sichtbarer Raum, `'all'` (`?zone=alle`) oder `null`
+ *  (keine oder eine unbrauchbare Angabe). „alle“ gilt nur, wenn es Räume gibt. */
+export function zoneChoiceFromSearch(
+  search: string,
+  zones: readonly { id: number }[],
+): number | 'all' | null {
+  if (zones.length === 0) return null;
+  if (new URLSearchParams(search).get('zone') === ALL_ZONES) return 'all';
+  return zoneFromSearch(search, zones);
+}
+
+/** Welcher Raum die Verlaufsseite zeigt: die Wahl aus der Adresse, sonst der Standardraum.
+ *  `null` heißt „alle Räume“ (nur auf ausdrücklichen Wunsch) -- oder: es gibt keinen Raum. */
+export function resolveHistoryZone(search: string, zones: readonly { id: number }[]): number | null {
+  const choice = zoneChoiceFromSearch(search, zones);
+  if (choice === 'all') return null;
+  return choice ?? defaultZoneId(zones);
+}
+
+/** Die Adresse (nur der Suchteil) nach einer Raumwahl: `zone` wird gesetzt, alles andere bleibt.
+ *  `null` steht für „alle Räume“. */
+export function withZoneChoice(search: string, zoneId: number | null): string {
+  const params = new URLSearchParams(search);
+  params.set('zone', zoneId === null ? ALL_ZONES : String(zoneId));
+  return `?${params.toString()}`;
+}
+
 /** Der Zeitraum aus `?period=`, nur ein bekannter. */
 export function periodFromSearch(search: string): PeriodId | null {
   const raw = new URLSearchParams(search).get('period');

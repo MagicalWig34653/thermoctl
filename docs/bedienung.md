@@ -160,8 +160,12 @@ beenden einander nicht.
 
 ### Temperatur & Heizzeit
 
-**Temperatur & Heizzeit** zeigt je Raum ein Diagramm (Raum oder „Alle Räume“, Zeitraum
-24 Std., 7 oder 30 Tage). Es zeichnet nur, was protokollierte Zeilen belegen: gemessene
+**Temperatur & Heizzeit** zeigt je Raum ein Diagramm, Zeitraum 24 Std., 7 oder 30 Tage.
+Beim Öffnen steht **ein** Raum da, der erste, den du sehen darfst (auch am Handy und am
+Desktop); über die Raumauswahl wechselst du den Raum oder zeigst **Alle Räume**
+untereinander. Die Wahl steht in der Adresse (`?zone=`) und bleibt so beim Neuladen und in
+Links erhalten; die Heizzeit darunter folgt ihr. Mit nur einem sichtbaren Raum gibt es keine
+Auswahl. Das Diagramm zeichnet nur, was protokollierte Zeilen belegen: gemessene
 Temperatur (bei langen Zeiträumen verdichtet mit Min./Max.), geplanten und wirksamen
 Sollwert, die **Heizanforderung** und die **Sonnenabsenkung**; Zeiten ohne Daten stehen
 schraffiert als **Messlücke**, nicht als Schätzwert. Mit Maus oder Tastatur (Pfeiltasten,

@@ -2,7 +2,7 @@
   import { useApp } from '$lib/context';
   import { Button } from '$lib/components/ui/button';
   import { PERIODS, type PeriodId } from '$lib/history/format';
-  import { periodFromSearch, zoneFromSearch } from '$lib/preselect';
+  import { ALL_ZONES, periodFromSearch, resolveHistoryZone, withZoneChoice } from '$lib/preselect';
   import { historyWording } from '$lib/history/wording';
   import Notice from '$lib/components/rooms/Notice.svelte';
   import HeatingTime from './HeatingTime.svelte';
@@ -16,14 +16,19 @@
   let armed = $state<boolean | null>(null);
 
   // Vorwahl aus der Adresse (`?zone=`, `?period=`): nur sichtbare Räume und bekannte Zeiträume.
+  // Standard ist EIN Raum (der erste sichtbare), damit die Seite am Handy nicht aus einem Stapel
+  // von Diagrammen besteht; „Alle Räume“ steht in der Adresse (`?zone=alle`) und überlebt so
+  // Neuladen und Verlinken.
   let period = $state<PeriodId>(periodFromSearch(router.search) ?? '7d');
-  let zoneId = $state<number | null>(zoneFromSearch(router.search, session.bootstrap?.zones ?? []));
+  const urlPeriod = $derived(periodFromSearch(router.search));
   $effect(() => {
-    const wantedZone = zoneFromSearch(router.search, zones);
-    if (wantedZone !== null) zoneId = wantedZone;
-    const wantedPeriod = periodFromSearch(router.search);
-    if (wantedPeriod !== null) period = wantedPeriod;
+    if (urlPeriod !== null) period = urlPeriod;
   });
+  const zoneId = $derived(resolveHistoryZone(router.search, zones));
+  function chooseZone(value: string) {
+    const next = value === ALL_ZONES ? null : Number(value);
+    router.navigate(`${router.path}${withZoneChoice(router.search, next)}`, { replace: true, keepScroll: true });
+  }
   const shown = $derived(zoneId === null ? zones : zones.filter((z) => z.id === zoneId));
   // Erster geladener Verlauf: für die Messung der Startzeit der Seite.
   let firstLoadMs = $state<number | null>(null);
@@ -53,20 +58,20 @@
   <p class="text-muted-foreground">Für dein Konto sind keine Räume sichtbar.</p>
 {:else}
   <div class="mb-4 flex flex-wrap items-center gap-3">
-    <label class="flex items-center gap-2 text-sm">
-      <span class="text-muted-foreground">Raum</span>
-      <select
-        class="h-9 max-w-[14rem] rounded-lg border bg-background px-2 text-sm"
-        value={zoneId ?? ''}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
-          zoneId = v === '' ? null : Number(v);
-        }}
-      >
-        <option value="">Alle Räume</option>
-        {#each zones as z (z.id)}<option value={z.id}>{z.name}</option>{/each}
-      </select>
-    </label>
+    {#if zones.length > 1}
+      <label class="flex items-center gap-2 text-sm">
+        <span class="text-muted-foreground">Raum</span>
+        <select
+          class="h-9 max-w-[14rem] rounded-lg border bg-background px-2 text-sm"
+          data-testid="history-room"
+          value={zoneId ?? ALL_ZONES}
+          onchange={(e) => chooseZone((e.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value={ALL_ZONES}>Alle Räume</option>
+          {#each zones as z (z.id)}<option value={z.id}>{z.name}</option>{/each}
+        </select>
+      </label>
+    {/if}
     <div class="flex gap-1" role="group" aria-label="Zeitraum">
       {#each PERIODS as p (p.id)}
         <Button variant={period === p.id ? 'secondary' : 'outline'} size="sm" class="min-h-9" aria-pressed={period === p.id} onclick={() => (period = p.id)}>{p.label}</Button>
