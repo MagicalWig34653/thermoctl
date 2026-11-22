@@ -405,7 +405,8 @@ def test_duplicated_block_in_the_spring_gap_is_stored_as_given_and_previewed_con
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """So 02:30 gibt es am 29.03.2026 nicht. Der Block bleibt in Ortszeit (So 02:30-04:30)
-    im Plan; die Vorschau beginnt ihn zum ersten Zeitpunkt danach (03:30 MESZ = 01:30 UTC)."""
+    im Plan; die Vorschau beginnt ihn im Umstellungsmoment (01:00 UTC, die Uhr springt auf
+    03:00 MESZ) -- ab dort wendet `current_point` den Punkt an."""
     zone = _duo(session)
     client = client_als(PLAN)
     tag, nacht = _mode(session, "tag").id, _mode(session, "nacht").id
@@ -416,7 +417,7 @@ def test_duplicated_block_in_the_spring_gap_is_stored_as_given_and_previewed_con
     segments = _segmente(client, zone)
     assert [(s["mode_name"], s["starts_at"]) for s in segments] == [
         ("Nacht", "2026-03-28T23:00:00+00:00"),
-        ("Tag", "2026-03-29T01:30:00+00:00"),
+        ("Tag", "2026-03-29T01:00:00+00:00"),  # Umstellung, Wanduhr 03:00 MESZ
         ("Nacht", "2026-03-29T02:30:00+00:00"),  # 04:30 MESZ
     ]
 

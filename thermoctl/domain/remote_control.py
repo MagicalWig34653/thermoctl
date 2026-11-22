@@ -44,7 +44,6 @@ from thermoctl.domain.schedule import (
     create_override,
     current_point,
     end_of_next_switch,
-    next_point,
     resolved_setpoint,
     running_override,
     temperature_for_mode,
@@ -121,11 +120,12 @@ def set_temporary_setpoint(
         if settings.temporary_setpoint_until_next_switch
         else None
     )
-    # Not strictly after `now` counts as "no next switch" too: in the repeated hour of
-    # the clock change, `end_of_next_switch` reads a doubled local time as its first
-    # occurrence and can return an end *before* now. An override that ends before it
-    # starts would end the running one and never apply itself. (The cause sits in
-    # `end_of_next_switch`, which boost uses as well -- left alone here on purpose.)
+    # Only a safety net now: `end_of_next_switch` returns a moment strictly after `now`
+    # (also in the repeated hour of a clock change, where it used to read a doubled local
+    # time as its first occurrence and return an end in the past), so `ends_at <= now`
+    # does not occur. It stays because an override that ends before it starts would end
+    # the running one and never apply itself -- the fallback span is the harmless answer
+    # should that ever come back. The normal case here is "no next switch" (no schedule).
     if ends_at is None or ends_at <= now:
         ends_at = now + timedelta(minutes=settings.temporary_setpoint_minutes)
 
@@ -224,7 +224,6 @@ def boost(
     settings = session.get(Setting, 1)
     if settings is None:
         raise RemoteControlError("Die Einrichtung ist unvollständig.")
-    local = local_time(now, settings.timezone).replace(tzinfo=None)
 
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
@@ -233,15 +232,16 @@ def boost(
         raise RemoteControlError(
             "Diese Zone hat keinen Zeitplan — es gibt keine nächste Schaltung."
         )
-    falls_at = next_point(points, local)
     end_at = end_of_next_switch(session, zone, now)
-    if falls_at is None or end_at is None:  # pragma: no cover - points is not empty
+    if end_at is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
 
-    # The point that applies from `faellt_um` onward -- the one we are bringing
-    # forward. Queried one minute past it, so that `geltender_punkt` returns it and
-    # not its predecessor.
-    upcoming = current_point(points, falls_at)
+    # The point that applies from `end_at` onward -- the one we are bringing forward:
+    # whatever `current_point` returns for the wall clock at that very moment, which is
+    # exactly what `_schedule_setpoint` will deliver then. (In the skipped hour of a
+    # clock change that is the last point at or before the clock's new reading, the
+    # same one the schedule itself applies from there.)
+    upcoming = current_point(points, local_time(end_at, settings.timezone).replace(tzinfo=None))
     if upcoming is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
     mode = session.get(SetpointMode, upcoming.setpoint_mode_id)

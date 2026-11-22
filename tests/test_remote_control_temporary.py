@@ -19,6 +19,7 @@ from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
+from thermoctl.domain import remote_control
 from thermoctl.domain.absence import start_absence
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.remote_control import (
@@ -356,14 +357,11 @@ def _berlin_zone_with_point_at(session: Session, weekday: int, minute: int) -> Z
     return zone
 
 
-def test_in_the_repeated_hour_the_fallback_applies_instead_of_an_end_in_the_past(
-    session: Session,
-) -> None:
+def test_in_the_repeated_hour_the_dial_ends_at_the_schedule_point(session: Session) -> None:
     """2026-10-25, Europe/Berlin: 02:00-03:00 happens twice. now = 01:15 UTC is 02:15 CET,
-    the *second* pass; the schedule point at 02:30 is 15 minutes away. `end_of_next_switch`
-    reads the doubled local time as its first occurrence (02:30 CEST = 00:30 UTC) and
-    returns an end *before* now. An override that ends before it starts would end the
-    running one and never apply itself."""
+    the *second* pass; the schedule point at 02:30 is 15 minutes away (01:30 UTC). It used
+    to be read as its first occurrence (00:30 UTC, before now), so the fallback applied;
+    now the end is the schedule point itself, and the override applies and runs."""
     zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
     first = set_temporary_setpoint(
         session, zone, Decimal("22.0"), datetime(2026, 10, 24, 12, 0), source="system"
@@ -373,19 +371,29 @@ def test_in_the_repeated_hour_the_fallback_applies_instead_of_an_end_in_the_past
 
     result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
 
-    assert result.ends_at == now + timedelta(minutes=120)
+    assert result.ends_at == datetime(2026, 10, 25, 1, 30)
     assert resolved_setpoint(session, zone, now).temperature_c == Decimal("23.0")
     assert _running(session, zone, now + timedelta(minutes=1)) != []
+    assert _running(session, zone, datetime(2026, 10, 25, 1, 30)) == []
 
 
-def test_in_the_repeated_hour_the_fallback_follows_the_setting(session: Session) -> None:
+def test_the_fallback_catches_an_end_that_is_not_after_now(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fallback span is only a safety net now: should `end_of_next_switch` ever
+    return a moment that is not after `now`, the override must not end before it starts
+    (it would end the running one and never apply itself)."""
     zone = _berlin_zone_with_point_at(session, weekday=7, minute=150)
     _setting(session).temporary_setpoint_minutes = 45
     now = datetime(2026, 10, 25, 1, 15)
+    monkeypatch.setattr(
+        remote_control, "end_of_next_switch", lambda session, zone, now: now - timedelta(hours=1)
+    )
 
     result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")
 
     assert result.ends_at == now + timedelta(minutes=45)
+    assert resolved_setpoint(session, zone, now).temperature_c == Decimal("23.0")
 
 
 def test_one_hour_earlier_the_end_is_still_the_next_switch(session: Session) -> None:

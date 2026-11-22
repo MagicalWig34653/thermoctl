@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +15,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.modes import check_temperature
-from thermoctl.domain.time import UTC, local_day_start_utc, local_time
+from thermoctl.domain.time import local_day_start_utc, local_time, wall_clock_reached_at
 
 MINUTES_PER_WEEK = 7 * 24 * 60
 
@@ -1063,7 +1062,14 @@ def current_point(
 
 
 def next_point(points: list[SchedulePoint], moment: datetime) -> datetime | None:
-    """When the next schedule point falls — the basis for 'until the next switch'."""
+    """When the next schedule point falls on the *wall clock* -- naive local time in,
+    naive local time out.
+
+    Pure wall-clock arithmetic: it knows nothing about clock changes. It must not be
+    turned into a real moment with `replace(tzinfo=...)` (a repeated hour reads as its
+    first occurrence, a skipped one lands off by the width of the gap); `next_switch_utc`
+    is the function that answers "when, in real time".
+    """
     if not points:
         return None
     now = _week_minute(moment)
@@ -1626,18 +1632,21 @@ def schedule_forecast(
     a running override is shown until it ends (or the horizon runs out, whichever is
     sooner) -- a boost due to end at 03:00 must not be drawn as if it lasted the
     whole night, that would show a warm room that will in fact be cold by then. What
-    follows is the schedule, walked switch by switch with `next_point`, in local
+    follows is the schedule, walked switch by switch with `next_switch_utc`, in local
     time -- exactly as `resolved_setpoint` itself resolves it -- so a day boundary or
     a weekday with a different plan falls out of the same weekly-ring model the rest
     of the schedule already uses, with no separate midnight-crossing logic here to
     drift out of sync with it. Summer time needs no special case either: `now_utc`
     and the horizon are real UTC instants (24 real hours, not "24 on the wall
     clock"), and every local-time lookup along the way goes through `zoneinfo` via
-    `local_time`/`next_point`'s caller below, the same conversion `resolved_setpoint`
-    and `end_of_next_switch` already rely on -- so a 23- or 25-hour local day changes
-    how many bars come out, never whether the instants themselves are correct.
+    `local_time`/`next_switch_utc`, the same conversion `resolved_setpoint` and
+    `end_of_next_switch` rely on -- so a 23- or 25-hour local day changes how many bars
+    come out, never whether the instants themselves are correct. (In the repeated hour
+    the wall clock jumps back, so `resolved_setpoint` itself is not monotonic there: a
+    bar spans from one switch to the next and carries the value at its start. That
+    limitation is older than `next_switch_utc` and unchanged by it.)
 
-    A zone without any schedule point is not a special case either: `next_point`
+    A zone without any schedule point is not a special case either: `next_switch_utc`
     returns `None`, the loop below draws one bar for the remaining window, and
     `resolved_setpoint` resolves it to frost protection precisely as it would for
     that zone at any single instant.
@@ -1671,8 +1680,6 @@ def schedule_forecast(
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
-    timezone_name = ZoneInfo(settings.timezone)
-
     # Fetched once, up front: at most one non-cancelled vacation can be running or
     # upcoming at any instant (`create_vacation` refuses a second, overlapping one),
     # so its own start and end -- if either falls inside this window -- are two more
@@ -1690,22 +1697,15 @@ def schedule_forecast(
         setpoint = resolved_setpoint(session, zone, cursor)
         boundary = window_end
         if points and remaining_switches > 0:
-            local_naive = local_time(cursor, settings.timezone).replace(tzinfo=None)
-            next_local = next_point(points, local_naive)
+            next_utc = next_switch_utc(points, cursor, settings.timezone)
             remaining_switches -= 1
-            if next_local is not None:
-                next_utc = (
-                    next_local.replace(tzinfo=timezone_name)
-                    .astimezone(UTC)
-                    .replace(tzinfo=None)
-                )
-                # `next_utc <= cursor` would mean the walk stopped advancing --
-                # reachable only if a future change to `next_point` ever returns a
-                # non-later instant, or a daylight-saving fold resolves a repeated
-                # local hour "backwards". Falling through to the full window in
-                # that case draws one wider bar instead of looping forever.
-                if next_utc > cursor:
-                    boundary = min(next_utc, window_end)
+            # `next_utc <= cursor` would mean the walk stopped advancing. The helper
+            # guarantees a strictly later instant (also in the repeated hour of a clock
+            # change, which used to resolve "backwards"), so this only guards against a
+            # future change to it: falling through to the full window then draws one
+            # wider bar instead of looping forever.
+            if next_utc is not None and next_utc > cursor:
+                boundary = min(next_utc, window_end)
         if vacation is not None:
             if cursor < vacation.starts_at < boundary:
                 boundary = vacation.starts_at
@@ -1740,6 +1740,63 @@ def _merge_adjacent_forecast_segments(
     return merged
 
 
+def next_switch_utc(
+    points: list[SchedulePoint], now_utc: datetime, timezone_name: str | None
+) -> datetime | None:
+    """The next schedule switch as a real moment (naive UTC), strictly after `now_utc`.
+
+    Defined as: the earliest real moment after `now_utc` at which the local wall clock
+    reaches the weekday and minute of a schedule point -- or `None` without any point.
+    This is the single place that turns the wall-clock schedule into an instant; the
+    end of a boost or dial override, the "next switch" display and the forecast all
+    use it, so they cannot disagree about when a point falls.
+
+    **Repeated hour** (clocks go back): the wall clock shows a time twice, and both
+    readings are candidates; the earliest one that lies after `now_utc` wins. At
+    02:15 CET in the second pass, a point at 02:30 falls 15 minutes away, not in the
+    past (its first reading, 02:30 CEST, is gone). Conversely, in the *first* pass a
+    point at 02:10 that the clock already passed falls again within the hour, in the
+    second pass: that really is the next moment the wall clock reads 02:10.
+
+    **Skipped hour** (clocks go forward): a point inside the gap never shows on the
+    clock. It applies from the moment the clock jumps past it, exactly like
+    `_schedule_setpoint` (via `current_point`) decides, so the end of an override
+    coincides with the moment the schedule delivers the new value
+    (`wall_clock_reached_at`).
+
+    Strictly after: a point whose moment equals `now_utc` has just fallen, it is not the
+    next one -- as `next_point` always treated the current minute.
+
+    The candidates are the occurrences of every point in the previous, the current and
+    the next week of the local calendar: the next because it always holds a moment
+    after `now_utc`, the previous only as a margin -- no zone changes its clock across
+    the Sunday/Monday boundary today, but nothing in the model rules it out, and a
+    repeated hour there would put a later reading into the week before. Week starts
+    are built by wall-clock arithmetic on naive local time, which is what a weekly
+    schedule means. The cost is a few hundred cheap conversions per call (three weeks
+    times the distinct point minutes), small next to the database read before it.
+    """
+    if not points:
+        return None
+    local_now = local_time(now_utc, timezone_name).replace(tzinfo=None)
+    week_start = (local_now - timedelta(days=local_now.isoweekday() - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    minutes = {_point_minute(point) for point in points}
+    return min(
+        (
+            moment
+            for week in (-1, 0, 1)
+            for minute in minutes
+            for moment in wall_clock_reached_at(
+                week_start + timedelta(weeks=week, minutes=minute), timezone_name
+            )
+            if moment > now_utc
+        ),
+        default=None,
+    )
+
+
 def end_of_next_switch(
     session: Session, zone: Zone, now_utc: datetime | None = None
 ) -> datetime | None:
@@ -1756,18 +1813,17 @@ def end_of_next_switch(
     real clock while the caller was computing against a supplied moment, the two
     halves would refer to different instants -- the override would then end at some
     point, just not at its actual schedule point.
+
+    The conversion from the wall-clock schedule to a real moment, including the
+    clock-change cases (repeated and skipped hour), is `next_switch_utc`. The result
+    is always after `now_utc`, never in the past.
     """
     settings = session.get(Setting, 1)
     configured_timezone = settings.timezone if settings is not None else "Europe/Berlin"
-    timezone_name = ZoneInfo(configured_timezone)
-    local = local_time(now_utc or utcnow(), configured_timezone)
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
-    end_at = next_point(points, local.replace(tzinfo=None))
-    if end_at is None:
-        return None
-    return end_at.replace(tzinfo=timezone_name).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    return next_switch_utc(points, now_utc or utcnow(), configured_timezone)
 
 
 @dataclass(frozen=True)

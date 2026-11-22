@@ -1,6 +1,6 @@
 """Conversions at the boundary between stored UTC and configured local time."""
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from thermoctl.db.base import utcnow
@@ -13,6 +13,57 @@ def local_time(moment_utc: datetime, timezone_name: str | None) -> datetime:
     return moment_utc.replace(tzinfo=UTC).astimezone(
         ZoneInfo(timezone_name) if timezone_name is not None else UTC
     )
+
+
+def wall_clock_reached_at(wall: datetime, timezone_name: str | None) -> tuple[datetime, ...]:
+    """The naive UTC moments at which the local wall clock reaches `wall` (naive local).
+
+    The wall clock is not a clean function of real time, and a schedule point is
+    expressed in wall-clock terms ("Sunday 02:30"). Converting such a naive local time
+    with `replace(tzinfo=...)` silently picks one reading and loses the other cases:
+
+    * **Normal time:** exactly one moment.
+    * **Repeated hour** (clocks go back, Europe/Berlin 02:00-03:00 in October): the wall
+      clock shows `wall` twice, so two moments come back, earliest first. Taking only
+      the first one is the defect this replaces -- in the second pass it lies in the
+      past.
+    * **Skipped hour** (clocks go forward, 02:00-03:00 in March): the wall clock never
+      shows `wall`. Whoever asks "when does the schedule point apply" is answered by
+      the moment the clock jumps past it, because `current_point` lets a point apply as
+      soon as the wall clock is at or beyond it -- so the single moment returned is the
+      transition itself (first instant at which the wall clock is `>= wall`). Neither
+      `fold` reading is that moment: `fold=0` gives the *later* instant (still read with
+      the old offset, 02:30 CET = 01:30 UTC), `fold=1` the earlier one (00:30 UTC), and
+      the transition lies strictly between them, found by bisection here because
+      `zoneinfo` does not expose its transition table.
+
+    A reading is genuine only if converting it back yields `wall` again; that round trip
+    is what separates the three cases without any knowledge of the zone's rules.
+    """
+    zone = ZoneInfo(timezone_name) if timezone_name is not None else UTC
+    readings = [
+        wall.replace(tzinfo=zone, fold=fold).astimezone(UTC).replace(tzinfo=None)
+        for fold in (1, 0)
+    ]
+    genuine = {
+        moment
+        for moment in readings
+        if local_time(moment, timezone_name).replace(tzinfo=None) == wall
+    }
+    if genuine:
+        return tuple(sorted(genuine))
+    # Skipped time: `before` is still on the old side of the transition (its wall clock
+    # lies before `wall`), `after` already on the new side (at or beyond `wall`).
+    before, after = readings
+    while after - before > timedelta(seconds=1):
+        # Whole seconds only: halving an odd number of seconds must not leave a fraction,
+        # or the result would not be the exact second of the transition.
+        middle = before + timedelta(seconds=(after - before).total_seconds() // 2)
+        if local_time(middle, timezone_name).replace(tzinfo=None) >= wall:
+            after = middle
+        else:
+            before = middle
+    return (after,)
 
 
 def local_day_start_utc(day: date, timezone_name: str | None) -> datetime:

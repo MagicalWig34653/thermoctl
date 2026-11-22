@@ -2,7 +2,7 @@
 Fehlerform, Konflikte, DB-Wirkung, Audit und Sommerzeit."""
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -22,6 +22,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.web import ui_api_schedule
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
@@ -430,8 +431,12 @@ def test_point_in_the_spring_gap_is_stored_as_given_and_previewed_consistently(
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """So 02:30 gibt es am 29.03.2026 nicht. Der Punkt bleibt, wie eingegeben, im Plan
-    (Ortszeit, keine UTC-Umrechnung beim Speichern); die Vorschau schaltet zum ersten
-    Zeitpunkt danach (03:30 MESZ = 01:30 UTC), nie rückwärts."""
+    (Ortszeit, keine UTC-Umrechnung beim Speichern); die Vorschau schaltet im
+    Umstellungsmoment (01:00 UTC: die Uhr springt von 01:59 MEZ auf 03:00 MESZ), nie
+    rückwärts. Das ist derselbe Moment, ab dem `resolved_setpoint` den Wert des Punkts
+    liefert (`current_point` wendet ihn an, sobald die Wanduhr ihn erreicht hat); früher
+    stand hier 01:30 UTC (naive Umrechnung 02:30 MEZ), und die Vorschau zeigte von 01:00
+    bis 01:30 noch „Nacht“, obwohl die Regelung dort schon „Tag“ fährt."""
     zone = _raum(session)
     client = client_als(PLAN)
     response = _call(
@@ -446,9 +451,16 @@ def test_point_in_the_spring_gap_is_stored_as_given_and_previewed_consistently(
     segments = _segmente(client, zone)
     assert [(s["mode_name"], s["starts_at"]) for s in segments] == [
         ("Nacht", "2026-03-28T23:00:00+00:00"),
-        ("Tag", "2026-03-29T01:30:00+00:00"),
+        ("Tag", "2026-03-29T01:00:00+00:00"),
         ("Nacht", "2026-03-29T20:00:00+00:00"),
     ]
+    # Gegenprobe gegen die Regelung selbst: eine Sekunde vor dem Balkenwechsel noch der
+    # alte Sollwert, im Balkenwechsel der neue -- Vorschau und `resolved_setpoint` stimmen
+    # überein.
+    switch = datetime(2026, 3, 29, 1, 0)
+    before = resolved_setpoint(session, zone, switch - timedelta(seconds=1))
+    after = resolved_setpoint(session, zone, switch)
+    assert (before.mode_id, after.mode_id) == (_mode(session, "nacht").id, _mode(session, "tag").id)
 
 
 def test_point_in_the_repeated_autumn_hour_switches_at_its_first_occurrence(
