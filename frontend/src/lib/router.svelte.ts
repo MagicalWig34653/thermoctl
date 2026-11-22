@@ -11,18 +11,19 @@ export function createRouter(prefix: string) {
   let path = $state(splitTarget(current()).path);
   let search = $state(window.location.search);
 
-  function sync() {
+  function sync(scroll = true) {
     path = splitTarget(current()).path;
     search = window.location.search;
-    window.scrollTo(0, 0);
+    if (scroll) window.scrollTo(0, 0);
   }
-  window.addEventListener('popstate', sync);
+  window.addEventListener('popstate', () => sync());
 
-  function navigate(to: string, options: { replace?: boolean } = {}) {
+  /** `keepScroll`: nur die Auswahl in der Adresse ändern (z. B. Raumwahl), nicht nach oben springen. */
+  function navigate(to: string, options: { replace?: boolean; keepScroll?: boolean } = {}) {
     const href = appHref(prefix, to);
     if (options.replace) window.history.replaceState({}, '', href);
     else window.history.pushState({}, '', href);
-    sync();
+    sync(!options.keepScroll);
   }
 
   return {

@@ -11,7 +11,7 @@ admin bootstrap in ``conftest.py``) gets its own function here.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -24,6 +24,7 @@ from thermoctl.db.models.identity import User
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.sensor_failure import ZoneSensorFailureState
+from thermoctl.db.models.state import ShadowDecision
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.ui_profile import WebUiProfile
 
@@ -204,3 +205,42 @@ def create_emergency_zone(session: Session, name: str, source_name: str) -> Zone
     )
     session.flush()
     return zone
+
+
+def seed_history(
+    session: Session,
+    zone: Zone,
+    *,
+    base_c: Decimal = Decimal("20.0"),
+    hours: int = 168,
+    step_minutes: int = 10,
+    now: datetime | None = None,
+) -> int:
+    """Echte Verlaufszeilen (`ShadowDecision`) für `zone`, die ``hours`` Stunden bis ``now``
+    zurückreichen -- genau die Zeilen, aus denen `/ui-api/history` das Diagramm baut.
+
+    Temperatur und Sollwert schwanken leicht, die Heizanforderung wechselt; so enthält das
+    Diagramm eine Temperaturlinie, den Sollwert und Heizbänder. Gibt die Zeilenzahl zurück.
+    """
+    # Naive UTC wie in der Datenbank.
+    end = now or datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+    steps = hours * 60 // step_minutes
+    for i in range(steps + 1):
+        at = end - timedelta(minutes=(steps - i) * step_minutes)
+        wave = Decimal((i % 12) - 6) / Decimal(10)
+        heat = (i % 6) < 2
+        session.add(
+            ShadowDecision(
+                decided_at=at,
+                zone_id=zone.id,
+                temperature_c=base_c + wave,
+                setpoint_c=Decimal("21.0"),
+                scheduled_setpoint_c=Decimal("21.0"),
+                setpoint_reason="Zeitplan",
+                would_heat=heat,
+                outcome_code="heizen" if heat else "aus",
+                reason="Sollwert noch nicht erreicht." if heat else "Sollwert ist erreicht.",
+            )
+        )
+    session.flush()
+    return steps + 1

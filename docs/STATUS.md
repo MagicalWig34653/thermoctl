@@ -1,8 +1,9 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-21. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.25.0 (2026-11-20: PI-Beta zum Praxistest mit neuen Regeln standardmäßig aus, Codex-Befunde 1–3, eine Quelle für Parametergrenzen; Einzelheiten `CHANGELOG.md`). Davor 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **Verlauf (Temperatur & Heizzeit), unveröffentlicht:** Standard ist ein Raum (der erste sichtbare), „Alle Räume“ wählbar; die Wahl steht in der Adresse (`?zone=<id>`/`?zone=alle`) und überlebt Neuladen. Nur Frontend, nichts am Backend.
 - **Matter-Bridge (optional, `matter-bridge/`, lokal auf `main`, nicht gepusht, nicht veröffentlicht, kein CI-Job):** Eigener Node-Dienst (Matter.js 0.18.0) für Apple Home
   und optional Google Home, je Zone ein Heating-only-Thermostat (nur Aus/Heizen). Sollwertrad → `command/temporary_setpoint` (befristete Übersteuerung, nie
   `command/setpoint`), Aus → `operating_mode off`, Heizen → `auto`. Die thermoctl-Seite (`command/temporary_setpoint`) ist im Zweig des Sollwertrads gebaut und mit diesem Stand zusammengeführt.
@@ -22,7 +23,7 @@ Letzte Aktualisierung: 2026-11-21. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Die Kp-Schrittprüfung der Datenbank ist neu gefasst (die alte `% 5` lehnte unter SQLite Werte wie 1,15 ab). Nicht an der Anlage gemessen.
 - **Migrationskopf:** `b5d1f8a3c264` (Sollwertrad-Einstellungen; davor `a3e8c5d17b94`, PI-Erweiterungen).
 - **Inhalt von 0.24.0 gegenüber 0.23.0:** Hysterese bis 0,0001 K (Migration `f7c2a91d4e08`; Raumwert strikt ab 0,0001 K geprüft); PI behält den Integralanteil bei Gates und Neustart; Verbindungsanzeige mit Schreibsperre; Fehler- und Leerzustände; Touch-Ziele am Handy; lesbare deaktivierte Primärknöpfe; Raumseite (Ausfallschalter, Erben erklärt, Raumtechnik eingeklappt). Einzelheiten: `CHANGELOG.md`, Abschnitt 0.24.0.
-- **Browsertests (`browser_tests/`):** 49 Tests (2026-11-20, lokal; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
+- **Browsertests (`browser_tests/`):** 62 Tests (2026-11-22, lokal, Gesamtlauf grün; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
