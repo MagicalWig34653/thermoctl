@@ -44,6 +44,7 @@ from thermoctl.domain.time import local_time, wall_clock_reached_at
         ("Europe/Berlin", datetime(2026, 3, 29, 2, 0), (datetime(2026, 3, 29, 1, 0),)),
         ("Europe/Berlin", datetime(2026, 3, 29, 2, 59), (datetime(2026, 3, 29, 1, 0),)),
         ("Europe/Berlin", datetime(2026, 3, 29, 3, 0), (datetime(2026, 3, 29, 1, 0),)),
+        ("UTC", datetime(2026, 6, 1, 8, 0), (datetime(2026, 6, 1, 8, 0),)),
         ("America/New_York", datetime(2026, 3, 8, 2, 30), (datetime(2026, 3, 8, 7, 0),)),
         ("Australia/Lord_Howe", datetime(2026, 10, 4, 2, 15), (datetime(2026, 10, 3, 15, 30),)),
     ],
@@ -58,6 +59,10 @@ def test_wall_clock_reached_at(
     # Ergebnis, das nicht `wall` zeigt) steht sie dahinter.
     for moment in result:
         assert local_time(moment, timezone_name).replace(tzinfo=None) >= wall
+        # Die Lesung ist ein reiner UTC-Zeitpunkt: ein vererbtes `fold=1` (bei UTC reicht
+        # `astimezone` die Eingabe unverändert durch) dürfte nirgends als „zweiter Durchlauf“
+        # gelten.
+        assert moment.fold == 0
 
 
 def test_in_a_skipped_hour_the_instant_before_the_transition_still_shows_an_earlier_time() -> None:

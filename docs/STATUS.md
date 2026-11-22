@@ -176,8 +176,7 @@ Gilt heute; Einzelheiten und Bedienung stehen in `docs/` (u. a. `bedienung.md`, 
   beginnt eine Phase in der Lücke im Umstellungsmoment (01:00 UTC).
   Geprüft gegen ein unabhängiges Orakel, das Minute für Minute durch die echte Zeit läuft und die Plan-Uhr als laufendes Maximum der
   Wanduhr seit Wochenbeginn führt (`tests/test_schedule_plan_clock.py`: Europe/Berlin, America/New_York, Europe/London,
-  Australia/Lord_Howe, Pacific/Chatham, UTC, Asia/Kolkata; alle Umstellungen 2026 und 2027 in beiden Richtungen; feste Seeds; Laufzeit
-  etwa 10 s), dazu ein Differenztest gegen die alte Wanduhr-Rechnung (außerhalb des zweiten Durchlaufs unverändert), die Reproduktion
+  Australia/Lord_Howe, Pacific/Chatham, UTC, Asia/Kolkata; alle Umstellungen 2026 und 2027 in beiden Richtungen; feste Seeds), dazu ein Differenztest gegen die alte Wanduhr-Rechnung (außerhalb des zweiten Durchlaufs unverändert), die Reproduktion
   an der Umstellung (`tests/test_schedule_real_time.py`) und `tests/test_dst_next_switch.py`. Nicht berührt: Regelschleife,
   Hysterese, Vorrangkette von `resolved_setpoint`. **Bekannt, bewusst nicht geändert:** Die Jetzt-Markierung im Tagesverlauf der
   Startseite (`zone_status`, `now_fraction`/Wochentag) zeigt die Wanduhr, nicht die Plan-Uhr, und springt im zweiten Durchlauf mit ihr
