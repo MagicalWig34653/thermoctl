@@ -443,9 +443,19 @@ def test_the_forecast_guard_still_terminates_if_the_next_switch_does_not_advance
     späteren Zeitpunkt zurück, zeichnet die Vorschau einen breiten Balken statt
     unendlich oft denselben Punkt."""
     zone = _fold_zone(session)
-    monkeypatch.setattr(schedule_module, "next_switch_utc", lambda points, now, tz: now)
+    asked: list[datetime] = []
+
+    def stuck(points: object, now: datetime, timezone_name: str | None) -> datetime:
+        asked.append(now)
+        return now
+
+    monkeypatch.setattr(schedule_module, "next_switch_utc", stuck)
 
     result = schedule_forecast(session, zone, FOLD_NOW)
 
     window_end = FOLD_NOW + timedelta(hours=24)
     assert [(s.starts_at, s.ends_at) for s in result] == [(FOLD_NOW, window_end)]
+    # Ein einziger Balken bis zum Fensterende: die Schleife fragt einmal und ist fertig.
+    # Ohne Schutz drehte sie, bis die Obergrenze der Schaltungen erreicht ist -- das
+    # Ergebnis wäre nach dem Zusammenführen gleicher Balken dasselbe, die Aufrufzahl nicht.
+    assert len(asked) == 1

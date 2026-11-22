@@ -1767,14 +1767,15 @@ def next_switch_utc(
     Strictly after: a point whose moment equals `now_utc` has just fallen, it is not the
     next one -- as `next_point` always treated the current minute.
 
-    The candidates are the occurrences of every point in the previous, the current and
-    the next week of the local calendar: the next because it always holds a moment
-    after `now_utc`, the previous only as a margin -- no zone changes its clock across
-    the Sunday/Monday boundary today, but nothing in the model rules it out, and a
-    repeated hour there would put a later reading into the week before. Week starts
+    The candidates are the occurrences of every point in the current and the next week
+    of the local calendar (the next always holds a moment after `now_utc`). Week starts
     are built by wall-clock arithmetic on naive local time, which is what a weekly
-    schedule means. The cost is a few hundred cheap conversions per call (three weeks
-    times the distinct point minutes), small next to the database read before it.
+    schedule means. Not covered, deliberately: a clock that jumps *back* across the
+    Sunday/Monday boundary would give a late point of the previous week a second reading
+    after `now_utc`; no zone is known to do that (clock changes fall inside a day; the
+    Sunday-night ones step back within Sunday), and a margin nobody can exercise is not
+    a safeguard. The cost is a few hundred cheap conversions per call (two weeks times
+    the distinct point minutes), small next to the database read before it.
     """
     if not points:
         return None
@@ -1786,7 +1787,7 @@ def next_switch_utc(
     return min(
         (
             moment
-            for week in (-1, 0, 1)
+            for week in (0, 1)
             for minute in minutes
             for moment in wall_clock_reached_at(
                 week_start + timedelta(weeks=week, minutes=minute), timezone_name
