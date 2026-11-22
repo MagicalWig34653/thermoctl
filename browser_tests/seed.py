@@ -17,13 +17,20 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_zone, user_with_permissions
+from tests.helpers import (
+    capability,
+    create_device,
+    create_device_command,
+    create_zone,
+    user_with_permissions,
+)
 from thermoctl.auth.passwords import hash_password
 from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.db.models.sensor_failure import ZoneSensorFailureState
+from thermoctl.db.models.sensor_failure import ActuatorDecision, ZoneSensorFailureState
+from thermoctl.db.models.state import ShadowDecision
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.ui_profile import WebUiProfile
 
@@ -204,3 +211,76 @@ def create_emergency_zone(session: Session, name: str, source_name: str) -> Zone
     )
     session.flush()
     return zone
+
+
+# Eine lange Begründung ohne Kürzung: Sie muss am Handy ganz lesbar sein.
+LONG_REASON = (
+    "Der Zeitplan wechselt in dieser Minute auf den Nachtwert, deshalb wird der Sollwert "
+    "des Geräts auf 19,5 °C gesetzt und die Regelung arbeitet bis zum nächsten Wechsel "
+    "gegen diesen Wert (Schlusswort: Begründungsende)."
+)
+
+
+def create_command_log(session: Session, zone_name: str, device_name: str) -> Zone:
+    """Echte Zeilen für alle Arten des Schaltprotokolls, durch die Modelle der Domäne.
+
+    - Befehle (`device_command`): ausgeführt, im Trockenlauf unterdrückt, gescheitert (mit
+      Fehlertext) und einer mit langer, zusammenhängender Begründung;
+    - eine Notbetriebsentscheidung (`actuator_decision`, Art „Entscheidung“, simuliert);
+    - eine Sonnenabsenkung (`shadow_decision` mit `solar_setback_k`: Beginn und Ende, daraus
+      leitet `domain/solar_setback_log` die Art „Absenkung“ ab).
+
+    Die Zeitpunkte liegen fest in der Vergangenheit, damit Seitenaufbau und Reihenfolge
+    nicht davon abhängen, wann der Test läuft.
+    """
+    zone = create_zone(session, zone_name)
+    device = create_device(session, device_name)
+    create_device_command(
+        session, zone, device, at=datetime(2026, 11, 20, 6, 0),
+        outcome_code="executed", command="setpoint",
+        payload='{"occupied_heating_setpoint": 21.0}',
+    )
+    create_device_command(
+        session, zone, device, at=datetime(2026, 11, 20, 7, 30),
+        outcome_code="suppressed", command="switch_on", payload='{"state": "ON"}',
+    )
+    failed = create_device_command(
+        session, zone, device, at=datetime(2026, 11, 20, 9, 15),
+        outcome_code="failed", command="switch_off", payload='{"state": "OFF"}',
+    )
+    failed.error = "Das Gerät hat nicht innerhalb von 10 Sekunden geantwortet."
+    failed.reason = "Sollwert ist erreicht, die Heizung wird ausgeschaltet."
+    long_reason = create_device_command(
+        session, zone, device, at=datetime(2026, 11, 20, 10, 45),
+        outcome_code="executed", command="setpoint",
+        payload='{"occupied_heating_setpoint": 19.5}',
+    )
+    long_reason.reason = LONG_REASON
+    session.add(
+        ActuatorDecision(
+            episode_id=None, zone_device_id=None, zone_name=zone.name, device_name=device_name,
+            decided_at=datetime(2026, 11, 20, 8, 0), action="no_write",
+            reason_code="sensorausfall_bewusst_nicht_gesendet",
+            reason="Fühler ausgefallen, der Aktor behält seinen Zustand.",
+            phase=None, phase_deadline_at=None, simulated=True, cycle_source=None,
+            on_seconds=None, off_seconds=None, outdoor_c=None, profile_version=1,
+        )
+    )
+    for at, k in (
+        (datetime(2026, 11, 20, 11, 0), None),
+        (datetime(2026, 11, 20, 11, 1), Decimal("1.5")),
+        (datetime(2026, 11, 20, 12, 0), Decimal("1.5")),
+        (datetime(2026, 11, 20, 12, 1), None),
+    ):
+        session.add(
+            ShadowDecision(
+                decided_at=at, zone_id=zone.id,
+                setpoint_c=Decimal("20.0") - (k or Decimal(0)),
+                scheduled_setpoint_c=Decimal("20.0"),
+                solar_setback_k=k, setpoint_reason="Zeitplan", would_heat=False,
+                outcome_code="aus", reason="Sollwert ist erreicht.",
+            )
+        )
+    session.flush()
+    return zone
+
