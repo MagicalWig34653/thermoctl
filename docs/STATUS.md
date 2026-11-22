@@ -17,7 +17,7 @@ Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Die Kp-Schrittprüfung der Datenbank ist neu gefasst (die alte `% 5` lehnte unter SQLite Werte wie 1,15 ab). Nicht an der Anlage gemessen.
 - **Migrationskopf:** `a3e8c5d17b94` (PI-Erweiterungen; davor `f7c2a91d4e08`, Hysterese-Spalten mit vier Nachkommastellen).
 - **Inhalt von 0.24.0 gegenüber 0.23.0:** Hysterese bis 0,0001 K (Migration `f7c2a91d4e08`; Raumwert strikt ab 0,0001 K geprüft); PI behält den Integralanteil bei Gates und Neustart; Verbindungsanzeige mit Schreibsperre; Fehler- und Leerzustände; Touch-Ziele am Handy; lesbare deaktivierte Primärknöpfe; Raumseite (Ausfallschalter, Erben erklärt, Raumtechnik eingeklappt). Einzelheiten: `CHANGELOG.md`, Abschnitt 0.24.0.
-- **Browsertests (`browser_tests/`):** 49 Tests (2026-11-20, lokal; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
+- **Browsertests (`browser_tests/`):** 62 Tests (2026-11-22, lokal, Gesamtlauf grün; laufen nicht in der CI); im Gesamtlauf unter Last fallen einzelne, wechselnde Tests aus, einzeln laufen sie grün. Die Ingress-Tests öffnen die Navigationsgruppe „Geräte“ vor dem Klick.
 - **Antwortzeit (0.22.1):** Ursache der zähen Oberfläche war `shadow_run._previous_state`: Je Zone und Zyklus wurde die gesamte
   `shadow_decision`-Historie geladen (Betrieb: ~158 000 Zeilen je Zone, Zyklus ~14 s, die Ereignisschleife stand im Takt von ~45 s still).
   Jetzt vier Index-Einzelzugriffe (Migration `d4a8e1b73c52`), Ergebnis bitgleich zur alten Fassung (Referenztest). Gemessen auf MariaDB,
