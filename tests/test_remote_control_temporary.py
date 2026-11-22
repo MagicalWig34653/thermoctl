@@ -377,8 +377,9 @@ def test_in_the_repeated_hour_the_dial_ends_at_the_schedule_point(session: Sessi
     assert _running(session, zone, datetime(2026, 10, 25, 1, 30)) == []
 
 
+@pytest.mark.parametrize("offset", [timedelta(hours=-1), timedelta(0)], ids=["before", "equal"])
 def test_the_fallback_catches_an_end_that_is_not_after_now(
-    session: Session, monkeypatch: pytest.MonkeyPatch
+    session: Session, monkeypatch: pytest.MonkeyPatch, offset: timedelta
 ) -> None:
     """The fallback span is only a safety net now: should `end_of_next_switch` ever
     return a moment that is not after `now`, the override must not end before it starts
@@ -387,7 +388,7 @@ def test_the_fallback_catches_an_end_that_is_not_after_now(
     _setting(session).temporary_setpoint_minutes = 45
     now = datetime(2026, 10, 25, 1, 15)
     monkeypatch.setattr(
-        remote_control, "end_of_next_switch", lambda session, zone, now: now - timedelta(hours=1)
+        remote_control, "end_of_next_switch", lambda session, zone, now: now + offset
     )
 
     result = set_temporary_setpoint(session, zone, Decimal("23.0"), now, source="system")

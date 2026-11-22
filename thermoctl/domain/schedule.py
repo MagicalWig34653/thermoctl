@@ -1597,7 +1597,7 @@ FORECAST_HORIZON = timedelta(hours=24)
 # Safety bound on how many schedule switches `schedule_forecast` will walk through
 # per zone. A week has at most `MINUTES_PER_WEEK / 15` switches at the finest grid
 # the interface offers (15 minutes); no real 24h forecast needs anywhere near that
-# many, but a future bug in `next_point` producing a boundary that fails to advance
+# many, but a future bug in `next_switch_utc` producing a boundary that fails to advance
 # must not turn into an infinite loop instead of a slightly wrong bar.
 _MAX_FORECAST_SWITCHES = MINUTES_PER_WEEK // 15
 
@@ -1856,8 +1856,8 @@ def next_switch(session: Session, zone: Zone, now_utc: datetime) -> NextSwitch |
     selbst zeigen.
 
     Abgefragt wird `_schedule_setpoint` nicht exakt bei `at`, sondern eine Sekunde
-    danach. Der Grund ist die Rundung: `end_of_next_switch` rechnet über `next_point`
-    und zwei Zeitzonenumrechnungen, und exakt auf der Grenze bestünde ein winziges
+    danach. Der Grund ist die Rundung: `end_of_next_switch` rechnet über `next_switch_utc`
+    und Zeitzonenumrechnungen, und exakt auf der Grenze bestünde ein winziges
     Risiko, noch die alte statt der neuen Phase zu treffen.
 
     Eine **Sekunde**, nicht eine Minute. Zeitplanpunkte sind minutengenau, zwei
