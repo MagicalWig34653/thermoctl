@@ -194,7 +194,7 @@ def test_a_collision_is_reported_as_a_concurrent_change_and_nothing_else_is_swal
 
         return execute
 
-    for code in (1020, 1205, 1213):
+    for code in (1020, 1205, 1213, 1305):
         monkeypatch.setattr(session, "execute", failing(code))
         with pytest.raises(ConcurrentChange, match="erneut versuchen"):
             administration.lock_guarded_permissions(session)

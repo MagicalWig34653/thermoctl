@@ -490,7 +490,7 @@ def test_every_question_about_who_holds_the_admin_rights_is_asked_after_the_lock
     assert events.index("lock") < events.index("holders")
 
 
-@pytest.mark.parametrize("code", [1020, 1205, 1213, 1451, 1452])
+@pytest.mark.parametrize("code", [1020, 1205, 1213, 1305, 1451, 1452])
 def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch, code: int
 ) -> None:
@@ -522,6 +522,10 @@ def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
             "set_group_permissions", "PUT", f"/ui-api/access/groups/{group.id}/permissions",
             {"permissions": []},
         ),
+        (
+            "create_user", "POST", "/ui-api/access/users",
+            {"username": "neu", "display_name": "Neu", "password": "langes-Passwort-123"},
+        ),
     ]:
         with monkeypatch.context() as patched:
             patched.setattr(access, name, collide)
@@ -534,6 +538,26 @@ def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     monkeypatch.setattr(access, "set_user_active", other_error)
     with pytest.raises(OperationalError):
         _call(client, "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False})
+
+
+def test_a_group_deleted_right_after_the_change_is_answered_not_crashed(
+    session: Session,
+) -> None:
+    """Another administrator can delete the group between this request's commit and its answer:
+    the change was made, the group is gone -- 404, not a `StopIteration` (500)."""
+    import thermoctl.web.ui_api_access as access
+
+    gone = AccessGroup(name="weg")
+    session.add(gone)
+    session.flush()
+    session.delete(gone)
+    session.flush()
+
+    with pytest.raises(access.RoomApiError) as raised:
+        access._one_group(session, gone)
+
+    assert raised.value.status_code == 404
+    assert raised.value.code == "not_found"
 
 
 def test_a_second_administrator_lifts_the_guard(client_als: Als, session: Session) -> None:

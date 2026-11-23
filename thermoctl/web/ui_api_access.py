@@ -524,24 +524,31 @@ def create_account(
         _within_own_rights(session, principal, _group_grants(session, body.group_id))
     if body.template_id is not None and session.get(DashboardTemplate, body.template_id) is None:
         raise _validation("template_id", "Diese Vorlage gibt es nicht.", "unknown_template")
+    # Through `serialized_change`: the group can be deleted by someone else in this very
+    # moment (a foreign key the database refuses, or a snapshot it will not overwrite) --
+    # that is a "try again", not a 500.
     try:
-        user = create_user(
-            session, username=body.username, display_name=body.display_name,
-            password=body.password,
-            group_ids=[body.group_id] if body.group_id is not None else [],
-            actor_id=principal.user_id,
-        )
+        with serialized_change(session):
+            user = create_user(
+                session, username=body.username, display_name=body.display_name,
+                password=body.password,
+                group_ids=[body.group_id] if body.group_id is not None else [],
+                actor_id=principal.user_id,
+            )
+            if body.template_id is not None:
+                apply_template(session, user.id, body.template_id)
+                audit.record(
+                    session, source="web", action="dashboard.template_applied",
+                    object_type="user", object_id=str(user.id),
+                    summary="Übersichtsvorlage auf neuen Benutzer angewendet",
+                    user_id=principal.user_id,
+                )
     except PasswordTooShort as exc:
         raise _validation("password", str(exc), "password_too_short") from None
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "username_taken", field="username") from None
-    if body.template_id is not None:
-        apply_template(session, user.id, body.template_id)
-        audit.record(
-            session, source="web", action="dashboard.template_applied", object_type="user",
-            object_id=str(user.id), summary="Übersichtsvorlage auf neuen Benutzer angewendet",
-            user_id=principal.user_id,
-        )
     return _one_user(session, principal, user)
 
 
@@ -739,7 +746,12 @@ def create_access_group(
 
 
 def _one_group(session: Session, group: AccessGroup) -> GroupOut:
-    return next(g for g in _groups(session).groups if g.id == group.id)
+    # Another administrator can delete the group between this request's commit and this
+    # read; the change was made, the group is gone -- an answer, not a crash.
+    found = next((g for g in _groups(session).groups if g.id == group.id), None)
+    if found is None:
+        raise RoomApiError(404, "Gruppe nicht gefunden.", "not_found")
+    return found
 
 
 @router.put("/access/groups/{group_id}/ui-profile")

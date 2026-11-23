@@ -59,7 +59,11 @@ GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
 # changed since last read" (snapshot isolation, the default since MariaDB 11.6), 1205 lock
 # wait timeout, 1213 deadlock; 1451/1452 a foreign key that the other transaction just broke
 # (the group a user was moved into is deleted in the same moment, or the other way round).
-_COLLISION_CODES = (1020, 1205, 1213, 1451, 1452)
+# 1305 "SAVEPOINT does not exist" is the aftermath of the same collisions: the server has
+# already rolled the whole transaction back (deadlock victim, refused overwrite), so the
+# `ROLLBACK TO SAVEPOINT` of a change that runs in a savepoint (`begin_nested`) finds none
+# and raises this instead of the error that caused it.
+_COLLISION_CODES = (1020, 1205, 1213, 1305, 1451, 1452)
 
 _COLLISION_MESSAGE = (
     "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
@@ -562,13 +566,14 @@ def set_group_permissions(
     # Before the first write: a transaction that already wrote and then waits for the lock,
     # while another one holding it waits for those rows, would be a deadlock.
     lock_guarded_permissions(session)
+    # A locking read, like every read that feeds the checks below: a plain one would show the
+    # snapshot from before the lock, with entries another change has deleted meanwhile.
+    codes = {pid: code for pid, code in session.execute(select(Permission.id, Permission.code))}
     present: dict[tuple[str, int | None], GroupPermission] = {}
-    for entry, code in session.execute(
-        select(GroupPermission, Permission.code)
-        .join(Permission, Permission.id == GroupPermission.permission_id)
-        .where(GroupPermission.access_group_id == group.id)
+    for entry in _locked(
+        session, select(GroupPermission).where(GroupPermission.access_group_id == group.id)
     ):
-        present[(code, entry.zone_id)] = entry
+        present[(codes[entry.permission_id], entry.zone_id)] = entry
 
     taken = 0
     for code, zone_id in sorted(wanted - set(present), key=lambda p: (p[0], p[1] or 0)):

@@ -85,11 +85,11 @@ async def throttled_attempt(key: str) -> AsyncIterator[None]:
 
     Shared by the login and the password change, so there is one throttle, not two.
 
-    The attempt is **counted before the wait**, not after the check. Reading the counter,
-    waiting and writing it back afterwards (as this once did) let every parallel request
-    see the same count, wait the same time and then check -- the delay slowed down one
-    guess at a time and not at all a flood of them. Between reading and reserving there is
-    no `await`, so on the event loop the two steps cannot be interleaved. The body reports
+    The attempt is **counted before the wait**, not after the check: if the counter were read,
+    waited on and written back afterwards, every parallel request would see the same count,
+    wait the same time and then check -- the delay would slow down one guess at a time and not
+    at all a flood of them. Between reading and reserving there is no `await`, so on the
+    event loop the two steps cannot be interleaved. The body reports
     a success with `reset_failures`; a failure needs nothing, it is counted already.
 
     Raises `TooManyAttempts` -- before anything was counted or waited -- if
@@ -119,21 +119,31 @@ def reset_failures(key: str) -> None:
     FEHLVERSUCHE[key] = 0
 
 
+def _digit(char: str) -> str:
+    return str(unicodedata.decimal(char)) if unicodedata.category(char) == "Nd" else char
+
+
 def login_key(username: str) -> str:
     """The throttle key of a login: the typed name, folded -- **never** whether it exists.
 
-    A key that depends on the account (as `benutzer:<id>` did) tells apart, by timing alone,
-    a name that exists from one that does not: on MariaDB `lino`, `LINO` and `Lino ` are one
-    account and so one counter, while the same spellings of an invented name would each have
-    a fresh one. Keyed by the typed name only, existing and invented names behave the same
-    for every spelling. The name is folded (Unicode compatibility form, accents dropped,
-    case folded, surrounding blanks removed) so the common spellings one account answers to
-    share a counter; what a collation still treats as equal beyond that gives an extra
-    counter, exactly as before -- a throttle weakened a little, no oracle.
+    A key that depends on the account tells apart, by timing alone, a name that exists from
+    one that does not: on MariaDB `lino`, `LINO` and `Lino ` are one account and so one
+    counter, while the same spellings of an invented name would each have a fresh one. Keyed
+    by the typed name only, existing and invented names behave the same for every spelling.
+
+    The name is folded the way the database compares it, so the spellings one account answers
+    to share a counter: compatibility forms and ligatures (NFKD), accents dropped, case folded
+    (`ß` = `ss`), digits of other scripts as ASCII digits, invisible format and control
+    characters (zero-width space, soft hyphen, byte order mark, NUL ...) removed, blanks at
+    the edges removed. What a collation still treats as equal beyond that gets a counter of
+    its own -- a throttle weakened a little for such names, no oracle.
     """
-    decomposed = unicodedata.normalize("NFKD", username)
-    bare = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return f"name:{bare.strip().casefold()}"
+    folded = []
+    for char in unicodedata.normalize("NFKD", username):
+        if unicodedata.combining(char) or unicodedata.category(char) in ("Cc", "Cf"):
+            continue
+        folded.append(_digit(char))
+    return f"name:{''.join(folded).strip().casefold()}"
 
 
 async def attempt_login(
@@ -152,7 +162,6 @@ async def attempt_login(
     # The wait below must not hold a database connection: the lookup opened a transaction,
     # and a stream of invented names would otherwise park one pooled connection per
     # request for the length of the delay -- the pool gone, the whole service with it.
-    # (The lookup used to come after the wait, which is why this was never needed.)
     session.commit()
     try:
         async with throttled_attempt(key):
@@ -168,9 +177,12 @@ async def attempt_login(
                 await to_thread.run_sync(verify_password, password, VERGLEICHS_HASH)
                 successful = False
             else:
-                successful = user.is_active and await to_thread.run_sync(
+                # Checked for an inactive account too, and only then combined: a short-circuit
+                # `is_active and verify` answers a deactivated account in a fraction of the time.
+                password_ok = await to_thread.run_sync(
                     verify_password, password, user.password_hash
                 )
+                successful = password_ok and user.is_active
             if successful:
                 reset_failures(key)
     except TooManyAttempts:

@@ -1,9 +1,9 @@
 """Die Anmeldedrosselung hält auch bei gleichzeitigen Versuchen (Codex-Befund 9).
 
-Früher las `throttle` den Zähler, wartete und schrieb ihn erst nach der Prüfung zurück:
-N parallele Anfragen sahen alle denselben Stand, warteten dieselbe Sekunde und prüften dann
-alle. Die Wartezeit bremste einen Versuch nach dem anderen, einen Schwall gleichzeitiger gar
-nicht. Hier wird sie so geprüft, wie ein Angreifer sie benutzt: mit vielen Anfragen auf einmal.
+Würde der Zähler gelesen, gewartet und erst nach der Prüfung zurückgeschrieben, sähen N
+parallele Anfragen alle denselben Stand, warteten dieselbe Sekunde und prüften dann alle: die
+Wartezeit bremste einen Versuch nach dem anderen, einen Schwall gleichzeitiger gar nicht. Hier
+wird sie so geprüft, wie ein Angreifer sie benutzt: mit vielen Anfragen auf einmal.
 """
 
 import asyncio
@@ -257,10 +257,27 @@ def test_the_throttle_is_keyed_by_the_typed_name_whether_or_not_it_exists(
         ("l\u0131no", "name:l\u0131no"),  # punktloses i: casefold ändert es nicht
         ("\uff2c\uff29\uff2e\uff2f", "name:lino"),  # vollbreite Buchstaben (NFKD)
         ("benutzer:1", "name:benutzer:1"),
+        # Was die Kollation der Datenbank gleichsetzt, darf keinen frischen Zähler ergeben:
+        ("li\u200bno", "name:lino"),  # Zeichen der Breite null
+        ("li\u00adno", "name:lino"),  # weicher Trennstrich
+        ("\ufefflino", "name:lino"),  # Byte-Order-Mark
+        ("li\u200c\u200d\u2060no", "name:lino"),
+        ("li\x00no", "name:lino"),  # Steuerzeichen
+        ("stra\u00dfe", "name:strasse"),  # casefold, nicht lower
+        ("\u03c2", "name:\u03c3"),  # Schluss-Sigma
+        ("\ufb01x", "name:fix"),  # Ligatur
+        ("nutzer\u0663", "name:nutzer3"),  # arabisch-indische Ziffer
+        ("nutzer\uff13", "name:nutzer3"),
     ],
 )
 def test_login_key_folds_the_spellings_of_one_name(typed: str, key: str) -> None:
     assert login_key(typed) == key
+
+
+def test_login_key_keeps_real_differences_apart() -> None:
+    assert login_key("lino") != login_key("lina")
+    assert login_key("nutzer1") != login_key("nutzer2")
+    assert login_key("lino") != login_key("lino x")  # Leerzeichen innen zählen
 
 
 def test_existing_and_invented_names_take_the_same_delays_in_every_spelling(
@@ -275,8 +292,8 @@ def test_existing_and_invented_names_take_the_same_delays_in_every_spelling(
         waits.append(seconds)
 
     monkeypatch.setattr(login, "sleep", record)
-    existing = ("lino", "LINO", "Lino ", "lInO", "lino")
-    invented = ("erfunden", "ERFUNDEN", "Erfunden ", "eRfUnDeN", "erfunden")
+    existing = ("lino", "LINO", "Lino ", "li\u200bno", "lino")
+    invented = ("erfunden", "ERFUNDEN", "Erfunden ", "erfun\u200bden", "erfunden")
 
     def series(typed_names: tuple[str, ...]) -> list[float]:
         waits.clear()

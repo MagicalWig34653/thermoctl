@@ -15,9 +15,12 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   *Anmeldung:* Ein Versuch wird **vor** der Wartezeit gezählt (`login.throttled_attempt`), nicht danach. Je Schlüssel laufen höchstens
   `MAX_PARALLEL_ATTEMPTS` (5) Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein
   Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel ist der **getippte Name, gefaltet**
-  (`login.login_key`: Unicode-Kompatibilitätsform, Akzente weg, Groß-/Kleinschreibung und Randleerzeichen angeglichen) und hängt nie
-  davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen ohne Rücksicht auf die Schreibweise
-  verglichen) die Existenz. Was eine Kollation darüber hinaus gleichsetzt, gibt einen zusätzlichen Zähler. Der Nachschlag gibt seine
+  (`login.login_key`: Unicode-Kompatibilitätsform und Ligaturen, Akzente weg, Groß-/Kleinschreibung (`ß` = `ss`), Ziffern anderer
+  Schriften als ASCII, unsichtbare Format- und Steuerzeichen (Zeichen der Breite null, weicher Trennstrich, BOM, NUL) entfernt,
+  Randleerzeichen entfernt) und hängt nie davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen
+  ohne Rücksicht auf die Schreibweise verglichen) die Existenz. Was eine Kollation darüber hinaus noch gleichsetzt, gibt einen
+  zusätzlichen Zähler (geschwächte Drosselung für solche Namen, kein Orakel). Ein deaktiviertes Konto kostet dieselbe
+  Passwortprüfung wie ein aktives (kein Zeit-Orakel). Der Nachschlag gibt seine
   Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
   Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es
   nicht. Offen: gleichzeitige Anmeldungen mit vielen verschiedenen Namen füllen den Datenbank-Pool (Karte „Anmeldung: Pool bei
@@ -28,12 +31,17 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   vor dem ersten Schreiben), und die Prüfungen sind sperrende Lesevorgänge (`_locked`): die zweite Änderung wartet und sieht, was die
   erste hinterlassen hat; **jede** Lesung, die in eine solche Entscheidung eingeht, ist eine sperrende (auch „trägt die Zielgruppe das
   Recht noch?" und die bisherigen Mitgliedschaften beim Umgruppieren -- eine einfache Lesung sähe den alten Snapshot). MariaDB mit
-  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213 und die Fremdschlüsselfehler 1451/1452 (Zielgruppe gleichzeitig
-  gelöscht) ebenso -- an jeder Stelle bis zum Commit (`administration.serialized_change`, von den vier Endpunkten benutzt): das wird
-  `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"), nie 500. Unter SQLite gibt es nur einen Schreiber,
-  dort entfällt die Klausel. Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
+  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213, die Fremdschlüsselfehler 1451/1452 (Zielgruppe gleichzeitig
+  gelöscht) und 1305 (die Transaktion wurde schon zurückgerollt, der Savepoint der Endpunkte existiert nicht mehr) ebenso -- an
+  jeder Stelle bis zum Commit (`administration.serialized_change`, von den fünf Endpunkten benutzt, auch dem Anlegen eines Kontos
+  in eine Gruppe): das wird `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"); ist die Gruppe
+  nach dem Commit weg, antwortet der Endpunkt 404. Gemessen über echte Anfragen: keine 500 in diesen Pfaden. Unter SQLite gibt es nur
+  einen Schreiber, dort entfällt die Klausel (gleichzeitige Schreiber scheitern dort weiterhin mit „database is locked“, ohne dass
+  jemand ausgesperrt wird). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
   `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
-  Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot), `tests/test_login_throttle.py`.
+  Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot),
+  `tests/test_administration_race_http.py` (dieselben Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter),
+  `tests/test_login_throttle.py`.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich

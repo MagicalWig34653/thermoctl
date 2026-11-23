@@ -93,6 +93,30 @@ def test_an_inactive_user_cannot_get_in(client: TestClient, user, session: Sessi
     assert response.status_code == 401
 
 
+def test_an_inactive_user_costs_the_same_password_check_as_an_active_one(
+    client: TestClient, user, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kein Zeit-Orakel: Ein deaktiviertes Konto wird nicht schneller abgewiesen, weil die
+    Passwortprüfung übersprungen würde (Kurzschluss `is_active and verify`)."""
+    checks: list[str] = []
+    real = thermoctl.web.shared.login.verify_password
+
+    def counting(password: str, hashed: str) -> bool:
+        checks.append(password)
+        return real(password, hashed)
+
+    monkeypatch.setattr(thermoctl.web.shared.login, "verify_password", counting)
+    user.is_active = False
+    session.flush()
+
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
+
+    assert response.status_code == 401
+    assert checks == ["passwort-lang-genug"]
+
+
 def test_logging_out_revokes_the_session(client: TestClient, user, session: Session) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     # The application itself hands out the valid token through its own,
