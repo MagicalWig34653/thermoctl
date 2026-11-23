@@ -17,7 +17,7 @@ from tests.helpers import (
     token_with_permissions,
     user_with_permissions,
 )
-from thermoctl.db.models.identity import AccessGroup, GroupPermission, UserAccessGroup
+from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.administration import (
@@ -561,3 +561,129 @@ def test_holder_of_both_cannot_leave_for_a_group_with_neither(session: Session) 
     session.flush()
     with pytest.raises(AdministrationError, match="user.manage"):
         set_user_group(session, only, target.id, actor_id=None)
+
+
+# -- Zwei gleichzeitige Änderungen (Codex-Befund 4): die Sperre muss vor jeder schützenden
+# Änderung genommen werden. Das Rennen selbst zeigt `tests/test_administration_race.py` unter
+# MariaDB; hier steht, dass keine Stelle die Sperre vergisst (unter SQLite sichtbar).
+
+
+@pytest.fixture
+def lock_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    import thermoctl.domain.administration as administration
+
+    calls: list[str] = []
+    original = administration.lock_guarded_permissions
+
+    def record(session: Session) -> None:
+        calls.append("lock")
+        original(session)
+
+    monkeypatch.setattr(administration, "lock_guarded_permissions", record)
+    return calls
+
+
+def _two_admins(session: Session) -> tuple[User, User]:
+    first = user_with_permissions(session, "sperre-a", [("user.manage", None)])
+    second = user_with_permissions(session, "sperre-b", [("user.manage", None)])
+    return first, second
+
+
+def test_deactivating_takes_the_lock_but_activating_does_not(
+    session: Session, lock_calls: list[str]
+) -> None:
+    first, second = _two_admins(session)
+
+    set_user_active(session, second, False, actor_id=first.id)
+    assert lock_calls == ["lock"]
+
+    lock_calls.clear()
+    set_user_active(session, second, True, actor_id=first.id)
+    assert lock_calls == []
+
+
+def test_regrouping_takes_the_lock(session: Session, lock_calls: list[str]) -> None:
+    first, second = _two_admins(session)
+
+    set_user_group(session, second, None, actor_id=first.id)
+
+    assert lock_calls == ["lock"]
+
+
+def test_deleting_a_group_takes_the_lock(session: Session, lock_calls: list[str]) -> None:
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+
+    delete_group(session, group, actor_id=first.id)
+
+    assert lock_calls == ["lock"]
+
+
+def test_revoking_takes_the_lock_only_for_a_guarded_plant_wide_permission(
+    session: Session, lock_calls: list[str]
+) -> None:
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+    zone = create_zone(session, "sperrezone")
+    ensure_permission(session, "zone.read", zone_scoped=True)
+    zone_entry = grant_permission(session, group, "zone.read", zone.id, actor_id=None)
+    guarded = session.scalar(
+        select(GroupPermission)
+        .join(Permission, Permission.id == GroupPermission.permission_id)
+        .where(GroupPermission.access_group_id == group.id, Permission.code == "user.manage")
+    )
+    assert guarded is not None
+
+    revoke_permission(session, zone_entry, actor_id=first.id)
+    assert lock_calls == []
+
+    revoke_permission(session, guarded, actor_id=first.id)
+    assert lock_calls == ["lock"]
+
+
+def test_setting_a_groups_permissions_takes_the_lock_before_it_writes(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Vor dem ersten Schreiben: sonst könnte eine Transaktion, die schon Zeilen angelegt hat,
+    auf die Sperre warten, während die haltende auf genau diese Zeilen wartet."""
+    import thermoctl.domain.administration as administration
+
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+    ensure_permission(session, "zone.read", zone_scoped=False)
+    events: list[str] = []
+    original_lock = administration.lock_guarded_permissions
+    original_grant = administration.grant_permission
+
+    def lock(session_: Session) -> None:
+        events.append("lock")
+        original_lock(session_)
+
+    def grant(*args: object, **kwargs: object) -> GroupPermission:
+        events.append("grant")
+        return original_grant(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(administration, "lock_guarded_permissions", lock)
+    monkeypatch.setattr(administration, "grant_permission", grant)
+
+    set_group_permissions(
+        session, group, {("user.manage", None), ("zone.read", None)}, actor_id=first.id
+    )
+
+    assert events[0] == "lock"
+    assert "grant" in events

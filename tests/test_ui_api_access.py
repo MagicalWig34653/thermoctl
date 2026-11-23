@@ -394,6 +394,52 @@ def test_last_administrator_cannot_be_locked_out_by_any_path(client_als: Als, se
     assert _actions(session) == before
 
 
+def test_a_concurrent_change_is_answered_with_409_concurrent_change_and_changes_nothing(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verliert eine Anfrage das Rennen um die Verwaltungsrechte (Codex-Befund 4), sagt der
+    Server das mit eigenem Code und ändert nichts -- an jeder der vier Stellen und beim
+    Vorab-Check der eigenen Rechte."""
+    import thermoctl.web.ui_api_access as access
+    from thermoctl.domain.administration import ConcurrentChange
+
+    client = client_als(ADMIN)
+    other = create_user(session, "anna")
+    group = AccessGroup(name="verlierer")
+    session.add(group)
+    session.flush()
+    before = _actions(session)
+
+    def collide(*args: object, **kwargs: object) -> None:
+        raise ConcurrentChange("Gleichzeitig hat jemand anderes etwas geändert.")
+
+    for name, method, url, body in [
+        ("set_user_active", "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False}),
+        ("set_user_group", "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": None}),
+        ("delete_group", "DELETE", f"/ui-api/access/groups/{group.id}", None),
+        (
+            "set_group_permissions", "PUT", f"/ui-api/access/groups/{group.id}/permissions",
+            {"permissions": []},
+        ),
+    ]:
+        with monkeypatch.context() as patched:
+            patched.setattr(access, name, collide)
+            body_json = _err(_call(client, method, url, body), 409, "concurrent_change")
+            assert "Gleichzeitig" in body_json["detail"]
+
+    # Der Vorab-Check der eigenen Rechte (`_within_own_rights`) liegt vor jeder Änderung.
+    with monkeypatch.context() as patched:
+        patched.setattr(access, "lock_guarded_permissions", collide)
+        _err(
+            _call(client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": group.id}),
+            409, "concurrent_change",
+        )
+    session.refresh(other)
+    assert other.is_active is True
+    assert session.get(AccessGroup, group.id) is not None
+    assert _actions(session) == before
+
+
 def test_a_second_administrator_lifts_the_guard(client_als: Als, session: Session) -> None:
     """Mit einem zweiten Verwalter ist Umgruppieren erlaubt, solange der Handelnde dadurch
     nicht zum Alleininhaber wird (dafuer gibt es einen eigenen Test)."""
@@ -1015,6 +1061,36 @@ def test_password_change_throttles_wrong_attempts_and_success_resets(
     ok = _call(client, "PUT", url, {"current_password": "das-alte-passwort-1", "new_password": LONG_PASSWORD})
     assert ok.status_code == 200
     assert delays == [1, 2, 4, 5] and FEHLVERSUCHE[key] == 0
+
+
+def test_password_change_refuses_when_too_many_checks_are_under_way(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Über der Grenze gleichzeitiger Prüfungen: 429, ohne dass das Passwort geprüft wird."""
+    import thermoctl.web.shared.login as login
+
+    checks: list[str] = []
+    monkeypatch.setattr(
+        "thermoctl.web.ui_api_access.verify_password",
+        lambda password, hashed: checks.append(password) or False,
+    )
+    client = client_als([])
+    me = session.get(User, _me(client))
+    assert me is not None
+    key = f"passwort:{me.id}"
+    login.FEHLVERSUCHE.pop(key, None)
+    login._IN_FLIGHT[key] = login.MAX_PARALLEL_ATTEMPTS
+    try:
+        response = _call(
+            client, "PUT", "/ui-api/account/password",
+            {"current_password": "egal-egal-egal", "new_password": LONG_PASSWORD},
+        )
+    finally:
+        login._IN_FLIGHT.pop(key, None)
+
+    _err(response, 429, "too_many_attempts")
+    assert checks == []
+    assert key not in login.FEHLVERSUCHE
 
 
 def test_nobody_manages_their_own_account(client_als: Als, session: Session) -> None:

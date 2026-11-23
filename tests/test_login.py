@@ -194,6 +194,7 @@ def test_a_successful_login_resets_the_counter(client, user) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     from thermoctl.web.shared.login import FEHLVERSUCHE
 
+    assert FEHLVERSUCHE.get(f"benutzer:{user.id}", 0) == 0
     assert FEHLVERSUCHE.get("lino", 0) == 0
 
 
@@ -313,7 +314,7 @@ def test_the_failure_counter_cannot_grow_without_bound(
 
     assert len(thermoctl.web.shared.login.FEHLVERSUCHE) == 3
     # Behalten wird das Jüngste: der Zähler soll das gerade laufende Raten bremsen.
-    assert "erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
+    assert "name:erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
 
 
 def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:

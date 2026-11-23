@@ -52,11 +52,13 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import (
     GUARDED_PERMISSIONS,
     AdministrationError,
+    ConcurrentChange,
     create_group,
     create_user,
     delete_group,
     holders_of,
     is_sole_holder,
+    lock_guarded_permissions,
     revoke_token,
     set_group_permissions,
     set_group_ui_profile,
@@ -77,7 +79,7 @@ from thermoctl.domain.passkey import PasskeyError, remove_passkey
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
-from thermoctl.web.shared.login import record_failure, reset_failures, throttle
+from thermoctl.web.shared.login import TooManyAttempts, reset_failures, throttled_attempt
 from thermoctl.web.shared.tokens import replace_token_grants, token_grants
 from thermoctl.web.ui_api_rooms import RoomApiError, _iso, _RoomsRoute
 
@@ -142,8 +144,16 @@ def _within_own_rights(
     Person `user.manage` hält, hat niemanden, vor dem die Regel schützt -- und könnte
     sonst ein später hinzugekommenes Recht nie vergeben.
     """
-    if principal.user_id is not None and is_sole_holder(session, principal.user_id):
-        return
+    if principal.user_id is not None:
+        # The question "am I the only one?" must be answered on the current state, not on a
+        # snapshot another administrator's change has already overtaken.
+        try:
+            lock_guarded_permissions(session)
+            sole_holder = is_sole_holder(session, principal.user_id)
+        except ConcurrentChange as exc:
+            raise RoomApiError(409, str(exc), "concurrent_change") from None
+        if sole_holder:
+            return
     missing = sorted(
         code for code, zone_id in wanted if not has_permission(principal, code, zone_id)
     )
@@ -164,6 +174,7 @@ def _no_self_made_sole_holder(session: Session, principal: Principal) -> Iterato
     Savepoint und wird zurückgenommen, wenn sie diesen Zustand herstellen würde.
     """
     actor = principal.user_id
+    lock_guarded_permissions(session)
     before = {code: holders_of(session, code) for code in GUARDED_PERMISSIONS}
     with session.begin_nested():
         yield
@@ -546,6 +557,8 @@ def set_active(
         _not_self(principal, user, "deaktivieren")
     try:
         set_user_active(session, user, body.active, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "last_administrator") from None
     return _one_user(session, principal, user)
@@ -571,6 +584,8 @@ def set_group_of_user(
     try:
         with _no_self_made_sole_holder(session, principal):
             set_user_group(session, user, body.group_id, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "last_administrator") from None
     return _one_user(session, principal, user)
@@ -750,6 +765,8 @@ def remove_group(
     try:
         with _no_self_made_sole_holder(session, principal):
             delete_group(session, group, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(
             409, str(exc), "builtin_group" if group.is_builtin else "last_administrator"
@@ -836,6 +853,8 @@ def set_permissions(
     try:
         with _no_self_made_sole_holder(session, principal):
             set_group_permissions(session, group, wanted, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "last_administrator") from None
     return _one_group(session, group)
@@ -1178,13 +1197,24 @@ async def change_own_password(
     # Same throttle as the login (own key per user, so a wrong guess here does not
     # delay the real sign-in); awaited, and Argon2id off the event loop.
     key = f"passwort:{user.id}"
-    previous_failures = await throttle(key)
-    if not await to_thread.run_sync(verify_password, body.current_password, user.password_hash):
-        record_failure(key, previous_failures)
+    try:
+        async with throttled_attempt(key):
+            if not await to_thread.run_sync(
+                verify_password, body.current_password, user.password_hash
+            ):
+                raise RoomApiError(
+                    403,
+                    "Das bisherige Passwort stimmt nicht.",
+                    "wrong_password",
+                    field="current_password",
+                )
+            reset_failures(key)
+    except TooManyAttempts:
         raise RoomApiError(
-            403, "Das bisherige Passwort stimmt nicht.", "wrong_password", field="current_password"
-        )
-    reset_failures(key)
+            429,
+            "Zu viele Versuche gleichzeitig. Bitte einen Moment warten und es erneut versuchen.",
+            "too_many_attempts",
+        ) from None
     try:
         set_password(
             session, user, body.new_password,

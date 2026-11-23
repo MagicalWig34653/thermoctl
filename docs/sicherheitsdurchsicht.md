@@ -110,7 +110,10 @@ Wand gut hüten könnte.
   gebunden ist und `secure_cookies` aus steht. Erzwingen kann er es nicht — hinter einem
   Reverse-Proxy sieht er nur HTTP —, aber sagen kann er es.
 - **Keine Anmeldebegrenzung über Prozessgrenzen hinweg.** Die Drosselung zählt
-  Fehlversuche im Prozessspeicher; ein Neustart setzt sie zurück. Für eine
+  Fehlversuche im Prozessspeicher; ein Neustart setzt sie zurück. Innerhalb eines Prozesses
+  hält sie auch gegen gleichzeitige Versuche: der Versuch wird vor der Wartezeit gezählt, je
+  Konto laufen höchstens fünf Prüfungen zugleich (der Preis: wer fünf offen hält, verzögert die
+  Anmeldung dieses Kontos). Für eine
   Heimnetzinstallation vertretbar, für einen öffentlich erreichbaren Dienst nicht — und
   öffentlich erreichbar soll er ohnehin nicht sein.
 - **Keine Kontosperre**, ausdrücklich: In einem Einhaushalt-System wäre sie vor allem eine
