@@ -93,6 +93,44 @@ def test_an_inactive_user_cannot_get_in(client: TestClient, user, session: Sessi
     assert response.status_code == 401
 
 
+def test_an_inactive_user_costs_the_same_password_check_as_an_active_one(
+    client: TestClient, user, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kein Zeit-Orakel: Ein deaktiviertes Konto wird nicht schneller abgewiesen, weil die
+    Passwortprüfung übersprungen würde (Kurzschluss `is_active and verify`)."""
+    checks: list[str] = []
+    real = thermoctl.web.shared.login.verify_password
+
+    def counting(password: str, hashed: str) -> bool:
+        checks.append(password)
+        return real(password, hashed)
+
+    monkeypatch.setattr(thermoctl.web.shared.login, "verify_password", counting)
+    user.is_active = False
+    session.flush()
+
+    response = client.post(
+        "/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"}
+    )
+
+    assert response.status_code == 401
+    assert checks == ["passwort-lang-genug"]
+
+
+def test_a_name_that_cannot_be_encoded_is_a_failed_login_not_a_crash(
+    client: TestClient, user
+) -> None:
+    """`"\\ud800"` is valid JSON but a lone surrogate: the lookup in the database would raise."""
+    for body in (
+        '{"username": "\\ud800", "password": "passwort-lang-genug"}',
+        '{"username": "lino", "password": "\\udfff"}',
+    ):
+        response = client.post(
+            "/ui-api/login", content=body, headers={"content-type": "application/json"}
+        )
+        assert response.status_code == 401
+
+
 def test_logging_out_revokes_the_session(client: TestClient, user, session: Session) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     # The application itself hands out the valid token through its own,
@@ -194,6 +232,7 @@ def test_a_successful_login_resets_the_counter(client, user) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     from thermoctl.web.shared.login import FEHLVERSUCHE
 
+    assert FEHLVERSUCHE.get("name:lino", 0) == 0
     assert FEHLVERSUCHE.get("lino", 0) == 0
 
 
@@ -313,7 +352,7 @@ def test_the_failure_counter_cannot_grow_without_bound(
 
     assert len(thermoctl.web.shared.login.FEHLVERSUCHE) == 3
     # Behalten wird das Jüngste: der Zähler soll das gerade laufende Raten bremsen.
-    assert "erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
+    assert "name:erfunden-9" in thermoctl.web.shared.login.FEHLVERSUCHE
 
 
 def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:

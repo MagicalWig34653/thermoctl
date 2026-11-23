@@ -10,7 +10,42 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Tests: `npm test` im Verzeichnis (virtuelles Matter-Netz, Simulator statt thermoctl), `npm run test:network` (Loopback, nur macOS). Nicht an Apple Home, Google Home und
   mDNS im echten Netz geprüft; nicht zertifiziert (Test-VID). Einzelheiten und offene Geräteprüfungen: `matter-bridge/README.md`.
 - **Integrationstest Brücke ↔ echte Befehlsverarbeitung (`tests/test_matter_bridge_integration.py`, Treiber `matter-bridge/integration/driver.mjs`):** Ein Node-Unterprozess hält Aedes-Broker (127.0.0.1), die echte Brücke im virtuellen Matter-Netz und einen Matter-Controller; thermoctl hängt mit dem echten `MqttClient` (aiomqtt) am selben Broker und führt jeden Befehl durch `_process_mqtt_message` → Domäne → Audit → `_send_zone_state` (retained, zurück über den Broker), mit echter SQLite-Datenbank und Zonen mit Zeitplan (Tag 21,0 / Nacht 18,0). Beweist: Lesen konsistent mit `zone_state`; Rad = genau eine laufende Übersteuerung mit Ende an der nächsten Schaltung, Plan unverändert, Audit; Entprellung; Beenden/Zeitablauf → Planwert; Aus → `off` (Rad gesperrt, keine Übersteuerung), Heizen → `auto`; abgelehnter Befehl (auch 99 per Direktbefehl, auch Aus-Wettlauf) → unveränderter Zustand kommt zurück; Abwesenheit bleibt unberührt; Brücke sendet nie `command/setpoint`; zwei Zonen unabhängig. Beweist nicht: Broker mit Zugangsdaten/ACLs (Aedes erlaubt alles), echtes Apple/Google Home, mDNS, MariaDB (die Datenbank ist hier immer SQLite). Skipt ohne node oder `matter-bridge/node_modules` (`npm ci`). Laufzeit ca. 40 s.
-- **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befunde 4 und 9 offen (Board); 5 (MCP-Übersteuerung verlor den Zeitzonenoffset: `schedule.create_override` rechnet `ends_at` und `now` nach naive UTC um, naive Werte gelten als UTC; `start_absence` normalisiert beides am Eingang selbst, die REST-Übersteuerung nimmt kein `ends_at` an; ein aware Wert außerhalb des darstellbaren Bereichs wirft `ValueError`, der MCP-Client sieht dann nur die allgemeine SDK-Fehlermeldung), 6, 7 und 8 (Wiederholstunde der Zeitumstellung, siehe „Zeitplan über echte Zeit“) sind nach 0.25.0 behoben (unveröffentlicht). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
+- **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. 4 und 9 (siehe „Anmeldedrosselung und Verwaltungsrechte bei Gleichzeitigkeit“), 5 (MCP-Übersteuerung verlor den Zeitzonenoffset: `schedule.create_override` rechnet `ends_at` und `now` nach naive UTC um, naive Werte gelten als UTC; `start_absence` normalisiert beides am Eingang selbst, die REST-Übersteuerung nimmt kein `ends_at` an; ein aware Wert außerhalb des darstellbaren Bereichs wirft `ValueError`, der MCP-Client sieht dann nur die allgemeine SDK-Fehlermeldung), 6, 7 und 8 (Wiederholstunde der Zeitumstellung, siehe „Zeitplan über echte Zeit“) sind nach 0.25.0 behoben (unveröffentlicht). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
+- **Anmeldedrosselung und Verwaltungsrechte bei Gleichzeitigkeit (unveröffentlicht, behebt Codex-Befunde 9 und 4):**
+  *Anmeldung:* Ein Versuch wird **vor** der Wartezeit gezählt (`login.throttled_attempt`), nicht danach. Je Schlüssel laufen höchstens
+  `MAX_PARALLEL_ATTEMPTS` (5) Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein
+  Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel ist der **getippte Name, gefaltet**
+  (`login.login_key`: Unicode-Kompatibilitätsform und Ligaturen, Akzente weg, Groß-/Kleinschreibung (`ß` = `ss`), Ziffern anderer
+  Schriften als ASCII, unsichtbare Format- und Steuerzeichen (Zeichen der Breite null, weicher Trennstrich, BOM, NUL) entfernt,
+  Randleerzeichen entfernt) und hängt nie davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen
+  ohne Rücksicht auf die Schreibweise verglichen) die Existenz. **Grenze:** Was die Kollation (`utf8mb4_uca1400_ai_ci`) sonst
+  noch ignoriert oder gleichsetzt (Kombinationszeichen wie U+034F, Tatweel U+0640, `ø`, `æ` und mehr, gemessen über 1000 Zeichen),
+  wird nicht gefaltet: Ein Name mit einem solchen eingestreuten Zeichen meldet mit richtigem Passwort an, hat aber einen eigenen
+  Zähler -- für diese Namen ist die Drosselung nur durch die Rechenzeit der Passwortprüfung begrenzt (kein Orakel, bekannte und
+  erfundene Namen verhalten sich gleich). Unter SQLite (binärer Vergleich) ohne Belang. Abhilfe offen (Karte „Anmeldedrosselung:
+  Schlüssel nach Kollation der Datenbank"). Ein deaktiviertes Konto kostet dieselbe
+  Passwortprüfung wie ein aktives (kein Zeit-Orakel). Der Nachschlag gibt seine
+  Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
+  Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es
+  nicht. Offen: gleichzeitige Anmeldungen mit vielen verschiedenen Namen füllen den Datenbank-Pool (Karte „Anmeldung: Pool bei
+  vielen Namen“). Der Zähler bleibt im Prozessspeicher (siehe unten).
+  *Verwaltungsrechte:* Zwei Verwaltende, die im selben Moment je den anderen deaktivieren, umgruppieren, ein Recht entziehen oder
+  eine Gruppe löschen, würden unter MariaDB beide durchkommen, wenn jede Prüfung den anderen noch sähe, und alle aussperren. Jede solche
+  Änderung nimmt jetzt zuerst `administration.lock_guarded_permissions` (die beiden geschützten Rechte-Zeilen in fester Reihenfolge,
+  vor dem ersten Schreiben), und die Prüfungen sind sperrende Lesevorgänge (`_locked`): die zweite Änderung wartet und sieht, was die
+  erste hinterlassen hat; **jede** Lesung, die in eine solche Entscheidung eingeht, ist eine sperrende (auch „trägt die Zielgruppe das
+  Recht noch?" und die bisherigen Mitgliedschaften beim Umgruppieren -- eine einfache Lesung sähe den alten Snapshot). MariaDB mit
+  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213, die Fremdschlüsselfehler 1451/1452 (Zielgruppe gleichzeitig
+  gelöscht) und 1305 (die Transaktion wurde schon zurückgerollt, der Savepoint der Endpunkte existiert nicht mehr) ebenso -- an
+  jeder Stelle bis zum Commit (`administration.serialized_change`, von den fünf Endpunkten benutzt, auch dem Anlegen eines Kontos
+  in eine Gruppe): das wird `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"); ist die Gruppe
+  nach dem Commit weg, antwortet der Endpunkt 404. Gemessen über echte Anfragen: keine 500 in diesen Pfaden. Unter SQLite gibt es nur
+  einen Schreiber, dort entfällt die Klausel (gleichzeitige Schreiber scheitern dort weiterhin mit „database is locked“, ohne dass
+  jemand ausgesperrt wird). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
+  `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
+  Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot),
+  `tests/test_administration_race_http.py` (dieselben Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter, keine doppelten Rechte-Zeilen oder Namen),
+  `tests/test_login_throttle.py`.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich

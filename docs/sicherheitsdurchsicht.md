@@ -62,7 +62,13 @@ Ausstellen. Verliert der Besitzer ein Recht, verliert es das Token ebenfalls.
 
 **Die Anmeldung verrät nicht, welche Konten es gibt.** Gleiche Meldung, gleiche Rechenzeit:
 Die Passwortprüfung läuft auch bei unbekanntem Benutzernamen, gegen einen Wegwerf-Hash.
-Ohne das wäre Argon2id selbst der Seitenkanal.
+Ohne das wäre Argon2id selbst der Seitenkanal. Dasselbe gilt für ein deaktiviertes Konto
+(gleiche Passwortprüfung, nur das Ergebnis unterscheidet sich) und für die Wartezeiten der
+Drosselung: Ihr Schlüssel ist der gefaltete getippte Name (Schreibweise, Akzente, Zeichen der
+Breite null und Ziffern anderer Schriften; weitere Zeichen, die die Kollation von MariaDB
+ignoriert, sind nicht gefaltet -- für solche Namen ist die Drosselung schwächer), nie das
+Konto -- sonst zeigte eine andere Schreibweise desselben Namens (`LINO` für `lino`) unter
+MariaDB, ob es ihn gibt.
 
 **Drei Stufen sind zu unterscheiden.** Unscharf werden Entscheidungen nur protokolliert.
 Nach dem Scharfschalten, aber vor dem Neustart, bleibt auch die Sollwertausgabe gesperrt.
@@ -110,7 +116,12 @@ Wand gut hüten könnte.
   gebunden ist und `secure_cookies` aus steht. Erzwingen kann er es nicht — hinter einem
   Reverse-Proxy sieht er nur HTTP —, aber sagen kann er es.
 - **Keine Anmeldebegrenzung über Prozessgrenzen hinweg.** Die Drosselung zählt
-  Fehlversuche im Prozessspeicher; ein Neustart setzt sie zurück. Für eine
+  Fehlversuche im Prozessspeicher; ein Neustart setzt sie zurück. Innerhalb eines Prozesses
+  hält sie auch gegen gleichzeitige Versuche: der Versuch wird vor der Wartezeit gezählt, je
+  Namen laufen höchstens fünf Prüfungen zugleich (der Preis: wer fünf Anfragen offen hält, lässt
+  die Anmeldung dieses Namens abweisen, auch mit richtigem Passwort, solange er das tut --
+  eine zeitlich begrenzte Sperre, die der Angreifer aufrechterhalten muss; Abwägung gegen
+  unbegrenztes Raten). Für eine
   Heimnetzinstallation vertretbar, für einen öffentlich erreichbaren Dienst nicht — und
   öffentlich erreichbar soll er ohnehin nicht sein.
 - **Keine Kontosperre**, ausdrücklich: In einem Einhaushalt-System wäre sie vor allem eine

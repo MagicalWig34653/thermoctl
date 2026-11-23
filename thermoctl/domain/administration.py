@@ -14,7 +14,13 @@ those rules are the actual reason for this module:
   enforced it.
 """
 
-from sqlalchemy import select
+import logging
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from typing import Any
+
+from sqlalchemy import Select, select
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -36,10 +42,127 @@ class AdministrationError(Exception):
     """A change that is not permitted on domain grounds — not a fault of the service."""
 
 
+class ConcurrentChange(AdministrationError):
+    """Someone else changed the guarded permissions at the same moment; nothing was changed.
+
+    Not a refusal on domain grounds but the loser of a race: trying again sees the
+    other change and decides on it.
+    """
+
+
 ADMIN_PERMISSION = "user.manage"
 GROUP_PERMISSION = "group.manage"
 # Rechte, deren letzter Inhaber nicht verschwinden darf (sonst ließe sich nichts mehr verwalten).
 GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
+
+
+# MariaDB/MySQL error numbers of a statement that met another transaction: 1020 "Record has
+# changed since last read" (snapshot isolation, the default since MariaDB 11.6), 1205 lock
+# wait timeout, 1213 deadlock; 1451/1452 a foreign key that the other transaction just broke
+# (the group a user was moved into is deleted in the same moment, or the other way round);
+# 1062 a unique key the other transaction just took (the same name created twice).
+_COLLISION_CODES = (1020, 1062, 1205, 1213, 1451, 1452)
+
+# 1305 "SAVEPOINT ... does not exist" is the aftermath of the same collisions: the server has
+# already rolled the whole transaction back (deadlock victim, refused overwrite), so the
+# `ROLLBACK TO SAVEPOINT` of a change that runs in a savepoint (`begin_nested`) finds none
+# and raises this instead of the error that caused it. The number alone is not enough -- 1305
+# is also "FUNCTION ... does not exist", a programming error that must not pass as a
+# collision -- so the message has to name the savepoint.
+_SAVEPOINT_GONE = 1305
+
+_COLLISION_MESSAGE = (
+    "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
+    "Es wurde nichts geändert -- bitte die Seite neu laden und es erneut versuchen."
+)
+
+log = logging.getLogger(__name__)
+
+
+def _is_collision(exc: DBAPIError) -> bool:
+    args = exc.orig.args if exc.orig is not None else ()
+    if not args:
+        return False
+    if args[0] == _SAVEPOINT_GONE:
+        return len(args) > 1 and "SAVEPOINT" in str(args[1]).upper()
+    return bool(args[0] in _COLLISION_CODES)
+
+
+def _collision(exc: DBAPIError) -> ConcurrentChange:
+    """The answer to a collision -- with the database's own error in the log, since the
+    caller only gets the neutral sentence."""
+    log.warning(
+        "Gleichzeitige Verwaltungsänderung abgewiesen",
+        extra={"fehler": str(exc.orig)[:200] if exc.orig is not None else str(exc)[:200]},
+    )
+    return ConcurrentChange(_COLLISION_MESSAGE)
+
+
+@contextmanager
+def serialized_change(session: Session) -> Iterator[None]:
+    """Carries a change of the guarded permissions through to its commit.
+
+    The collision with another change can surface anywhere up to the commit: at a locking
+    read (`_locked`), at the `UPDATE`/`DELETE`/`INSERT` of the change itself (snapshot
+    isolation refuses to overwrite a row the other transaction committed meanwhile), or at
+    a foreign key the other transaction broke. Every such error becomes `ConcurrentChange`
+    with the transaction rolled back, nothing changed -- never a 500, and the commit is made
+    here, inside the guard, not after the response.
+    """
+    try:
+        yield
+        session.flush()
+        session.commit()
+    except (OperationalError, IntegrityError) as exc:
+        if not _is_collision(exc):
+            raise
+        session.rollback()
+        raise _collision(exc) from exc
+
+
+def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
+    """Runs a read of the guard as a *locking* read.
+
+    Every check below answers "would anybody still be able to manage afterwards?" -- and
+    that answer is wrong the moment the other administrator is changed by a transaction
+    that has not committed yet. Two administrators who deactivate, regroup or demote each
+    other at the same time would each see the other one still in place; both checks pass,
+    both commit, nobody is left. A plain `SELECT` cannot prevent that: under REPEATABLE
+    READ it reads the snapshot taken at the transaction's first read, and what the other
+    transaction committed since is invisible to it. A locking read waits for the other
+    transaction and reads what it left (MariaDB with snapshot isolation refuses instead,
+    1020, and the loser tries again). SQLite has no row locks and one writer at a time;
+    there the clause is dropped.
+
+    **Every** read that feeds a decision about the guarded permissions goes through here,
+    also the ones that look harmless (`_grants_admin_permission`: does the group the user
+    is moved into still carry the permission?) -- a plain read next to locking ones sees the
+    old snapshot and lets the check pass on stale data.
+    """
+    try:
+        return list(session.execute(statement.with_for_update()).scalars())
+    except OperationalError as exc:
+        if _is_collision(exc):
+            raise _collision(exc) from exc
+        raise
+
+
+def lock_guarded_permissions(session: Session) -> None:
+    """Serialises every change that can take away the last holder of a guarded permission.
+
+    First thing in each such change (and before it writes anything, or two transactions can
+    wait for each other's rows): the two permission rows are locked (in the order of their
+    code, the index the lookup uses), so the changes queue up one behind the other instead of
+    running side by side. The rows themselves never change; they are only the common thing
+    to wait on. The reads of the checks that follow are locking reads too (`_locked`), so
+    they see the state the previous change left.
+    """
+    _locked(
+        session,
+        select(Permission.id)
+        .where(Permission.code.in_(GUARDED_PERMISSIONS))
+        .order_by(Permission.code),
+    )
 
 
 def _user_with_permission(
@@ -47,7 +170,8 @@ def _user_with_permission(
 ) -> list[User]:
     """All users who hold this permission plant-wide (by default only the active ones)."""
     return list(
-        session.scalars(
+        _locked(
+            session,
             select(User)
             .join(UserAccessGroup, UserAccessGroup.user_id == User.id)
             .join(
@@ -60,7 +184,7 @@ def _user_with_permission(
                 GroupPermission.zone_id.is_(None),
                 User.is_active.is_(True) if only_active else User.id.is_not(None),
             )
-            .distinct()
+            .distinct(),
         )
     )
 
@@ -127,6 +251,8 @@ def set_user_active(
     A deleted user would tear their audit entries down with them, or leave them
     without a name. Deactivated, it stays traceable who did what and when.
     """
+    if not active:
+        lock_guarded_permissions(session)
     held = _last_holder_of(session, user) if not active else []
     if held:
         raise AdministrationError(
@@ -152,11 +278,12 @@ def _what_it_manages(code: str) -> str:
 def _grants_admin_permission(
     session: Session, group_id: int | None, code: str = ADMIN_PERMISSION
 ) -> bool:
-    """Whether this group carries this plant-wide permission."""
+    """Whether this group carries this plant-wide permission (a locking read, see `_locked`)."""
     if group_id is None:
         return False
-    return (
-        session.scalar(
+    return bool(
+        _locked(
+            session,
             select(GroupPermission.id)
             .join(Permission, Permission.id == GroupPermission.permission_id)
             .where(
@@ -164,9 +291,8 @@ def _grants_admin_permission(
                 Permission.code == code,
                 GroupPermission.zone_id.is_(None),
             )
-            .limit(1)
+            .limit(1),
         )
-        is not None
     )
 
 
@@ -184,6 +310,7 @@ def set_user_group(
     memberships were not part of the reported gap and are not built speculatively;
     whoever needs them can widen this function and the form that calls it later.
     """
+    lock_guarded_permissions(session)
     new_group: AccessGroup | None = None
     if group_id is not None:
         new_group = session.get(AccessGroup, group_id)
@@ -191,9 +318,7 @@ def set_user_group(
             raise AdministrationError("Die Gruppe gibt es nicht.")
 
     current = list(
-        session.scalars(
-            select(UserAccessGroup).where(UserAccessGroup.user_id == user.id)
-        )
+        _locked(session, select(UserAccessGroup).where(UserAccessGroup.user_id == user.id))
     )
     old_ids = {m.access_group_id for m in current}
     new_ids = {group_id} if group_id is not None else set()
@@ -319,6 +444,7 @@ def delete_group(
             f"'{group.name}' ist eine eingebaute Gruppe und kann nicht gelöscht werden. "
             "Ihre Rechte lassen sich aber ändern."
         )
+    lock_guarded_permissions(session)
     _without_this_group_no_administrator(session, group)
     name = group.name
     session.delete(group)
@@ -340,7 +466,8 @@ def _without_this_group_no_administrator(
     for code in (only,) if only is not None else GUARDED_PERMISSIONS:
         if not _user_with_permission(session, code):
             continue
-        other_source = session.scalar(
+        other_source = _locked(
+            session,
             select(GroupPermission.id)
             .join(Permission, Permission.id == GroupPermission.permission_id)
             .join(
@@ -354,9 +481,9 @@ def _without_this_group_no_administrator(
                 GroupPermission.access_group_id != group.id,
                 User.is_active.is_(True),
             )
-            .limit(1)
+            .limit(1),
         )
-        if other_source is None:
+        if not other_source:
             raise AdministrationError(
                 f"Über '{group.name}' läuft das einzige verbliebene {code}. "
                 f"Ohne sie kann niemand mehr {_what_it_manages(code)}."
@@ -412,6 +539,7 @@ def revoke_permission(
     permission = session.get(Permission, entry.permission_id)
     assert group is not None and permission is not None
     if permission.code in GUARDED_PERMISSIONS and entry.zone_id is None:
+        lock_guarded_permissions(session)
         _without_this_group_no_administrator(session, group, only=permission.code)
     session.delete(entry)
     session.flush()
@@ -457,13 +585,17 @@ def set_group_permissions(
     the last administrator, and the audit entries all live. A second version of that
     logic would be exactly the kind of shortcut that later locks someone out.
     """
+    # Before the first write: a transaction that already wrote and then waits for the lock,
+    # while another one holding it waits for those rows, would be a deadlock.
+    lock_guarded_permissions(session)
+    # A locking read, like every read that feeds the checks below: a plain one would show the
+    # snapshot from before the lock, with entries another change has deleted meanwhile.
+    codes = {pid: code for pid, code in session.execute(select(Permission.id, Permission.code))}
     present: dict[tuple[str, int | None], GroupPermission] = {}
-    for entry, code in session.execute(
-        select(GroupPermission, Permission.code)
-        .join(Permission, Permission.id == GroupPermission.permission_id)
-        .where(GroupPermission.access_group_id == group.id)
+    for entry in _locked(
+        session, select(GroupPermission).where(GroupPermission.access_group_id == group.id)
     ):
-        present[(code, entry.zone_id)] = entry
+        present[(codes[entry.permission_id], entry.zone_id)] = entry
 
     taken = 0
     for code, zone_id in sorted(wanted - set(present), key=lambda p: (p[0], p[1] or 0)):

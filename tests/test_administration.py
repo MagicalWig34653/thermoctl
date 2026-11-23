@@ -17,7 +17,7 @@ from tests.helpers import (
     token_with_permissions,
     user_with_permissions,
 )
-from thermoctl.db.models.identity import AccessGroup, GroupPermission, UserAccessGroup
+from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.administration import (
@@ -561,3 +561,176 @@ def test_holder_of_both_cannot_leave_for_a_group_with_neither(session: Session) 
     session.flush()
     with pytest.raises(AdministrationError, match="user.manage"):
         set_user_group(session, only, target.id, actor_id=None)
+
+
+# -- Zwei gleichzeitige Änderungen (Codex-Befund 4): die Sperre muss vor jeder schützenden
+# Änderung genommen werden. Das Rennen selbst zeigt `tests/test_administration_race.py` unter
+# MariaDB; hier steht, dass keine Stelle die Sperre vergisst (unter SQLite sichtbar).
+
+
+@pytest.fixture
+def lock_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    import thermoctl.domain.administration as administration
+
+    calls: list[str] = []
+    original = administration.lock_guarded_permissions
+
+    def record(session: Session) -> None:
+        calls.append("lock")
+        original(session)
+
+    monkeypatch.setattr(administration, "lock_guarded_permissions", record)
+    return calls
+
+
+def test_which_database_errors_count_as_a_collision() -> None:
+    from sqlalchemy.exc import IntegrityError, OperationalError
+
+    import thermoctl.domain.administration as administration
+
+    def is_collision(error: Exception) -> bool:
+        return administration._is_collision(OperationalError("SELECT", {}, error))
+
+    for code in (1020, 1062, 1205, 1213, 1451, 1452):
+        assert is_collision(Exception(code, "x")), code
+    assert is_collision(Exception(1305, "SAVEPOINT sa_savepoint_1 does not exist"))
+    # The same number for a missing function is a programming error; so is any other code.
+    assert not is_collision(Exception(1305, "FUNCTION db.f does not exist"))
+    assert not is_collision(Exception(1305))
+    assert not is_collision(Exception(1146, "Table doesn't exist"))
+    # A driver error that carries no number at all is no collision either.
+    assert not is_collision(Exception())
+    assert not administration._is_collision(IntegrityError("INSERT", {}, Exception("kaputt")))
+
+
+def _two_admins(session: Session) -> tuple[User, User]:
+    first = user_with_permissions(session, "sperre-a", [("user.manage", None)])
+    second = user_with_permissions(session, "sperre-b", [("user.manage", None)])
+    return first, second
+
+
+def test_deactivating_takes_the_lock_but_activating_does_not(
+    session: Session, lock_calls: list[str]
+) -> None:
+    first, second = _two_admins(session)
+
+    set_user_active(session, second, False, actor_id=first.id)
+    assert lock_calls == ["lock"]
+
+    lock_calls.clear()
+    set_user_active(session, second, True, actor_id=first.id)
+    assert lock_calls == []
+
+
+def test_regrouping_takes_the_lock(session: Session, lock_calls: list[str]) -> None:
+    first, second = _two_admins(session)
+
+    set_user_group(session, second, None, actor_id=first.id)
+
+    assert lock_calls == ["lock"]
+
+
+def test_deleting_a_group_takes_the_lock(session: Session, lock_calls: list[str]) -> None:
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+
+    delete_group(session, group, actor_id=first.id)
+
+    assert lock_calls == ["lock"]
+
+
+def test_revoking_takes_the_lock_only_for_a_guarded_plant_wide_permission(
+    session: Session, lock_calls: list[str]
+) -> None:
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+    zone = create_zone(session, "sperrezone")
+    ensure_permission(session, "zone.read", zone_scoped=True)
+    zone_entry = grant_permission(session, group, "zone.read", zone.id, actor_id=None)
+    guarded = session.scalar(
+        select(GroupPermission)
+        .join(Permission, Permission.id == GroupPermission.permission_id)
+        .where(GroupPermission.access_group_id == group.id, Permission.code == "user.manage")
+    )
+    assert guarded is not None
+
+    revoke_permission(session, zone_entry, actor_id=first.id)
+    assert lock_calls == []
+
+    revoke_permission(session, guarded, actor_id=first.id)
+    assert lock_calls == ["lock"]
+
+
+def test_setting_a_groups_permissions_takes_the_lock_before_it_writes(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Vor dem ersten Schreiben: sonst könnte eine Transaktion, die schon Zeilen angelegt hat,
+    auf die Sperre warten, während die haltende auf genau diese Zeilen wartet."""
+    import thermoctl.domain.administration as administration
+
+    first, second = _two_admins(session)
+    group = session.scalar(
+        select(AccessGroup)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == second.id)
+    )
+    assert group is not None
+    ensure_permission(session, "zone.read", zone_scoped=False)
+    events: list[str] = []
+    original_lock = administration.lock_guarded_permissions
+    original_grant = administration.grant_permission
+
+    def lock(session_: Session) -> None:
+        events.append("lock")
+        original_lock(session_)
+
+    def grant(*args: object, **kwargs: object) -> GroupPermission:
+        events.append("grant")
+        return original_grant(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(administration, "lock_guarded_permissions", lock)
+    monkeypatch.setattr(administration, "grant_permission", grant)
+
+    set_group_permissions(
+        session, group, {("user.manage", None), ("zone.read", None)}, actor_id=first.id
+    )
+
+    assert events[0] == "lock"
+    assert "grant" in events
+
+
+def test_a_collision_rolls_the_change_back_completely(session: Session) -> None:
+    """`serialized_change` lässt nichts Halbes zurück: was die Änderung schon vorgemerkt hat,
+    wird nicht doch noch mit der nächsten Abfrage (Autoflush) geschrieben."""
+    from sqlalchemy.exc import OperationalError
+
+    from thermoctl.domain.administration import ConcurrentChange, serialized_change
+
+    session.commit()
+    with pytest.raises(ConcurrentChange):
+        with serialized_change(session):
+            session.add(AccessGroup(name="halb-fertig"))
+            raise OperationalError("UPDATE", {}, Exception(1020, "Konflikt"))
+
+    assert session.scalar(select(AccessGroup).where(AccessGroup.name == "halb-fertig")) is None
+    assert not session.new
+
+
+def test_a_change_without_a_collision_is_committed(session: Session) -> None:
+    from thermoctl.domain.administration import serialized_change
+
+    with serialized_change(session):
+        session.add(AccessGroup(name="fertig"))
+    session.expire_all()
+
+    assert session.scalar(select(AccessGroup).where(AccessGroup.name == "fertig")) is not None
