@@ -2,12 +2,15 @@ from collections.abc import Iterator
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.csrf import CSRF_FIELD_NAME, CSRF_HEADER, check_csrf
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.config import get_settings
+from thermoctl.db.models.credential import Session_
 from thermoctl.db.models.identity import User
+from thermoctl.domain.administration import is_collision
 from thermoctl.domain.authz import principal_for_user
 from thermoctl.domain.principal import Principal
 
@@ -44,6 +47,38 @@ def get_session(request: Request) -> Iterator[Session]:
         http_session.close()
 
 
+_RESOLVE_ATTEMPTS = 3
+
+
+def _resolve_session(session: Session, cookie_value: str) -> Session_ | None:
+    """`resolve_session`, with its time stamp written right here, where a collision can be met.
+
+    Resolving a cookie may write `last_seen_at` into the session's row (at most once a
+    minute). That row is the very one another request of the account ends, logs out or
+    touches at the same moment -- and left to the next query's autoflush, the collision
+    (1020/1213 on MariaDB) came out of this dependency as a 500, before any endpoint's own
+    handling. A collision rolls the transaction back, nothing is lost: the next attempt
+    reads what the other one left -- the session ended (then it is gone, 401, as for any
+    ended session) or touched (then there is nothing left to write).
+    """
+    for _attempt in range(_RESOLVE_ATTEMPTS):
+        entry = resolve_session(session, cookie_value)
+        if entry is None:
+            return None
+        try:
+            session.flush()
+        except (OperationalError, IntegrityError) as exc:
+            if not is_collision(exc):
+                raise
+            session.rollback()
+            continue
+        return entry
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Gleichzeitige Änderung an der Sitzung -- bitte erneut versuchen.",
+    )
+
+
 def current_principal(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Principal:
@@ -57,7 +92,7 @@ def current_principal(
     if cookie_value is None:
         raise NotLoggedIn()
 
-    http_session = resolve_session(session, cookie_value)
+    http_session = _resolve_session(session, cookie_value)
     if http_session is None:
         raise NotLoggedIn()
 

@@ -52,9 +52,15 @@ def replace_token_grants(
     liegt vorher in `token_grants`.
     """
     ids = {row.code: row.id for row in session.scalars(select(Permission))}
+    # A locking read: what is replaced is what stands *now*. Read from the transaction's
+    # older snapshot, a change that ran just before this one is invisible -- its rows are not
+    # deleted, and the new ones come on top of them (the rights twice, or a mix of both).
     bisherige = list(
         session.scalars(
-            select(ApiTokenPermission).where(ApiTokenPermission.api_token_id == token.id)
+            select(ApiTokenPermission)
+            .where(ApiTokenPermission.api_token_id == token.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     )
     codes = {value: key for key, value in ids.items()}

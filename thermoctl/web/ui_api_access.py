@@ -121,6 +121,21 @@ def _owner(session: Session, principal: Principal) -> User:
     return owner
 
 
+def _locked_row[Row](session: Session, model: type[Row], row_id: int) -> Row | None:
+    """The row as of now, locked: a locking read sees what another transaction committed
+    meanwhile (a plain `get` would hand back the snapshot, or the object already loaded),
+    and a second change to the same row waits for the first. `None` if it is gone.
+    Only inside `serialized_change`: MariaDB with snapshot isolation refuses instead of
+    waiting (1020), and that becomes "try again" there.
+    """
+    return session.scalar(
+        select(model)
+        .where(model.id == row_id)  # type: ignore[attr-defined]
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 def _not_self(principal: Principal, user: User, was: str) -> None:
     """Wer Benutzer verwaltet, verwaltet andere: am eigenen Konto ändert man das hier nicht.
 
@@ -1028,18 +1043,26 @@ def issue_own_token(
     if grants is None:
         raise _not_held()
     try:
-        token, plaintext = issue_token(session, owner, body.name, grants, _expiry(body.valid_days))
+        # Through `serialized_change`: the account's password can be set in this very moment
+        # (the token insert and that change take the account row one after the other) --
+        # "try again", not a 500.
+        with serialized_change(session):
+            token, plaintext = issue_token(
+                session, owner, body.name, grants, _expiry(body.valid_days)
+            )
+            audit.record(
+                session, source="web", action="token.issued", object_type="api_token",
+                object_id=str(token.id), summary=f"Token '{token.name}' ausgestellt",
+                user_id=principal.user_id, token_id=principal.token_id,
+                detail=(
+                    f"Rechte: {_grants_text(grants)}; "
+                    f"Ablauf: {_iso(token.expires_at) or 'unbefristet'}"
+                ),
+            )
     except Forbidden:  # pragma: no cover - `token_grants` hat dieselbe Prüfung schon bestanden
         raise _not_held() from None
-    audit.record(
-        session, source="web", action="token.issued", object_type="api_token",
-        object_id=str(token.id), summary=f"Token '{token.name}' ausgestellt",
-        user_id=principal.user_id, token_id=principal.token_id,
-        detail=(
-            f"Rechte: {_grants_text(grants)}; "
-            f"Ablauf: {_iso(token.expires_at) or 'unbefristet'}"
-        ),
-    )
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     # Der Klartext steht genau einmal hier: gespeichert wird nur sein Hash.
     result = IssuedTokenOut(
         token=_token_out(session, token, set(grants), _clients(session)), plaintext=plaintext,
@@ -1058,17 +1081,29 @@ def change_token_permissions(
     session: Annotated[Session, Depends(get_session)],
 ) -> TokenOut:
     _admin(principal, "token.self")
-    token = _own_token_or_404(session, principal, token_id)
-    if _token_state(token) != "active":
-        raise RoomApiError(
-            409, "Widerrufene oder abgelaufene Token sind nicht bearbeitbar.", "token_not_active"
-        )
+    _own_token_or_404(session, principal, token_id)
     grants = token_grants(
         session, principal, list(dict.fromkeys(_grant_strings(body.permissions)))
     )
     if grants is None:
         raise _not_held()
-    replace_token_grants(session, token, grants, actor_id=principal.user_id)
+    try:
+        # Through `serialized_change`, the token row locked first: changed from two sessions
+        # of the account at once, or against its revocation, the second one waits for the
+        # first and sees what it left (revoked: not editable any more) -- or gets "try
+        # again". Without the lock both replace the same grant rows.
+        with serialized_change(session):
+            token = _locked_row(session, ApiToken, token_id)
+            if token is None or token.user_id != principal.user_id:
+                raise RoomApiError(404, "Token nicht gefunden.", "not_found")
+            if _token_state(token) != "active":
+                raise RoomApiError(
+                    409, "Widerrufene oder abgelaufene Token sind nicht bearbeitbar.",
+                    "token_not_active",
+                )
+            replace_token_grants(session, token, grants, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return _token_out(session, token, set(grants), _clients(session))
 
 
@@ -1084,6 +1119,7 @@ def revoke_own_token(
         # Revoked from two sessions of the same account at once: the second one meets the
         # row the first just changed -- "try again", not a 500.
         with serialized_change(session):
+            token = _locked_row(session, ApiToken, token_id) or token
             revoke_token(session, token, actor_id=principal.user_id)
             if token.source == "oauth":
                 # Sperrt zusätzlich die Refresh-Familie, sonst ließe sich das Token erneuern.
@@ -1304,14 +1340,20 @@ def revoke_other_sessions(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, int]:
-    ended = revoke_all_sessions(
-        session, _uid(principal), keep_id=_running_session_id(request, session)
-    )
-    audit.record(
-        session, source="web", action="session.revoked_others", object_type="user",
-        object_id=str(principal.user_id),
-        summary=f"{ended} weitere Sitzung(en) beendet", user_id=principal.user_id,
-    )
+    try:
+        # Through `serialized_change`: two sessions of the account can end the others in this
+        # very moment, each meeting the rows the other just changed -- "try again", not a 500.
+        with serialized_change(session):
+            ended = revoke_all_sessions(
+                session, _uid(principal), keep_id=_running_session_id(request, session)
+            )
+            audit.record(
+                session, source="web", action="session.revoked_others", object_type="user",
+                object_id=str(principal.user_id),
+                summary=f"{ended} weitere Sitzung(en) beendet", user_id=principal.user_id,
+            )
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return {"ended": ended}
 
 
@@ -1322,26 +1364,34 @@ def revoke_one_session(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, bool]:
-    entry = session.get(Session_, session_id)
-    if (
-        entry is None
-        or entry.user_id != principal.user_id
-        or entry.revoked_at is not None
-        or entry.expires_at <= utcnow()
-    ):
-        # Fremde, beendete und unbekannte Sitzungen sind ununterscheidbar.
-        raise RoomApiError(404, "Sitzung nicht gefunden.", "not_found")
-    if entry.id == _running_session_id(request, session):
-        raise RoomApiError(
-            409, "Das ist die Sitzung, mit der Sie gerade arbeiten -- dafür gibt es Abmelden.",
-            "current_session",
-        )
-    entry.revoked_at = utcnow()
-    audit.record(
-        session, source="web", action="session.revoked", object_type="user",
-        object_id=str(principal.user_id), summary="Eine Sitzung beendet",
-        user_id=principal.user_id,
-    )
+    try:
+        # Through `serialized_change`, the row locked first: ended from two sessions at once
+        # (or against "end the others"), the second one waits, finds it ended and gets the
+        # same 404 as for any ended session -- or "try again", not a 500.
+        with serialized_change(session):
+            entry = _locked_row(session, Session_, session_id)
+            if (
+                entry is None
+                or entry.user_id != principal.user_id
+                or entry.revoked_at is not None
+                or entry.expires_at <= utcnow()
+            ):
+                # Fremde, beendete und unbekannte Sitzungen sind ununterscheidbar.
+                raise RoomApiError(404, "Sitzung nicht gefunden.", "not_found")
+            if entry.id == _running_session_id(request, session):
+                raise RoomApiError(
+                    409,
+                    "Das ist die Sitzung, mit der Sie gerade arbeiten -- dafür gibt es Abmelden.",
+                    "current_session",
+                )
+            entry.revoked_at = utcnow()
+            audit.record(
+                session, source="web", action="session.revoked", object_type="user",
+                object_id=str(principal.user_id), summary="Eine Sitzung beendet",
+                user_id=principal.user_id,
+            )
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return {"ok": True}
 
 
@@ -1376,11 +1426,17 @@ def delete_own_passkey(
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, bool]:
     user = _owner(session, principal)
-    entry = session.get(UserPasskey, passkey_id)
-    if entry is None or entry.user_id != user.id:
-        raise RoomApiError(404, "Passkey nicht gefunden.", "not_found")
     try:
-        remove_passkey(session, user, entry)
-    except PasskeyError:  # pragma: no cover - der Besitz ist oben schon geprüft
-        raise RoomApiError(404, "Passkey nicht gefunden.", "not_found") from None
+        # Through `serialized_change`, the row locked first: deleted from two sessions at
+        # once, the second one waits and finds it gone (404) -- or "try again", not a 500.
+        with serialized_change(session):
+            entry = _locked_row(session, UserPasskey, passkey_id)
+            if entry is None or entry.user_id != user.id:
+                raise RoomApiError(404, "Passkey nicht gefunden.", "not_found")
+            try:
+                remove_passkey(session, user, entry)
+            except PasskeyError:  # pragma: no cover - der Besitz ist oben schon geprüft
+                raise RoomApiError(404, "Passkey nicht gefunden.", "not_found") from None
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return {"ok": True}

@@ -412,9 +412,10 @@ def _logout_against_revoke(s: Session) -> list[Request]:
     user_id, first = _person(s, "t", plain)
     ((_i2, second),) = _more_sessions(s, user_id, 1)
     _idle(s, user_id)
+    first_id = _own_session_id(s, first)
     return [
         Request(first, "POST", "/ui-api/logout", None),
-        Request(second, "POST", f"/ui-api/account/sessions/{_own_session_id(s, first)}/revoke", None),
+        Request(second, "POST", f"/ui-api/account/sessions/{first_id}/revoke", None),
     ]
 
 
@@ -457,10 +458,8 @@ def _token_permissions_twice(s: Session) -> list[Request]:
     ((_i2, second),) = _more_sessions(s, user_id, 1)
     _idle(s, user_id)
     url = f"/ui-api/access/tokens/{_own_token(s, user_id)}/permissions"
-    return [
-        Request(first, "PUT", url, {"permissions": [{"code": "token.self"}]}),
-        Request(second, "PUT", url, {"permissions": [{"code": "token.manage"}]}),
-    ]
+    body: dict[str, object] = {"permissions": [{"code": "token.self"}]}
+    return [Request(first, "PUT", url, body), Request(second, "PUT", url, body)]
 
 
 def _token_permissions_against_revoke(s: Session) -> list[Request]:
@@ -604,6 +603,7 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
             after = (_holders(engine, UM), _holders(engine, GM))
             assert all(a >= 1 for a, b in zip(after, before, strict=True) if b >= 1), name
             assert _duplicate_permission_rows(engine) == 0, f"{name}: doppelte Rechte-Zeilen"
+            assert _duplicate_token_grants(engine) == 0, f"{name}: doppelte Token-Rechte"
             assert _usernames_twice(engine) == 0, f"{name}: Benutzername doppelt"
             _clean(engine, known_permissions)
     finally:
@@ -611,7 +611,9 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
     assert sum(outcomes.values()) == ROUNDS
 
 
-@pytest.mark.parametrize("offset_ms", [-120, -40, 0, 40, 120, 250], ids=lambda ms: f"versatz-{ms}ms")
+@pytest.mark.parametrize(
+    "offset_ms", [-120, -40, 0, 40, 120, 250], ids=lambda ms: f"versatz-{ms}ms"
+)
 def test_a_login_with_the_old_password_leaves_no_session_when_the_password_is_set_meanwhile(
     offset_ms: int, engine: Engine, app_client: Callable[[str], TestClient]
 ) -> None:
@@ -703,6 +705,23 @@ def _duplicate_permission_rows(engine: Engine) -> int:
         )
 
 
+def _duplicate_token_grants(engine: Engine) -> int:
+    """Two changes of one token's rights that both delete what they read and insert their own:
+    without the token locked first, the second does not see the rows the first wrote."""
+    with Session(engine) as check:
+        return len(
+            check.execute(
+                select(ApiTokenPermission.api_token_id)
+                .group_by(
+                    ApiTokenPermission.api_token_id,
+                    ApiTokenPermission.permission_id,
+                    func.coalesce(ApiTokenPermission.zone_id, 0),
+                )
+                .having(func.count() > 1)
+            ).all()
+        )
+
+
 def _usernames_twice(engine: Engine) -> int:
     with Session(engine) as check:
         return len(
@@ -716,7 +735,8 @@ def _clean(engine: Engine, known_permissions: set[str]) -> None:
     with Session(engine) as cleanup:
         cleanup.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         for model in (
-            ApiTokenPermission, ApiToken, Session_, AuditEvent, UserPasskey, UserAccessGroup, GroupPermission, AccessGroup, User
+            ApiTokenPermission, ApiToken, Session_, AuditEvent, UserPasskey,
+            UserAccessGroup, GroupPermission, AccessGroup, User,
         ):
             cleanup.execute(delete(model))
         if known_permissions:

@@ -20,11 +20,18 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_session
+from thermoctl.domain.administration import ConcurrentChange, serialized_change
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web.navigation import visible_navigation
 from thermoctl.web.shared.login import ERROR_MESSAGE, attempt_login, set_session_cookies
+from thermoctl.web.ui_api_rooms import RoomApiError
 from thermoctl.web.urls import cookie_path, safe_return_to
+
+_CONCURRENT_LOGOUT = (
+    "Gleichzeitig hat jemand anderes etwas an dieser Sitzung geändert. "
+    "Sie sind noch angemeldet -- bitte erneut abmelden."
+)
 
 router = APIRouter(
     prefix="/ui-api", dependencies=[Depends(csrf_protection)], include_in_schema=False
@@ -111,15 +118,38 @@ async def login(
     return response
 
 
+LOGOUT_ATTEMPTS = 3
+
+
+def _end_session(session: Session, cookie_value: str) -> None:
+    """Ends the session of the cookie -- and an already ended one counts as done.
+
+    Logging out meets the same row as everything else that ends or touches this session
+    (another logout, "end the others", the time stamp of a parallel request). A collision
+    rolls the transaction back and nothing is lost: the next attempt starts on a fresh
+    snapshot and finds the session ended (then it is done) or still alive (then it ends it
+    itself). Only if the row stays contested the answer is "try again" -- never a success
+    that leaves the session alive, and never a 500.
+    """
+    for _attempt in range(LOGOUT_ATTEMPTS):
+        try:
+            with serialized_change(session):
+                http_session = resolve_session(session, cookie_value)
+                if http_session is not None:
+                    revoke_session(session, http_session)
+            return
+        except ConcurrentChange:
+            continue
+    raise RoomApiError(409, _CONCURRENT_LOGOUT, "concurrent_change")
+
+
 @router.post("/logout")
 def logout(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> JSONResponse:
     cookie_value = request.cookies.get(COOKIE_NAME)
     if cookie_value is not None:
-        http_session = resolve_session(session, cookie_value)
-        if http_session is not None:
-            revoke_session(session, http_session)
+        _end_session(session, cookie_value)
     response = JSONResponse({"ok": True})
     response.delete_cookie(COOKIE_NAME, path=cookie_path(request))
     response.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))

@@ -85,14 +85,24 @@ def revoke_all_sessions(
 
     Expired and already revoked rows are skipped, so the returned count is the number
     of sessions that actually lost access, not the size of the table.
+
+    The read is a *locking* read: it sees the latest committed state, not the snapshot the
+    transaction took earlier, and waits for a session another transaction is just creating
+    or ending. A plain read would miss the session of a login that committed after the
+    snapshot -- the one that survives a password change. (MariaDB with snapshot isolation
+    refuses instead of waiting, 1020; the caller turns that into "try again".) SQLite
+    drops the clause: one writer at a time.
     """
     now = utcnow()
     betroffen = session.scalars(
-        select(Session_).where(
+        select(Session_)
+        .where(
             Session_.user_id == user_id,
             Session_.revoked_at.is_(None),
             Session_.expires_at > now,
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).all()
     beendet = 0
     for eintrag in betroffen:

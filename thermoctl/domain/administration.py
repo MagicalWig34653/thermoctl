@@ -88,6 +88,15 @@ def _is_collision(exc: DBAPIError) -> bool:
     return bool(args[0] in _COLLISION_CODES)
 
 
+def is_collision(exc: DBAPIError) -> bool:
+    """Whether this database error is the aftermath of a concurrent change (see above).
+
+    For the places that cannot say "try again" with a 409 -- the login, the resolving of a
+    session cookie -- and decide for themselves what a collision means there.
+    """
+    return _is_collision(exc)
+
+
 def _collision(exc: DBAPIError) -> ConcurrentChange:
     """The answer to a collision -- with the database's own error in the log, since the
     caller only gets the neutral sentence."""

@@ -43,12 +43,24 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Endpunkten in `web/ui_api_access.py`: Konto anlegen, aktivieren/deaktivieren, Gruppe wechseln, Passwort setzen, Gruppe
   anlegen/löschen, Gruppenprofil, Gruppenrechte, eigenes Passwort, eigenen und Kiosk-Token widerrufen. Ist die Gruppe nach dem
   Commit weg, antwortet der Endpunkt 404. Gemessen über echte Anfragen (40 Runden je Fall, ON und OFF): dort keine 500 und nie ohne
-  Verwalter. **Nicht darunter, weiterhin 500 bei gleichzeitiger Änderung derselben Zeilen** (ohne Datenschaden, selten: zwei Sitzungen
-  eines Kontos oder zwei Verwaltende): Sitzungen beenden (`/account/sessions/...`), Abmelden gegen Sitzung beenden, Token-Rechte
-  ändern, Token ausstellen gegen Passwort setzen, Passkey löschen (Karte „Gleichzeitige Änderung am Konto: übrige 500er").
+  Verwalter. *Am Konto* gilt dasselbe für sieben weitere Endpunkte (`web/ui_api_access.py`, `web/ui_api.py`): alle anderen Sitzungen
+  beenden, eine Sitzung beenden, Token-Rechte ändern, Token ausstellen, Passkey löschen -- je `serialized_change` (409
+  `concurrent_change`), die betroffene Zeile zuerst als sperrende Lesung (`_locked_row`; die zweite Änderung wartet und sieht, was die
+  erste hinterließ: beendete Sitzung/gelöschter Passkey 404, widerrufenes Token 409 `token_not_active`; die Rechte eines Tokens
+  stehen danach nicht doppelt) -- und **Abmelden**: gegen eine gleichzeitige Änderung derselben Sitzung wird bis zu dreimal neu
+  versucht (frischer Snapshot: schon beendet = Erfolg, sonst beendet es selbst), nur bei dauerhaftem Streit 409 „Sie sind noch
+  angemeldet“; nie ein Erfolg bei lebender Sitzung. Auch das Auflösen des Cookies (`auth/dependencies._resolve_session`) schreibt
+  seinen Zeitstempel (`last_seen_at`) dort, wo eine Kollision behandelt werden kann (neu lesen: beendet = 401), nicht erst im
+  Autoflush der nächsten Abfrage. Geprüft: dieselben Szenarien in `tests/test_administration_race_http.py` (zehn Fälle am Konto).
+  **Anmeldung gegen Passwort setzen:** `revoke_all_sessions` liest jetzt sperrend (sieht auch eine Sitzung, die nach dem Snapshot
+  der Änderung entstand), und die Anmeldung liest die Kontozeile nach der Passwortprüfung gesperrt neu (`login._unchanged_since_the_check`)
+  und öffnet die Sitzung nur, wenn Hash und Aktiv-Zustand noch dem entsprechen, wogegen geprüft wurde -- sonst gilt der Versuch als
+  fehlgeschlagen (dieselbe Antwort wie ein falsches Passwort). Vorher lebte bei Passwort setzen parallel zur Anmeldung eine
+  Sitzung mit dem alten Passwort (gemessen 6 von 6). Geprüft: `tests/test_login_password_state.py` (deterministisch, SQLite und
+  MariaDB) und `test_a_login_with_the_old_password_leaves_no_session_...` (echtes Rennen, MariaDB). Die Kontosperre bei Streit
+  (Anmeldung mit richtigem Passwort bei gleichzeitiger Passwortänderung) kostet einen erneuten Versuch, nichts weiter.
   Unter SQLite gibt es nur einen Schreiber, dort entfällt die Klausel (gleichzeitige Schreiber scheitern dort weiterhin
-  mit „database is locked", ohne dass jemand ausgesperrt wird). Nicht darunter: die Token-Ausstellung und das Ändern von Token-Rechten
-  (nicht geprüft). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
+  mit „database is locked", ohne dass jemand ausgesperrt wird). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
   `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
   Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot),
   `tests/test_administration_race_http.py` (dieselben und weitere Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter,

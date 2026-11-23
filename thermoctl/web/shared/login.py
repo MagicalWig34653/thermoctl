@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from anyio import to_thread
 from fastapi import Request, Response
 from sqlalchemy import select
+from sqlalchemy.exc import InvalidRequestError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -17,6 +18,7 @@ from thermoctl.auth.sessions import COOKIE_NAME, create_session, session_lifetim
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
+from thermoctl.domain.administration import is_collision
 from thermoctl.web.urls import cookie_path
 
 # Failed attempts counted per username. Lives in process memory, not in the
@@ -146,6 +148,31 @@ def login_key(username: str) -> str:
     return f"name:{''.join(folded).strip().casefold()}"
 
 
+def _unchanged_since_the_check(session: Session, user: User, verified_hash: str) -> bool:
+    """Whether the account still is what the password was checked against.
+
+    The check takes long (Argon2id) and the account can change meanwhile: a password set
+    ends every session that exists *then* -- a session created afterwards on the strength of
+    the old password would live on. So the account row is read once more, locked (the latest
+    committed state, and a password change or deactivation that is just under way finishes
+    first -- it takes this row's lock before it ends the sessions, see `set_password`), and
+    the session only opens if hash and activity still match. Anything else counts as a failed
+    attempt, the same answer as a wrong password. A collision (MariaDB with snapshot
+    isolation refuses to read a row changed meanwhile, 1020) and a row deleted meanwhile do too.
+    """
+    try:
+        session.refresh(user, with_for_update=True)
+    except OperationalError as exc:
+        if not is_collision(exc):
+            raise
+        session.rollback()
+        return False
+    except InvalidRequestError:  # the account was deleted in this very moment
+        session.rollback()
+        return False
+    return user.is_active and user.password_hash == verified_hash
+
+
 async def attempt_login(
     request: Request, session: Session, username: str, password: str
 ) -> tuple[User, str, int] | None:
@@ -166,6 +193,7 @@ async def attempt_login(
         return None
     user = session.scalar(select(User).where(User.username == username))
     key = login_key(username)
+    verified_hash = user.password_hash if user is not None else ""
     # The wait below must not hold a database connection: the lookup opened a transaction,
     # and a stream of invented names would otherwise park one pooled connection per
     # request for the length of the delay -- the pool gone, the whole service with it.
@@ -194,6 +222,10 @@ async def attempt_login(
                 reset_failures(key)
     except TooManyAttempts:
         return None
+
+    if successful:
+        assert user is not None
+        successful = _unchanged_since_the_check(session, user, verified_hash)
 
     if not successful:
         # The attempt is counted already (`throttled_attempt`). The same summary for

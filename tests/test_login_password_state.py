@@ -54,7 +54,7 @@ def _change_during_the_password_check(
     The check normally runs in a worker thread; here it runs inline, so the change goes
     through the very same (test) connection at exactly the moment the race needs.
     """
-    real = login.verify_password
+    real = login.verify_password  # type: ignore[attr-defined]
 
     async def run_inline(function: Callable[..., Any], *args: Any) -> Any:
         result = function(*args)
@@ -62,7 +62,7 @@ def _change_during_the_password_check(
             change()
         return result
 
-    monkeypatch.setattr(login.to_thread, "run_sync", run_inline)
+    monkeypatch.setattr(login.to_thread, "run_sync", run_inline)  # type: ignore[attr-defined]
 
 
 def test_without_a_change_the_login_opens_a_session(user: User, session: Session) -> None:
