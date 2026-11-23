@@ -441,6 +441,55 @@ def test_a_concurrent_change_is_answered_with_409_concurrent_change_and_changes_
     assert _actions(session) == before
 
 
+def test_every_question_about_who_holds_the_admin_rights_is_asked_after_the_lock(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """"Bin ich die einzige Person?" und "wer hält das Recht?" werden auf dem Stand nach der
+    Sperre gefragt, nicht auf dem Snapshot, den eine andere Verwaltung schon überholt hat.
+    Die Reihenfolge ist hier der Beweis: jede dieser Lesungen steht hinter einem Sperraufruf
+    (ohne ihn fielen die Rennen unter MariaDB wieder auf; diese Reihenfolge zeigt es
+    auch unter SQLite)."""
+    import thermoctl.web.ui_api_access as access
+
+    client = client_als(ADMIN)
+    other = create_user(session, "anna")
+    group = AccessGroup(name="reihenfolge")
+    session.add(group)
+    session.flush()
+    session.commit()
+    events: list[str] = []
+    lock, sole, holders = (
+        access.lock_guarded_permissions, access.is_sole_holder, access.holders_of
+    )
+
+    def locked(*args: Any, **kwargs: Any) -> Any:
+        events.append("lock")
+        return lock(*args, **kwargs)
+
+    def asked_sole(*args: Any, **kwargs: Any) -> Any:
+        events.append("sole")
+        return sole(*args, **kwargs)
+
+    def asked_holders(*args: Any, **kwargs: Any) -> Any:
+        events.append("holders")
+        return holders(*args, **kwargs)
+
+    monkeypatch.setattr(access, "lock_guarded_permissions", locked)
+    monkeypatch.setattr(access, "is_sole_holder", asked_sole)
+    monkeypatch.setattr(access, "holders_of", asked_holders)
+
+    assert _call(
+        client, "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": group.id}
+    ).status_code == 200
+    assert events[:2] == ["lock", "sole"]  # `_within_own_rights`
+    assert "lock" in events[2:events.index("holders")]  # `_no_self_made_sole_holder`
+
+    events.clear()
+    assert _call(client, "DELETE", f"/ui-api/access/groups/{group.id}").status_code == 200
+    assert events[0] == "lock"  # hier gibt es keinen Vorab-Check, der sie schon genommen hätte
+    assert events.index("lock") < events.index("holders")
+
+
 @pytest.mark.parametrize("code", [1020, 1205, 1213, 1451, 1452])
 def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch, code: int

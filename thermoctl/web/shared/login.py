@@ -1,6 +1,7 @@
 """Anmeldung: Drosselung, Pruefung, Session-Cookies -- geteilt von HTML-Login und /ui-api."""
 import asyncio
 import secrets
+import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -118,15 +119,21 @@ def reset_failures(key: str) -> None:
     FEHLVERSUCHE[key] = 0
 
 
-def login_key(user: User | None, username: str) -> str:
-    """The throttle key of a login: the account when there is one, else the typed name.
+def login_key(username: str) -> str:
+    """The throttle key of a login: the typed name, folded -- **never** whether it exists.
 
-    The typed name alone is no key: MariaDB compares user names without regard to case (and
-    to trailing spaces), so `LINO`, `Lino ` and `lino` are one account -- and each spelling
-    would have had a counter of its own, i.e. an unlimited supply of fresh ones. The two
-    kinds of key cannot collide (different prefixes).
+    A key that depends on the account (as `benutzer:<id>` did) tells apart, by timing alone,
+    a name that exists from one that does not: on MariaDB `lino`, `LINO` and `Lino ` are one
+    account and so one counter, while the same spellings of an invented name would each have
+    a fresh one. Keyed by the typed name only, existing and invented names behave the same
+    for every spelling. The name is folded (Unicode compatibility form, accents dropped,
+    case folded, surrounding blanks removed) so the common spellings one account answers to
+    share a counter; what a collation still treats as equal beyond that gives an extra
+    counter, exactly as before -- a throttle weakened a little, no oracle.
     """
-    return f"benutzer:{user.id}" if user is not None else f"name:{username}"
+    decomposed = unicodedata.normalize("NFKD", username)
+    bare = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return f"name:{bare.strip().casefold()}"
 
 
 async def attempt_login(
@@ -141,7 +148,7 @@ async def attempt_login(
     if len(username) > MAX_USERNAME_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
         return None
     user = session.scalar(select(User).where(User.username == username))
-    key = login_key(user, username)
+    key = login_key(username)
     # The wait below must not hold a database connection: the lookup opened a transaction,
     # and a stream of invented names would otherwise park one pooled connection per
     # request for the length of the delay -- the pool gone, the whole service with it.

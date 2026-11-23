@@ -194,7 +194,7 @@ def test_a_successful_login_resets_the_counter(client, user) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     from thermoctl.web.shared.login import FEHLVERSUCHE
 
-    assert FEHLVERSUCHE.get(f"benutzer:{user.id}", 0) == 0
+    assert FEHLVERSUCHE.get("name:lino", 0) == 0
     assert FEHLVERSUCHE.get("lino", 0) == 0
 
 

@@ -125,17 +125,17 @@ def lock_guarded_permissions(session: Session) -> None:
     """Serialises every change that can take away the last holder of a guarded permission.
 
     First thing in each such change (and before it writes anything, or two transactions can
-    wait for each other's rows): the two permission rows are locked in a fixed order, so
-    the changes queue up one behind the other instead of running side by side. The rows
-    themselves never change; they are only the common thing to wait on. The reads of the
-    checks that follow are locking reads too (`_locked`), so they see the state the
-    previous change left.
+    wait for each other's rows): the two permission rows are locked (in the order of their
+    code, the index the lookup uses), so the changes queue up one behind the other instead of
+    running side by side. The rows themselves never change; they are only the common thing
+    to wait on. The reads of the checks that follow are locking reads too (`_locked`), so
+    they see the state the previous change left.
     """
     _locked(
         session,
         select(Permission.id)
         .where(Permission.code.in_(GUARDED_PERMISSIONS))
-        .order_by(Permission.id),
+        .order_by(Permission.code),
     )
 
 

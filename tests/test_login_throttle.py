@@ -182,7 +182,7 @@ def test_a_flood_of_parallel_logins_gets_only_a_few_password_checks(
 
     assert outcomes == [None] * 20
     assert len(checks) == MAX_PARALLEL_ATTEMPTS
-    assert FEHLVERSUCHE == {f"benutzer:{user.id}": MAX_PARALLEL_ATTEMPTS}
+    assert FEHLVERSUCHE == {"name:lino": MAX_PARALLEL_ATTEMPTS}
     assert login._IN_FLIGHT == {}
 
 
@@ -197,7 +197,7 @@ def test_a_refused_login_looks_like_any_failed_one(
     first = client.post("/ui-api/login", json={"username": "lino", "password": RICHTIG})
     assert first.status_code == 200  # Vergleichslauf: ohne Schwall kommt sie durch
     client.cookies.clear()  # sonst greift der CSRF-Schutz für die angemeldete Sitzung
-    login._IN_FLIGHT[f"benutzer:{user.id}"] = MAX_PARALLEL_ATTEMPTS
+    login._IN_FLIGHT["name:lino"] = MAX_PARALLEL_ATTEMPTS
     checks.clear()
 
     flooded = client.post("/ui-api/login", json={"username": "lino", "password": RICHTIG})
@@ -237,18 +237,56 @@ def test_the_wait_does_not_hold_a_database_transaction(
     assert events[:2] == ["commit", "wait"]
 
 
-def test_the_throttle_is_keyed_by_the_account_not_by_the_typed_name(
+def test_the_throttle_is_keyed_by_the_typed_name_whether_or_not_it_exists(
     client: Any, user: User
 ) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": FALSCH})
     client.post("/ui-api/login", json={"username": "unbekannt", "password": FALSCH})
 
-    assert FEHLVERSUCHE == {f"benutzer:{user.id}": 1, "name:unbekannt": 1}
+    assert FEHLVERSUCHE == {"name:lino": 1, "name:unbekannt": 1}
 
 
-def test_login_key_cannot_collide_between_account_and_name(user: User) -> None:
-    assert login_key(user, "egal") == f"benutzer:{user.id}"
-    assert login_key(None, f"benutzer:{user.id}") == f"name:benutzer:{user.id}"
+@pytest.mark.parametrize(
+    ("typed", "key"),
+    [
+        ("lino", "name:lino"),
+        ("LINO", "name:lino"),
+        ("Lino ", "name:lino"),
+        ("  lInO\t", "name:lino"),
+        ("L\u00edno", "name:lino"),  # Akzent entfällt
+        ("l\u0131no", "name:l\u0131no"),  # punktloses i: casefold ändert es nicht
+        ("\uff2c\uff29\uff2e\uff2f", "name:lino"),  # vollbreite Buchstaben (NFKD)
+        ("benutzer:1", "name:benutzer:1"),
+    ],
+)
+def test_login_key_folds_the_spellings_of_one_name(typed: str, key: str) -> None:
+    assert login_key(typed) == key
+
+
+def test_existing_and_invented_names_take_the_same_delays_in_every_spelling(
+    client: Any, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kein Orakel: Wie lange gewartet wird, hängt nur vom getippten Namen ab -- nicht
+    davon, ob es das Konto gibt (auf MariaDB sind `lino` und `LINO` dasselbe Konto, auf
+    SQLite nicht; die Wartezeiten dürfen es nicht verraten)."""
+    waits: list[float] = []
+
+    async def record(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(login, "sleep", record)
+    existing = ("lino", "LINO", "Lino ", "lInO", "lino")
+    invented = ("erfunden", "ERFUNDEN", "Erfunden ", "eRfUnDeN", "erfunden")
+
+    def series(typed_names: tuple[str, ...]) -> list[float]:
+        waits.clear()
+        client.cookies.clear()
+        for typed in typed_names:
+            client.post("/ui-api/login", json={"username": typed, "password": FALSCH})
+        return list(waits)
+
+    assert series(existing) == [1, 2, 4, 5, 5]
+    assert series(invented) == [1, 2, 4, 5, 5]
 
 
 def test_other_spellings_of_the_name_share_the_counter(
@@ -264,4 +302,4 @@ def test_other_spellings_of_the_name_share_the_counter(
     for typed in ("lino", "LINO", "Lino ", "lInO"):
         client.post("/ui-api/login", json={"username": typed, "password": FALSCH})
 
-    assert FEHLVERSUCHE == {f"benutzer:{user.id}": 4}
+    assert FEHLVERSUCHE == {"name:lino": 4}

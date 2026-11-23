@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.25.0 (2026-11-20: PI-Beta zum Praxistest mit neuen Regeln standardmäßig aus, Codex-Befunde 1–3, eine Quelle für Parametergrenzen; Einzelheiten `CHANGELOG.md`). Davor 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
 - **Verlauf (Temperatur & Heizzeit), unveröffentlicht:** Standard ist ein Raum (der erste sichtbare), „Alle Räume“ wählbar; die Wahl steht in der Adresse (`?zone=<id>`/`?zone=alle`) und überlebt Neuladen. Nur Frontend, nichts am Backend.
@@ -12,16 +12,18 @@ Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf
 - **Integrationstest Brücke ↔ echte Befehlsverarbeitung (`tests/test_matter_bridge_integration.py`, Treiber `matter-bridge/integration/driver.mjs`):** Ein Node-Unterprozess hält Aedes-Broker (127.0.0.1), die echte Brücke im virtuellen Matter-Netz und einen Matter-Controller; thermoctl hängt mit dem echten `MqttClient` (aiomqtt) am selben Broker und führt jeden Befehl durch `_process_mqtt_message` → Domäne → Audit → `_send_zone_state` (retained, zurück über den Broker), mit echter SQLite-Datenbank und Zonen mit Zeitplan (Tag 21,0 / Nacht 18,0). Beweist: Lesen konsistent mit `zone_state`; Rad = genau eine laufende Übersteuerung mit Ende an der nächsten Schaltung, Plan unverändert, Audit; Entprellung; Beenden/Zeitablauf → Planwert; Aus → `off` (Rad gesperrt, keine Übersteuerung), Heizen → `auto`; abgelehnter Befehl (auch 99 per Direktbefehl, auch Aus-Wettlauf) → unveränderter Zustand kommt zurück; Abwesenheit bleibt unberührt; Brücke sendet nie `command/setpoint`; zwei Zonen unabhängig. Beweist nicht: Broker mit Zugangsdaten/ACLs (Aedes erlaubt alles), echtes Apple/Google Home, mDNS, MariaDB (die Datenbank ist hier immer SQLite). Skipt ohne node oder `matter-bridge/node_modules` (`npm ci`). Laufzeit ca. 40 s.
 - **In 0.25.0 enthalten:** Behebung der hohen Befunde 1–3 aus dem Codex-Gegenlesen (Rechteausweitung über selbst hergestellte Alleinverwalter-Ausnahme, Zukunftszeitstempel bei Messwerten, OAuth-Körperlimit) sowie Entflechten L2. Befund 5 offen (Board); 4 und 9 (siehe „Anmeldedrosselung und Verwaltungsrechte bei Gleichzeitigkeit“) sowie 6, 7 und 8 (Wiederholstunde der Zeitumstellung, siehe „Zeitplan über echte Zeit“) sind nach 0.25.0 behoben (unveröffentlicht). Ein Release (Vorschlag 0.24.1) braucht die Freigabe des Projektinhabers.
 - **Anmeldedrosselung und Verwaltungsrechte bei Gleichzeitigkeit (unveröffentlicht, behebt Codex-Befunde 9 und 4):**
-  *Anmeldung:* Ein Versuch wird **vor** der Wartezeit gezählt (`login.throttled_attempt`); früher lasen alle parallelen Anfragen
-  denselben Zähler, warteten dieselbe Sekunde und prüften dann alle. Je Schlüssel laufen höchstens `MAX_PARALLEL_ATTEMPTS` (5)
-  Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein Fehlversuch, ohne Passwortprüfung;
-  Passwortwechsel: 429 `too_many_attempts`). Geschlüsselt wird nach Konto (`benutzer:<id>`), nicht nach dem getippten Namen: MariaDB
-  vergleicht Namen ohne Rücksicht auf Groß-/Kleinschreibung, `LINO` und `lino` hatten je einen frischen Zähler. Der Nachschlag
-  gibt seine Transaktion vor der Wartezeit frei (kein Pool-Verbrauch durch erfundene Namen). Bekannt: Wer 5 Anfragen offen hält,
-  blockiert die Anmeldung dieses Kontos für die Wartezeit (höchstens 5 s je Runde) -- die Abwägung gegen unbegrenztes Raten;
-  eine Kontosperre gibt es weiterhin nicht. Der Zähler bleibt im Prozessspeicher (siehe unten).
+  *Anmeldung:* Ein Versuch wird **vor** der Wartezeit gezählt (`login.throttled_attempt`), nicht danach. Je Schlüssel laufen höchstens
+  `MAX_PARALLEL_ATTEMPTS` (5) Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein
+  Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel ist der **getippte Name, gefaltet**
+  (`login.login_key`: Unicode-Kompatibilitätsform, Akzente weg, Groß-/Kleinschreibung und Randleerzeichen angeglichen) und hängt nie
+  davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen ohne Rücksicht auf die Schreibweise
+  verglichen) die Existenz. Was eine Kollation darüber hinaus gleichsetzt, gibt einen zusätzlichen Zähler. Der Nachschlag gibt seine
+  Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
+  Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es
+  nicht. Offen: gleichzeitige Anmeldungen mit vielen verschiedenen Namen füllen den Datenbank-Pool (Karte „Anmeldung: Pool bei
+  vielen Namen“). Der Zähler bleibt im Prozessspeicher (siehe unten).
   *Verwaltungsrechte:* Zwei Verwaltende, die im selben Moment je den anderen deaktivieren, umgruppieren, ein Recht entziehen oder
-  eine Gruppe löschen, konnten unter MariaDB beide durchkommen (jede Prüfung sah den anderen noch) und alle aussperren. Jede solche
+  eine Gruppe löschen, würden unter MariaDB beide durchkommen, wenn jede Prüfung den anderen noch sähe, und alle aussperren. Jede solche
   Änderung nimmt jetzt zuerst `administration.lock_guarded_permissions` (die beiden geschützten Rechte-Zeilen in fester Reihenfolge,
   vor dem ersten Schreiben), und die Prüfungen sind sperrende Lesevorgänge (`_locked`): die zweite Änderung wartet und sieht, was die
   erste hinterlassen hat; **jede** Lesung, die in eine solche Entscheidung eingeht, ist eine sperrende (auch „trägt die Zielgruppe das
