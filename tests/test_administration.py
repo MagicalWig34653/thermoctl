@@ -590,7 +590,7 @@ def test_which_database_errors_count_as_a_collision() -> None:
     import thermoctl.domain.administration as administration
 
     def is_collision(error: Exception) -> bool:
-        return administration._is_collision(OperationalError("SELECT", {}, error))
+        return administration.is_collision(OperationalError("SELECT", {}, error))
 
     for code in (1020, 1062, 1205, 1213, 1451, 1452):
         assert is_collision(Exception(code, "x")), code
@@ -601,7 +601,7 @@ def test_which_database_errors_count_as_a_collision() -> None:
     assert not is_collision(Exception(1146, "Table doesn't exist"))
     # A driver error that carries no number at all is no collision either.
     assert not is_collision(Exception())
-    assert not administration._is_collision(IntegrityError("INSERT", {}, Exception("kaputt")))
+    assert not administration.is_collision(IntegrityError("INSERT", {}, Exception("kaputt")))
 
 
 def test_a_collision_at_the_commit_itself_is_a_concurrent_change(

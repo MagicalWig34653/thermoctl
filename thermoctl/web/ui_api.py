@@ -25,7 +25,6 @@ from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web.navigation import visible_navigation
 from thermoctl.web.shared.login import ERROR_MESSAGE, attempt_login, set_session_cookies
-from thermoctl.web.ui_api_rooms import RoomApiError
 from thermoctl.web.urls import cookie_path, safe_return_to
 
 _CONCURRENT_LOGOUT = (
@@ -121,15 +120,15 @@ async def login(
 LOGOUT_ATTEMPTS = 3
 
 
-def _end_session(session: Session, cookie_value: str) -> None:
+def _end_session(session: Session, cookie_value: str) -> bool:
     """Ends the session of the cookie -- and an already ended one counts as done.
 
     Logging out meets the same row as everything else that ends or touches this session
     (another logout, "end the others", the time stamp of a parallel request). A collision
     rolls the transaction back and nothing is lost: the next attempt starts on a fresh
     snapshot and finds the session ended (then it is done) or still alive (then it ends it
-    itself). Only if the row stays contested the answer is "try again" -- never a success
-    that leaves the session alive, and never a 500.
+    itself). Returns False only if the row stays contested: the answer is then "try again"
+    -- never a success that leaves the session alive, and never a 500.
     """
     for _attempt in range(LOGOUT_ATTEMPTS):
         try:
@@ -137,10 +136,10 @@ def _end_session(session: Session, cookie_value: str) -> None:
                 http_session = resolve_session(session, cookie_value)
                 if http_session is not None:
                     revoke_session(session, http_session)
-            return
+            return True
         except ConcurrentChange:
             continue
-    raise RoomApiError(409, _CONCURRENT_LOGOUT, "concurrent_change")
+    return False
 
 
 @router.post("/logout")
@@ -148,8 +147,10 @@ def logout(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> JSONResponse:
     cookie_value = request.cookies.get(COOKIE_NAME)
-    if cookie_value is not None:
-        _end_session(session, cookie_value)
+    if cookie_value is not None and not _end_session(session, cookie_value):
+        return JSONResponse(
+            {"detail": _CONCURRENT_LOGOUT, "code": "concurrent_change"}, status_code=409
+        )
     response = JSONResponse({"ok": True})
     response.delete_cookie(COOKIE_NAME, path=cookie_path(request))
     response.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))

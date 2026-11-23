@@ -79,22 +79,18 @@ _COLLISION_MESSAGE = (
 log = logging.getLogger(__name__)
 
 
-def _is_collision(exc: DBAPIError) -> bool:
+def is_collision(exc: DBAPIError) -> bool:
+    """Whether this database error is the aftermath of a concurrent change (see above).
+
+    Public for the places that cannot answer "try again" with a 409 -- the login, the
+    resolving of a session cookie -- and decide for themselves what a collision means there.
+    """
     args = exc.orig.args if exc.orig is not None else ()
     if not args:
         return False
     if args[0] == _SAVEPOINT_GONE:
         return len(args) > 1 and "SAVEPOINT" in str(args[1]).upper()
     return bool(args[0] in _COLLISION_CODES)
-
-
-def is_collision(exc: DBAPIError) -> bool:
-    """Whether this database error is the aftermath of a concurrent change (see above).
-
-    For the places that cannot say "try again" with a 409 -- the login, the resolving of a
-    session cookie -- and decide for themselves what a collision means there.
-    """
-    return _is_collision(exc)
 
 
 def _collision(exc: DBAPIError) -> ConcurrentChange:
@@ -123,7 +119,7 @@ def serialized_change(session: Session) -> Iterator[None]:
         session.flush()
         session.commit()
     except (OperationalError, IntegrityError) as exc:
-        if not _is_collision(exc):
+        if not is_collision(exc):
             raise
         session.rollback()
         raise _collision(exc) from exc
@@ -151,7 +147,7 @@ def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
     try:
         return list(session.execute(statement.with_for_update()).scalars())
     except OperationalError as exc:
-        if _is_collision(exc):
+        if is_collision(exc):
             raise _collision(exc) from exc
         raise
 
