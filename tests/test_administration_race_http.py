@@ -35,7 +35,7 @@ from thermoctl.db.models.operations import AuditEvent
 UM = "user.manage"
 GM = "group.manage"
 EVERYTHING = [UM, GM, "token.self", "token.manage"]
-ROUNDS = int(os.environ.get("THERMOCTL_RACE_ROUNDS", "6"))  # more rounds for a stress run
+ROUNDS = int(os.environ.get("THERMOCTL_RACE_ROUNDS", "12"))  # more rounds for a stress run
 
 
 @dataclass

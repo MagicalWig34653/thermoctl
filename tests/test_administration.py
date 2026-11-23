@@ -22,6 +22,7 @@ from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.administration import (
     AdministrationError,
+    ConcurrentChange,
     create_group,
     delete_group,
     grant_permission,
@@ -601,6 +602,30 @@ def test_which_database_errors_count_as_a_collision() -> None:
     # A driver error that carries no number at all is no collision either.
     assert not is_collision(Exception())
     assert not administration._is_collision(IntegrityError("INSERT", {}, Exception("kaputt")))
+
+
+def test_a_collision_at_the_commit_itself_is_a_concurrent_change(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The error may come only at the commit (a deadlock victim, a refused overwrite): still
+    `ConcurrentChange`, the transaction rolled back -- not what the database raised."""
+    from sqlalchemy.exc import OperationalError
+
+    import thermoctl.domain.administration as administration
+
+    rolled_back: list[bool] = []
+
+    def commit() -> None:
+        raise OperationalError("COMMIT", {}, Exception(1213, "Deadlock found"))
+
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(session, "rollback", lambda: rolled_back.append(True))
+
+    with pytest.raises(ConcurrentChange):
+        with administration.serialized_change(session):
+            pass
+
+    assert rolled_back == [True]
 
 
 def _two_admins(session: Session) -> tuple[User, User]:
