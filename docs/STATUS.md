@@ -35,17 +35,21 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   vor dem ersten Schreiben), und die Prüfungen sind sperrende Lesevorgänge (`_locked`): die zweite Änderung wartet und sieht, was die
   erste hinterlassen hat; **jede** Lesung, die in eine solche Entscheidung eingeht, ist eine sperrende (auch „trägt die Zielgruppe das
   Recht noch?" und die bisherigen Mitgliedschaften beim Umgruppieren -- eine einfache Lesung sähe den alten Snapshot). MariaDB mit
-  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213, die Fremdschlüsselfehler 1451/1452 (Zielgruppe gleichzeitig
-  gelöscht) und 1305 (die Transaktion wurde schon zurückgerollt, der Savepoint der Endpunkte existiert nicht mehr) ebenso -- an
-  jeder Stelle bis zum Commit (`administration.serialized_change`, von den fünf Endpunkten benutzt, auch dem Anlegen eines Kontos
-  in eine Gruppe): das wird `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"); ist die Gruppe
-  nach dem Commit weg, antwortet der Endpunkt 404. Gemessen über echte Anfragen: keine 500 in diesen Pfaden. Unter SQLite gibt es nur
-  einen Schreiber, dort entfällt die Klausel (gleichzeitige Schreiber scheitern dort weiterhin mit „database is locked“, ohne dass
-  jemand ausgesperrt wird). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
+  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, ebenso 1205/1213, die Schlüsselfehler 1062 (derselbe Name gleichzeitig
+  angelegt) und 1451/1452 (Zielgruppe gleichzeitig gelöscht) und 1305 (die Transaktion ist schon zurückgerollt, der Savepoint der
+  Endpunkte existiert nicht mehr; nur mit „SAVEPOINT" in der Meldung -- dieselbe Nummer für eine fehlende Funktion bleibt ein Fehler).
+  Das alles gilt an jeder Stelle bis zum Commit: `administration.serialized_change` -- von **allen** schreibenden Endpunkten der
+  Verwaltung benutzt (Konto anlegen, aktivieren/deaktivieren, Gruppe wechseln, Passwort setzen, Gruppe anlegen/löschen,
+  Gruppenprofil, Gruppenrechte, eigenes Passwort, eigene und Kiosk-Token widerrufen) -- macht daraus `ConcurrentChange` (409
+  `concurrent_change`, „nichts geändert, bitte erneut versuchen"; der Fehler der Datenbank steht im Log). Ist die Gruppe nach dem
+  Commit weg, antwortet der Endpunkt 404. Gemessen über echte Anfragen (30 Runden je Fall, ON und OFF): keine 500 und nie ohne
+  Verwalter. Unter SQLite gibt es nur einen Schreiber, dort entfällt die Klausel (gleichzeitige Schreiber scheitern dort weiterhin
+  mit „database is locked", ohne dass jemand ausgesperrt wird). Nicht darunter: die Token-Ausstellung und das Ändern von Token-Rechten
+  (nicht geprüft). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
   `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
   Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot),
-  `tests/test_administration_race_http.py` (dieselben Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter, keine doppelten Rechte-Zeilen oder Namen),
-  `tests/test_login_throttle.py`.
+  `tests/test_administration_race_http.py` (dieselben und weitere Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter,
+  keine doppelten Rechte-Zeilen oder Namen; `THERMOCTL_RACE_ROUNDS` erhöht die Runden), `tests/test_login_throttle.py`.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich

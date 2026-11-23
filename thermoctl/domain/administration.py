@@ -72,7 +72,7 @@ _COLLISION_CODES = (1020, 1062, 1205, 1213, 1451, 1452)
 _SAVEPOINT_GONE = 1305
 
 _COLLISION_MESSAGE = (
-    "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
+    "Gleichzeitig hat jemand anderes etwas an der Verwaltung geändert. "
     "Es wurde nichts geändert -- bitte die Seite neu laden und es erneut versuchen."
 )
 
@@ -100,7 +100,7 @@ def _collision(exc: DBAPIError) -> ConcurrentChange:
 
 @contextmanager
 def serialized_change(session: Session) -> Iterator[None]:
-    """Carries a change of the guarded permissions through to its commit.
+    """Carries an administration change through to its commit.
 
     The collision with another change can surface anywhere up to the commit: at a locking
     read (`_locked`), at the `UPDATE`/`DELETE`/`INSERT` of the change itself (snapshot

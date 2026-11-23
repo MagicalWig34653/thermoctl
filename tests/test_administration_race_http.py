@@ -10,6 +10,7 @@ SQLite kennt weder Zeilensperren noch diese Isolationsstufe: dort wird überspru
 Jeder Fall läuft mit `innodb_snapshot_isolation` ON und OFF (je Verbindung, nicht global).
 """
 
+import os
 import threading
 from collections import Counter
 from collections.abc import Callable, Iterator
@@ -23,9 +24,10 @@ from sqlalchemy.orm import Session
 from tests.helpers import ensure_permission, source
 from thermoctl.app import create_app
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
+from thermoctl.auth.passwords import hash_password
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
 from thermoctl.config import Settings, get_settings
-from thermoctl.db.models.credential import Session_
+from thermoctl.db.models.credential import ApiToken, Session_
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import AuditEvent
@@ -33,7 +35,7 @@ from thermoctl.db.models.operations import AuditEvent
 UM = "user.manage"
 GM = "group.manage"
 EVERYTHING = [UM, GM, "token.self", "token.manage"]
-ROUNDS = 6
+ROUNDS = int(os.environ.get("THERMOCTL_RACE_ROUNDS", "6"))  # more rounds for a stress run
 
 
 @dataclass
@@ -97,8 +99,16 @@ def _group(session: Session, name: str, codes: list[str]) -> int:
     return group.id
 
 
-def _person(session: Session, name: str, group_id: int | None) -> tuple[int, str]:
-    user = User(username=name, display_name=name, password_hash="x")
+OLD_PASSWORD = "das-alte-passwort-1"
+
+
+def _person(
+    session: Session, name: str, group_id: int | None, password: str | None = None
+) -> tuple[int, str]:
+    user = User(
+        username=name, display_name=name,
+        password_hash=hash_password(password) if password else "x",
+    )
     session.add(user)
     session.flush()
     if group_id is not None:
@@ -226,6 +236,111 @@ def _create_same_name_twice(s: Session) -> list[Request]:
     ]
 
 
+def _create_same_group_name_twice(s: Session) -> list[Request]:
+    admins = _group(s, "g", EVERYTHING)
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    body: dict[str, object] = {"name": "doppelt", "description": "", "ui_profile": "admin"}
+    return [
+        Request(sa, "POST", "/ui-api/access/groups", body),
+        Request(sb, "POST", "/ui-api/access/groups", body),
+    ]
+
+
+def _password_against_deactivation(s: Session) -> list[Request]:
+    admins, plain = _group(s, "g", EVERYTHING), _group(s, "p", ["token.self"])
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    target, _secret = _person(s, "t", plain)
+    return [
+        Request(
+            sa, "PUT", f"/ui-api/access/users/{target}/password",
+            {"password": "ein-neues-langes-Passwort"},
+        ),
+        Request(sb, "PUT", f"/ui-api/access/users/{target}/active", {"active": False}),
+    ]
+
+
+def _password_twice(s: Session) -> list[Request]:
+    admins, plain = _group(s, "g", EVERYTHING), _group(s, "p", ["token.self"])
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    target, _secret = _person(s, "t", plain)
+    return [
+        Request(
+            sa, "PUT", f"/ui-api/access/users/{target}/password",
+            {"password": "ein-neues-langes-Passwort"},
+        ),
+        Request(
+            sb, "PUT", f"/ui-api/access/users/{target}/password",
+            {"password": "ein-anderes-langes-Passwort"},
+        ),
+    ]
+
+
+def _profile_against_delete(s: Session) -> list[Request]:
+    admins, target = _group(s, "g", EVERYTHING), _group(s, "gt", ["token.self"])
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    return [
+        Request(
+            sa, "PUT", f"/ui-api/access/groups/{target}/ui-profile", {"ui_profile": "tenant"}
+        ),
+        Request(sb, "DELETE", f"/ui-api/access/groups/{target}", None),
+    ]
+
+
+def _delete_same_group_twice(s: Session) -> list[Request]:
+    admins, target = _group(s, "g", EVERYTHING), _group(s, "gt", ["token.self"])
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    return [
+        Request(sa, "DELETE", f"/ui-api/access/groups/{target}", None),
+        Request(sb, "DELETE", f"/ui-api/access/groups/{target}", None),
+    ]
+
+
+def _own_password_against_deactivation(s: Session) -> list[Request]:
+    admins, plain = _group(s, "g", EVERYTHING), _group(s, "p", ["token.self"])
+    _a, sa = _person(s, "a", admins)
+    target, secret = _person(s, "t", plain, OLD_PASSWORD)
+    return [
+        Request(
+            secret, "PUT", "/ui-api/account/password",
+            {"current_password": OLD_PASSWORD, "new_password": "ein-neues-langes-Passwort"},
+        ),
+        Request(sa, "PUT", f"/ui-api/access/users/{target}/active", {"active": False}),
+    ]
+
+
+def _own_token_revoked_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    _entry, second = create_session(s, s.get(User, user_id), 3600)  # type: ignore[arg-type]
+    token = ApiToken(user_id=user_id, name="t", prefix="thermo_x", token_hash="h" * 64)
+    s.add(token)
+    s.flush()
+    url = f"/ui-api/access/tokens/{token.id}/revoke"
+    return [Request(first, "POST", url, None), Request(second, "POST", url, None)]
+
+
+def _kiosk_token_revoked_twice(s: Session) -> list[Request]:
+    admins = _group(s, "g", EVERYTHING)
+    (owner, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    token = ApiToken(
+        user_id=owner, name="k", prefix="thermo_k", token_hash="k" * 64, is_kiosk=True
+    )
+    s.add(token)
+    s.flush()
+    url = f"/ui-api/access/kiosk-tokens/{token.id}/revoke"
+    return [Request(sa, "POST", url, None), Request(sb, "POST", url, None)]
+
+
+def _other_sessions_revoked_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    _entry, second = create_session(s, s.get(User, user_id), 3600)  # type: ignore[arg-type]
+    return [
+        Request(first, "POST", "/ui-api/account/sessions/revoke-others", None),
+        Request(second, "POST", "/ui-api/account/sessions/revoke-others", None),
+    ]
+
+
 def _mutual_deactivation(s: Session) -> list[Request]:
     group = _group(s, "g", EVERYTHING)
     (a, sa), (b, sb) = _person(s, "a", group), _person(s, "b", group)
@@ -244,6 +359,15 @@ SCENARIOS = {
     "umgruppieren-gegen-loeschen": _regroup_against_delete,
     "anlegen-in-geloeschte-gruppe": _create_into_deleted_group,
     "gleicher-name-zweimal-anlegen": _create_same_name_twice,
+    "gruppe-gleicher-name-zweimal-anlegen": _create_same_group_name_twice,
+    "passwort-gegen-deaktivieren": _password_against_deactivation,
+    "passwort-zweimal-setzen": _password_twice,
+    "profil-gegen-loeschen": _profile_against_delete,
+    "dieselbe-gruppe-zweimal-loeschen": _delete_same_group_twice,
+    "eigenes-passwort-gegen-deaktivieren": _own_password_against_deactivation,
+    "eigenen-token-zweimal-widerrufen": _own_token_revoked_twice,
+    "kiosk-token-zweimal-widerrufen": _kiosk_token_revoked_twice,
+    "andere-sitzungen-zweimal-beenden": _other_sessions_revoked_twice,
     "gegenseitig-deaktivieren": _mutual_deactivation,
 }
 
@@ -266,17 +390,27 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
                 source(setup, "web")
                 requests = SCENARIOS[name](setup)
                 setup.commit()
+            before = (_holders(engine, UM), _holders(engine, GM))
             clients = [app_client(r.secret) for r in requests]
             barrier = threading.Barrier(len(requests))
             statuses: list[int] = [0] * len(requests)
 
+            failures: list[str] = []
+
             def send(i: int, requests: list[Request] = requests,
                      clients: list[TestClient] = clients,
                      barrier: threading.Barrier = barrier,
-                     statuses: list[int] = statuses) -> None:
+                     statuses: list[int] = statuses,
+                     failures: list[str] = failures) -> None:
                 barrier.wait(timeout=20)
                 mine = requests[i]
-                reply = clients[i].request(mine.method, mine.url, json=mine.body)
+                try:
+                    reply = clients[i].request(mine.method, mine.url, json=mine.body)
+                except Exception as exc:  # noqa: BLE001 - an unhandled error is a 500
+                    statuses[i] = 500
+                    cause = getattr(exc, "orig", None)
+                    failures.append(f"{type(exc).__name__}: {cause or exc}"[:200])
+                    return
                 statuses[i] = reply.status_code
 
             threads = [threading.Thread(target=send, args=(i,)) for i in range(len(requests))]
@@ -287,8 +421,10 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
                 assert not thread.is_alive(), "eine Anfrage hängt (Verklemmung?)"
 
             outcomes[tuple(str(s) for s in sorted(statuses))] += 1
-            assert set(statuses) <= ACCEPTED, f"{name}: {sorted(statuses)}"
-            assert _holders(engine, UM) >= 1 and _holders(engine, GM) >= 1, name
+            assert set(statuses) <= ACCEPTED, f"{name}: {sorted(statuses)} {failures}"
+            # Whoever held a guarded permission before still has someone holding it.
+            after = (_holders(engine, UM), _holders(engine, GM))
+            assert all(a >= 1 for a, b in zip(after, before, strict=True) if b >= 1), name
             assert _duplicate_permission_rows(engine) == 0, f"{name}: doppelte Rechte-Zeilen"
             assert _usernames_twice(engine) == 0, f"{name}: Benutzername doppelt"
             _clean(engine, known_permissions)
@@ -327,7 +463,9 @@ def _usernames_twice(engine: Engine) -> int:
 def _clean(engine: Engine, known_permissions: set[str]) -> None:
     with Session(engine) as cleanup:
         cleanup.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-        for model in (Session_, AuditEvent, UserAccessGroup, GroupPermission, AccessGroup, User):
+        for model in (
+            ApiToken, Session_, AuditEvent, UserAccessGroup, GroupPermission, AccessGroup, User
+        ):
             cleanup.execute(delete(model))
         if known_permissions:
             cleanup.execute(delete(Permission).where(Permission.code.not_in(known_permissions)))

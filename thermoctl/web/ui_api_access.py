@@ -621,9 +621,14 @@ def set_user_password(
         )
     _within_own_rights(session, principal, _assigned_grants(session, user))
     try:
-        set_password(session, user, body.password, actor_id=principal.user_id)
+        # Through `serialized_change`: the account can be deactivated, or its password set
+        # by someone else, in this very moment -- "try again", not a 500.
+        with serialized_change(session):
+            set_password(session, user, body.password, actor_id=principal.user_id)
     except PasswordTooShort as exc:
         raise _validation("password", str(exc), "password_too_short") from None
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return {"ok": True}
 
 
@@ -736,10 +741,16 @@ def create_access_group(
     if not body.name.strip():
         raise _validation("name", "Der Gruppenname darf nicht leer sein.", "invalid_name")
     try:
-        group = create_group(
-            session, name=body.name, description=body.description or None,
-            actor_id=principal.user_id, ui_profile=profile,
-        )
+        # The same name created twice in the same moment: the loser meets the unique key (1062)
+        # at its insert, not at the check before it -- "try again", and the retry says
+        # "name taken".
+        with serialized_change(session):
+            group = create_group(
+                session, name=body.name, description=body.description or None,
+                actor_id=principal.user_id, ui_profile=profile,
+            )
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
         raise RoomApiError(409, str(exc), "name_taken", field="name") from None
     return _one_group(session, group)
@@ -764,7 +775,11 @@ def set_ui_profile(
     _admin(principal, "group.manage")
     group = _group_or_404(session, group_id)
     profile = _profile(body.ui_profile)
-    set_group_ui_profile(session, group, profile, actor_id=principal.user_id)
+    try:
+        with serialized_change(session):
+            set_group_ui_profile(session, group, profile, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return _one_group(session, group)
 
 
@@ -1065,10 +1080,16 @@ def revoke_own_token(
 ) -> TokenOut:
     _admin(principal, "token.self")
     token = _own_token_or_404(session, principal, token_id)
-    revoke_token(session, token, actor_id=principal.user_id)
-    if token.source == "oauth":
-        # Sperrt zusätzlich die Refresh-Familie, sonst ließe sich das Token erneuern.
-        revoke_oauth_access_token(session, token)
+    try:
+        # Revoked from two sessions of the same account at once: the second one meets the
+        # row the first just changed -- "try again", not a 500.
+        with serialized_change(session):
+            revoke_token(session, token, actor_id=principal.user_id)
+            if token.source == "oauth":
+                # Sperrt zusätzlich die Refresh-Familie, sonst ließe sich das Token erneuern.
+                revoke_oauth_access_token(session, token)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return _token_out(
         session, token, _stored_grants(session, [token.id])[token.id], _clients(session)
     )
@@ -1170,7 +1191,11 @@ def revoke_kiosk_access(
     token = session.get(ApiToken, token_id)
     if token is None or not token.is_kiosk:
         raise RoomApiError(404, "Kiosk-Token nicht gefunden.", "not_found")
-    revoke_token(session, token, actor_id=principal.user_id)
+    try:
+        with serialized_change(session):
+            revoke_token(session, token, actor_id=principal.user_id)
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return _kiosk_out(session, token, _zone_names(session))
 
 
@@ -1230,12 +1255,16 @@ async def change_own_password(
             "too_many_attempts",
         ) from None
     try:
-        set_password(
-            session, user, body.new_password,
-            actor_id=principal.user_id, keep_session_id=_running_session_id(request, session),
-        )
+        with serialized_change(session):
+            set_password(
+                session, user, body.new_password,
+                actor_id=principal.user_id,
+                keep_session_id=_running_session_id(request, session),
+            )
     except PasswordTooShort as exc:
         raise _validation("new_password", str(exc), "password_too_short") from None
+    except ConcurrentChange as exc:
+        raise RoomApiError(409, str(exc), "concurrent_change") from None
     return {"ok": True}
 
 

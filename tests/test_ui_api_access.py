@@ -508,6 +508,14 @@ def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     group = AccessGroup(name="kollision")
     session.add(group)
     session.flush()
+    mine = session.get(User, _me(client))
+    assert mine is not None
+    own_token = ApiToken(user_id=mine.id, name="eigen", prefix="thermo_e", token_hash="e" * 64)
+    kiosk_token = ApiToken(
+        user_id=mine.id, name="kiosk", prefix="thermo_k", token_hash="k" * 64, is_kiosk=True
+    )
+    session.add_all([own_token, kiosk_token])
+    session.flush()
     session.commit()  # the failing request rolls back; what the test set up must survive
     error_class = IntegrityError if code in (1062, 1451, 1452) else OperationalError
 
@@ -528,10 +536,39 @@ def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
             "create_user", "POST", "/ui-api/access/users",
             {"username": "neu", "display_name": "Neu", "password": "langes-Passwort-123"},
         ),
+        (
+            "set_password", "PUT", f"/ui-api/access/users/{other.id}/password",
+            {"password": "ein-neues-langes-Passwort"},
+        ),
+        (
+            "create_group", "POST", "/ui-api/access/groups",
+            {"name": "gleichzeitig", "description": "", "ui_profile": "admin"},
+        ),
+        (
+            "set_group_ui_profile", "PUT", f"/ui-api/access/groups/{group.id}/ui-profile",
+            {"ui_profile": "tenant"},
+        ),
+        ("revoke_token", "POST", f"/ui-api/access/tokens/{own_token.id}/revoke", None),
+        ("revoke_token", "POST", f"/ui-api/access/kiosk-tokens/{kiosk_token.id}/revoke", None),
     ]:
         with monkeypatch.context() as patched:
             patched.setattr(access, name, collide)
             _err(_call(client, method, url, body), 409, "concurrent_change")
+
+    # The own password too: the check of the old one comes first, then the change collides.
+    me = session.get(User, _me(client))
+    assert me is not None
+    me.password_hash = hash_password("das-alte-passwort-1")
+    session.commit()
+    with monkeypatch.context() as patched:
+        patched.setattr(access, "set_password", collide)
+        _err(
+            _call(
+                client, "PUT", "/ui-api/account/password",
+                {"current_password": "das-alte-passwort-1", "new_password": LONG_PASSWORD},
+            ),
+            409, "concurrent_change",
+        )
 
     # An error that is no collision stays what it is -- here an unknown one (1146).
     def other_error(*args: object, **kwargs: object) -> None:
