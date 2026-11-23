@@ -1264,7 +1264,11 @@ def _register_tools(
     def mcp_override(
         zone_id: int, temperature_c: Decimal, ends_at: datetime | None = None
     ) -> dict[str, object]:
-        """Creates a temporary setpoint override for a visible zone."""
+        """Creates a temporary setpoint override for a visible zone.
+
+        ends_at: end of the override (ISO 8601). With a time zone (`+02:00`, `Z`) it is
+        honoured and converted to UTC; without one it is taken as UTC. Omitted = open end.
+        """
         with session_scope(factory) as session:
             return override_zone(session, current(), zone_id, temperature_c, ends_at)
 

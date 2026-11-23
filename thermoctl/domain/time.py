@@ -1,11 +1,24 @@
 """Conversions at the boundary between stored UTC and configured local time."""
 
 from datetime import date, datetime, time, timedelta
+from typing import overload
 from zoneinfo import ZoneInfo
 
 from thermoctl.db.base import utcnow
 
 UTC = ZoneInfo("UTC")
+
+
+@overload
+def naive_utc(moment: datetime) -> datetime: ...
+
+
+@overload
+def naive_utc(moment: None) -> None: ...
+
+
+@overload
+def naive_utc(moment: datetime | None) -> datetime | None: ...
 
 
 def naive_utc(moment: datetime | None) -> datetime | None:
@@ -17,10 +30,18 @@ def naive_utc(moment: datetime | None) -> datetime | None:
     stripped of its zone. A naive value is assumed to already be UTC, the convention
     every other naive datetime in this project follows -- there is no local timezone to
     guess it from at this layer. `None` stays `None`.
+
+    An aware value right at the edge of the representable range (`9999-12-31T23:59-05:00`,
+    `0001-01-01T00:30+02:00`) has no UTC equivalent a `datetime` can hold; `astimezone`
+    then raises `OverflowError`. That is turned into a `ValueError` with a fixed German
+    text -- an input the caller can correct, and a message that echoes nothing of the input.
     """
     if moment is None or moment.tzinfo is None:
         return moment
-    return moment.astimezone(UTC).replace(tzinfo=None)
+    try:
+        return moment.astimezone(UTC).replace(tzinfo=None)
+    except OverflowError:
+        raise ValueError("Zeitpunkt außerhalb des gültigen Bereichs") from None
 
 
 def local_time(moment_utc: datetime, timezone_name: str | None) -> datetime:

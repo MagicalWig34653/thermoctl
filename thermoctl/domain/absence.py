@@ -30,6 +30,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.schedule import create_override
+from thermoctl.domain.time import naive_utc
 
 
 def start_absence(
@@ -54,7 +55,11 @@ def start_absence(
     """
     if not zones:
         raise DomainError("zones", "Für eine Abwesenheit muss mindestens ein Raum gewählt sein.")
-    moment = now if now is not None else utcnow()
+    # Eingang normalisieren, bevor verglichen oder gespeichert wird: Die Spalten sind
+    # naive UTC und verwerfen einen Offset still, und ein aware `ends_at` gegen ein naives
+    # `moment` zu vergleichen wirft TypeError. Naive Werte gelten als UTC.
+    ends_at = naive_utc(ends_at)
+    moment = naive_utc(now) if now is not None else utcnow()
     if ends_at <= moment:
         raise DomainError("ends_at", "Das Ende der Abwesenheit muss in der Zukunft liegen.")
     if user_id is not None and running_absence(session, user_id, moment) is not None:

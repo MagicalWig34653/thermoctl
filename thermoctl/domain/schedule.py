@@ -1107,10 +1107,13 @@ def create_override(
     20:00 -- two hours late. An aware `ends_at` (or `now`) is converted to UTC and
     stripped of its zone (`naive_utc`); a **naive value is taken as UTC**, as everywhere
     else in the project, and `None` stays `None` (an open end). The adapters (web, REST,
-    MCP, absence, boost, setpoint dial) all end up in this function, so none of them
-    needs -- or can forget -- its own conversion. Not checked, as before: that
-    `ends_at` lies after `starts_at`; an override that ends before it starts simply
-    never applies.
+    MCP, boost, setpoint dial) all end up in this function, so none of them needs -- or
+    can forget -- its own conversion. **Absence is the exception:**
+    `start_absence` compares `ends_at` with `now` and stores `ends_at` in its own row
+    *before* it gets here, so it normalizes both itself at its entry (`naive_utc`). An
+    aware value with no UTC equivalent in range (`9999-12-31T23:59-05:00`) raises
+    `ValueError`. Not checked, as before: that `ends_at` lies after `starts_at`; an
+    override that ends before it starts simply never applies.
 
     `now` is the moment the override starts from, and callers that already have one
     must pass it. Reading the clock again here looked harmless -- the two values are

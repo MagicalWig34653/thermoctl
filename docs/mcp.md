@@ -230,7 +230,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `list_changes(zone, change_type, source, from_at, to_at, include_reverted=true, limit=100)` | `audit.read` | das Änderungsprotokoll — jede schreibende Änderung über MCP mit Wer (Nutzer und Token), Wann, Vorher und Nachher je Feld, und ob sie sich zurücknehmen lässt |
 | `revert_change(change_id, force=false)` | die Rechte der ursprünglichen Änderung (Tabelle unten) | nimmt eine Änderung zurück und liefert den neuen Rücknahme-Eintrag |
 | `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |
-| `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
+| `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an; `ends_at` ist optional (ohne: offenes Ende), mit Zeitzonenangabe (z. B. `+02:00`, `Z`) wird sie berücksichtigt und nach UTC umgerechnet, ohne Zeitzone gilt UTC |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
 | `read_vacation()` | `zone.read` | laufenden oder geplanten Urlaub, oder nichts |

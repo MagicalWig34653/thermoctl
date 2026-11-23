@@ -21,10 +21,14 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, create_zone, source, user_with_permissions
 from thermoctl.auth.tokens import issue_token
+from thermoctl.db.models.absence import Absence
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.domain import change_log as change_log_domain
 from thermoctl.domain import schedule as schedule_domain
+from thermoctl.domain.absence import start_absence
 from thermoctl.domain.change_log import Actor
+from thermoctl.domain.modes import DomainError
+from thermoctl.domain.time import naive_utc
 from thermoctl.mcp import server
 
 PLUS_TWO = timezone(timedelta(hours=2))
@@ -260,3 +264,156 @@ def test_mcp_override_through_the_real_server_parses_iso_strings(
         entry = session.scalars(select(ZoneOverride).order_by(ZoneOverride.id.desc())).first()
         assert entry is not None
         assert _stored_ends_at(session, entry) == expected, text
+
+
+# -- Abwesenheit ---------------------------------------------------------------------------
+# `start_absence` vergleicht `ends_at` mit `now` und speichert `ends_at` in der eigenen Zeile,
+# bevor `create_override` überhaupt aufgerufen wird -- die Umrechnung dort reicht nicht.
+
+ABSENCE_NOW = datetime(2026, 11, 23, 8, 0)
+
+
+@pytest.mark.parametrize(("given", "expected"), ENDS)
+def test_start_absence_stores_ends_at_as_naive_utc_in_absence_and_override(
+    session: Session, zone_and_source, given: datetime, expected: datetime
+) -> None:
+    entry = start_absence(
+        session, [zone_and_source], Decimal("17.0"), given, now=ABSENCE_NOW
+    )
+
+    session.flush()
+    session.expire_all()
+    stored = session.scalar(select(Absence.ends_at).where(Absence.id == entry.id))
+    override = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.absence_id == entry.id)
+    ).one()
+    assert stored == expected
+    assert override.ends_at == expected
+    # Dieselbe Abwesenheit wie mit dem äquivalenten naiven UTC-Wert.
+    assert stored == naive_utc(expected)
+
+
+def test_start_absence_normalizes_an_aware_now(session: Session, zone_and_source) -> None:
+    entry = start_absence(
+        session,
+        [zone_and_source],
+        Decimal("17.0"),
+        datetime(2026, 11, 23, 20, 0),
+        now=datetime(2026, 11, 23, 10, 0, tzinfo=PLUS_TWO),
+    )
+
+    session.flush()
+    session.expire_all()
+    starts = session.scalar(select(Absence.starts_at).where(Absence.id == entry.id))
+    override_start = session.scalars(
+        select(ZoneOverride.starts_at).where(ZoneOverride.absence_id == entry.id)
+    ).one()
+    assert starts == datetime(2026, 11, 23, 8, 0)
+    assert override_start == datetime(2026, 11, 23, 8, 0)
+
+
+def test_start_absence_compares_an_aware_end_in_utc(session: Session, zone_and_source) -> None:
+    """09:00+02:00 ist 07:00 UTC und liegt vor `now` (08:00 UTC) -- abgelehnt, kein TypeError.
+
+    Roh gegen das naive `now` verglichen wäre 09:00 > 08:00 gewesen (oder ein TypeError).
+    """
+    with pytest.raises(DomainError) as caught:
+        start_absence(
+            session,
+            [zone_and_source],
+            Decimal("17.0"),
+            datetime(2026, 11, 23, 9, 0, tzinfo=PLUS_TWO),
+            now=ABSENCE_NOW,
+        )
+    assert caught.value.field == "ends_at"
+
+
+def test_start_absence_accepts_an_aware_end_that_is_only_later_in_utc(
+    session: Session, zone_and_source
+) -> None:
+    """07:30-05:00 ist 12:30 UTC und liegt nach `now` (08:00); roh verglichen wäre 07:30 < 08:00."""
+    entry = start_absence(
+        session,
+        [zone_and_source],
+        Decimal("17.0"),
+        datetime(2026, 11, 23, 7, 30, tzinfo=MINUS_FIVE),
+        now=ABSENCE_NOW,
+    )
+
+    assert entry.ends_at == datetime(2026, 11, 23, 12, 30)
+
+
+# -- Grenzen des darstellbaren Bereichs ---------------------------------------------------
+
+OUT_OF_RANGE = [
+    pytest.param(datetime(9999, 12, 31, 23, 59, tzinfo=MINUS_FIVE), id="max-minus-5"),
+    pytest.param(datetime(1, 1, 1, 0, 30, tzinfo=PLUS_TWO), id="min-plus-2"),
+]
+
+
+@pytest.mark.parametrize("given", OUT_OF_RANGE)
+def test_naive_utc_turns_an_out_of_range_result_into_a_value_error(given: datetime) -> None:
+    with pytest.raises(ValueError, match="Zeitpunkt außerhalb des gültigen Bereichs") as caught:
+        naive_utc(given)
+    # Kein OverflowError als Ursache mitgeschleppt, kein Eingabetext in der Meldung.
+    assert caught.value.__suppress_context__
+    assert "9999" not in str(caught.value) and "0001" not in str(caught.value)
+
+
+def test_naive_utc_keeps_the_edges_that_are_still_representable() -> None:
+    assert naive_utc(datetime(9999, 12, 31, 23, 59, tzinfo=UTC)) == datetime(9999, 12, 31, 23, 59)
+    assert naive_utc(datetime(1, 1, 1, 2, 30, tzinfo=PLUS_TWO)) == datetime(1, 1, 1, 0, 30)
+
+
+@pytest.mark.parametrize("given", OUT_OF_RANGE)
+def test_override_with_an_out_of_range_end_is_refused_without_a_row(
+    session: Session, zone_and_source, given: datetime
+) -> None:
+    plaintext = _mcp_token(session, zone_and_source.id)
+
+    with pytest.raises(ValueError, match="außerhalb des gültigen Bereichs"):
+        server.override_zone(session, plaintext, zone_and_source.id, Decimal("22.0"), given)
+
+    assert session.query(ZoneOverride).count() == 0
+
+
+@pytest.mark.parametrize("given", OUT_OF_RANGE)
+def test_start_absence_with_an_out_of_range_end_is_refused_without_a_row(
+    session: Session, zone_and_source, given: datetime
+) -> None:
+    with pytest.raises(ValueError, match="außerhalb des gültigen Bereichs"):
+        start_absence(session, [zone_and_source], Decimal("17.0"), given, now=ABSENCE_NOW)
+
+    assert session.query(Absence).count() == 0
+    assert session.query(ZoneOverride).count() == 0
+
+
+def test_mcp_out_of_range_end_reaches_the_client_as_an_error_without_an_echo_of_the_input(
+    session: Session, zone_and_source, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Der Aufruf über das echte Paket scheitert und legt nichts an.
+
+    Eine einfache `ValueError` ist -- wie die der Anzahlprüfung in `shadow_decisions` -- keine
+    der Ablehnungsarten, die `_visible_to_client` im Wortlaut weitergibt; der Client liest die
+    allgemeine Fehlermeldung des SDK. Der Eingabewert steht darin jedenfalls nicht.
+    """
+    pytest.importorskip("mcp.server.mcpserver")
+    plaintext = _mcp_token(session, zone_and_source.id)
+    monkeypatch.setattr(server, "session_scope", lambda _factory: nullcontext(session))
+    mcp = server._LoggedServer(server._mcp_server_class()("befund5"))
+    server._register_tools(mcp, object(), plaintext)  # type: ignore[arg-type]
+
+    with pytest.raises(Exception) as caught:
+        asyncio.run(
+            mcp._inner.call_tool(  # type: ignore[attr-defined]
+                "override",
+                {
+                    "zone_id": zone_and_source.id,
+                    "temperature_c": "22.0",
+                    "ends_at": "9999-12-31T23:59:00-05:00",
+                },
+            )
+        )
+
+    assert "9999" not in str(caught.value)
+    assert session.query(ZoneOverride).count() == 0
