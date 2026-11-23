@@ -117,6 +117,20 @@ def test_an_inactive_user_costs_the_same_password_check_as_an_active_one(
     assert checks == ["passwort-lang-genug"]
 
 
+def test_a_name_that_cannot_be_encoded_is_a_failed_login_not_a_crash(
+    client: TestClient, user
+) -> None:
+    """`"\\ud800"` is valid JSON but a lone surrogate: the lookup in the database would raise."""
+    for body in (
+        '{"username": "\\ud800", "password": "passwort-lang-genug"}',
+        '{"username": "lino", "password": "\\udfff"}',
+    ):
+        response = client.post(
+            "/ui-api/login", content=body, headers={"content-type": "application/json"}
+        )
+        assert response.status_code == 401
+
+
 def test_logging_out_revokes_the_session(client: TestClient, user, session: Session) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": "passwort-lang-genug"})
     # The application itself hands out the valid token through its own,

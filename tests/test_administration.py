@@ -583,6 +583,26 @@ def lock_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return calls
 
 
+def test_which_database_errors_count_as_a_collision() -> None:
+    from sqlalchemy.exc import IntegrityError, OperationalError
+
+    import thermoctl.domain.administration as administration
+
+    def is_collision(error: Exception) -> bool:
+        return administration._is_collision(OperationalError("SELECT", {}, error))
+
+    for code in (1020, 1062, 1205, 1213, 1451, 1452):
+        assert is_collision(Exception(code, "x")), code
+    assert is_collision(Exception(1305, "SAVEPOINT sa_savepoint_1 does not exist"))
+    # The same number for a missing function is a programming error; so is any other code.
+    assert not is_collision(Exception(1305, "FUNCTION db.f does not exist"))
+    assert not is_collision(Exception(1305))
+    assert not is_collision(Exception(1146, "Table doesn't exist"))
+    # A driver error that carries no number at all is no collision either.
+    assert not is_collision(Exception())
+    assert not administration._is_collision(IntegrityError("INSERT", {}, Exception("kaputt")))
+
+
 def _two_admins(session: Session) -> tuple[User, User]:
     first = user_with_permissions(session, "sperre-a", [("user.manage", None)])
     second = user_with_permissions(session, "sperre-b", [("user.manage", None)])

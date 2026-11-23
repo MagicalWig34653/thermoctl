@@ -18,8 +18,12 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   (`login.login_key`: Unicode-Kompatibilitätsform und Ligaturen, Akzente weg, Groß-/Kleinschreibung (`ß` = `ss`), Ziffern anderer
   Schriften als ASCII, unsichtbare Format- und Steuerzeichen (Zeichen der Breite null, weicher Trennstrich, BOM, NUL) entfernt,
   Randleerzeichen entfernt) und hängt nie davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen
-  ohne Rücksicht auf die Schreibweise verglichen) die Existenz. Was eine Kollation darüber hinaus noch gleichsetzt, gibt einen
-  zusätzlichen Zähler (geschwächte Drosselung für solche Namen, kein Orakel). Ein deaktiviertes Konto kostet dieselbe
+  ohne Rücksicht auf die Schreibweise verglichen) die Existenz. **Grenze:** Was die Kollation (`utf8mb4_uca1400_ai_ci`) sonst
+  noch ignoriert oder gleichsetzt (Kombinationszeichen wie U+034F, Tatweel U+0640, `ø`, `æ` und mehr, gemessen über 1000 Zeichen),
+  wird nicht gefaltet: Ein Name mit einem solchen eingestreuten Zeichen meldet mit richtigem Passwort an, hat aber einen eigenen
+  Zähler -- für diese Namen ist die Drosselung nur durch die Rechenzeit der Passwortprüfung begrenzt (kein Orakel, bekannte und
+  erfundene Namen verhalten sich gleich). Unter SQLite (binärer Vergleich) ohne Belang. Abhilfe offen (Karte „Anmeldedrosselung:
+  Schlüssel nach Kollation der Datenbank"). Ein deaktiviertes Konto kostet dieselbe
   Passwortprüfung wie ein aktives (kein Zeit-Orakel). Der Nachschlag gibt seine
   Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
   Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es
@@ -40,7 +44,7 @@ Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf
   jemand ausgesperrt wird). Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
   `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
   Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot),
-  `tests/test_administration_race_http.py` (dieselben Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter),
+  `tests/test_administration_race_http.py` (dieselben Rennen über die echten Endpunkte: nie 5xx, nie ohne Verwalter, keine doppelten Rechte-Zeilen oder Namen),
   `tests/test_login_throttle.py`.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten

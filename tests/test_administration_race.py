@@ -188,21 +188,49 @@ def test_a_collision_is_reported_as_a_concurrent_change_and_nothing_else_is_swal
 
     import thermoctl.domain.administration as administration
 
-    def failing(code: int) -> Callable[..., object]:
+    def failing(code: int, message: str = "Konflikt") -> Callable[..., object]:
         def execute(*args: object, **kwargs: object) -> object:
-            raise OperationalError("SELECT", {}, Exception(code, "Konflikt"))
+            raise OperationalError("SELECT", {}, Exception(code, message))
 
         return execute
 
-    for code in (1020, 1205, 1213, 1305):
+    for code in (1020, 1205, 1213):
         monkeypatch.setattr(session, "execute", failing(code))
         with pytest.raises(ConcurrentChange, match="erneut versuchen"):
             administration.lock_guarded_permissions(session)
         assert issubclass(ConcurrentChange, AdministrationError)
 
-    monkeypatch.setattr(session, "execute", failing(1146))
-    with pytest.raises(OperationalError):
+    # 1305 only counts as the aftermath of a collision when it is about the savepoint; the
+    # same number for a missing function is a programming error and stays one.
+    gone = failing(1305, "SAVEPOINT sa_savepoint_1 does not exist")
+    monkeypatch.setattr(session, "execute", gone)
+    with pytest.raises(ConcurrentChange, match="erneut versuchen"):
         administration.lock_guarded_permissions(session)
+    for other in (failing(1305, "FUNCTION db.nope does not exist"), failing(1146)):
+        monkeypatch.setattr(session, "execute", other)
+        with pytest.raises(OperationalError):
+            administration.lock_guarded_permissions(session)
+
+
+def test_a_collision_leaves_the_database_error_in_the_log(
+    session: Session, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The caller gets a neutral sentence; what the database said must stay findable."""
+    from sqlalchemy.exc import OperationalError
+
+    import thermoctl.domain.administration as administration
+
+    def execute(*args: object, **kwargs: object) -> object:
+        raise OperationalError("SELECT", {}, Exception(1213, "Deadlock found when trying"))
+
+    monkeypatch.setattr(session, "execute", execute)
+    with caplog.at_level("WARNING", logger="thermoctl.domain.administration"):
+        with pytest.raises(ConcurrentChange):
+            administration.lock_guarded_permissions(session)
+
+    assert any(
+        "Deadlock found" in str(getattr(record, "fehler", "")) for record in caplog.records
+    )
 
 
 # -- Umgruppieren gegen Entzug/Löschung der Zielgruppe ----------------------------------------
@@ -358,11 +386,16 @@ def test_a_foreign_key_broken_by_the_other_side_is_a_concurrent_change(engine: E
                 with Session(engine) as other:
                     other.execute(delete(AccessGroup).where(AccessGroup.id == target_id))
                     other.commit()
-        # Ein anderer Integritätsfehler bleibt, was er ist.
-        with pytest.raises(IntegrityError):
+        # Ein Schlüssel, den die andere Seite gerade vergeben hat (1062: derselbe Name zweimal
+        # angelegt), ist dieselbe Kollision.
+        with pytest.raises(ConcurrentChange):
             with serialized_change(session):
                 session.add(AccessGroup(name="doppelt-a", ui_profile="admin"))
                 session.add(AccessGroup(name="doppelt-a", ui_profile="admin"))
+        # Ein anderer Integritätsfehler (hier: Pflichtfeld leer, 1048) bleibt, was er ist.
+        with pytest.raises(IntegrityError):
+            with serialized_change(session):
+                session.add(AccessGroup(name=None, ui_profile="admin"))
     finally:
         session.rollback()
         session.close()

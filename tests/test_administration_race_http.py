@@ -214,6 +214,18 @@ def _create_into_deleted_group(s: Session) -> list[Request]:
     ]
 
 
+def _create_same_name_twice(s: Session) -> list[Request]:
+    admins = _group(s, "g", EVERYTHING)
+    (_a, sa), (_b, sb) = _person(s, "a", admins), _person(s, "b", admins)
+    new_user: dict[str, object] = {
+        "username": "doppelt", "display_name": "D", "password": "langes-Passwort-123",
+    }
+    return [
+        Request(sa, "POST", "/ui-api/access/users", new_user),
+        Request(sb, "POST", "/ui-api/access/users", new_user),
+    ]
+
+
 def _mutual_deactivation(s: Session) -> list[Request]:
     group = _group(s, "g", EVERYTHING)
     (a, sa), (b, sb) = _person(s, "a", group), _person(s, "b", group)
@@ -231,6 +243,7 @@ SCENARIOS = {
     "umgruppieren-gegen-rechteentzug": _regroup_against_revoke,
     "umgruppieren-gegen-loeschen": _regroup_against_delete,
     "anlegen-in-geloeschte-gruppe": _create_into_deleted_group,
+    "gleicher-name-zweimal-anlegen": _create_same_name_twice,
     "gegenseitig-deaktivieren": _mutual_deactivation,
 }
 
@@ -276,10 +289,39 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
             outcomes[tuple(str(s) for s in sorted(statuses))] += 1
             assert set(statuses) <= ACCEPTED, f"{name}: {sorted(statuses)}"
             assert _holders(engine, UM) >= 1 and _holders(engine, GM) >= 1, name
+            assert _duplicate_permission_rows(engine) == 0, f"{name}: doppelte Rechte-Zeilen"
+            assert _usernames_twice(engine) == 0, f"{name}: Benutzername doppelt"
             _clean(engine, known_permissions)
     finally:
         _clean(engine, known_permissions)
     assert sum(outcomes.values()) == ROUNDS
+
+
+def _duplicate_permission_rows(engine: Engine) -> int:
+    """The unique key does not apply to `zone_id IS NULL`, so two administrators who add the
+    same permission to one group in the same moment can leave it there twice -- and revoking
+    it later removes one row and leaves the permission in place."""
+    with Session(engine) as check:
+        return len(
+            check.execute(
+                select(GroupPermission.access_group_id)
+                .group_by(
+                    GroupPermission.access_group_id,
+                    GroupPermission.permission_id,
+                    func.coalesce(GroupPermission.zone_id, 0),
+                )
+                .having(func.count() > 1)
+            ).all()
+        )
+
+
+def _usernames_twice(engine: Engine) -> int:
+    with Session(engine) as check:
+        return len(
+            check.execute(
+                select(User.username).group_by(User.username).having(func.count() > 1)
+            ).all()
+        )
 
 
 def _clean(engine: Engine, known_permissions: set[str]) -> None:

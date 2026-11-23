@@ -157,6 +157,13 @@ async def attempt_login(
     """
     if len(username) > MAX_USERNAME_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
         return None
+    try:
+        # A lone surrogate (`"\ud800"` is valid JSON) cannot be sent to the database: the lookup
+        # would raise instead of answering. It is no name anyone has -- the neutral failure.
+        username.encode("utf-8")
+        password.encode("utf-8")
+    except UnicodeEncodeError:
+        return None
     user = session.scalar(select(User).where(User.username == username))
     key = login_key(username)
     # The wait below must not hold a database connection: the lookup opened a transaction,

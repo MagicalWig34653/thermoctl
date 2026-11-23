@@ -14,6 +14,7 @@ those rules are the actual reason for this module:
   enforced it.
 """
 
+import logging
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
@@ -58,22 +59,43 @@ GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
 # MariaDB/MySQL error numbers of a statement that met another transaction: 1020 "Record has
 # changed since last read" (snapshot isolation, the default since MariaDB 11.6), 1205 lock
 # wait timeout, 1213 deadlock; 1451/1452 a foreign key that the other transaction just broke
-# (the group a user was moved into is deleted in the same moment, or the other way round).
-# 1305 "SAVEPOINT does not exist" is the aftermath of the same collisions: the server has
+# (the group a user was moved into is deleted in the same moment, or the other way round);
+# 1062 a unique key the other transaction just took (the same name created twice).
+_COLLISION_CODES = (1020, 1062, 1205, 1213, 1451, 1452)
+
+# 1305 "SAVEPOINT ... does not exist" is the aftermath of the same collisions: the server has
 # already rolled the whole transaction back (deadlock victim, refused overwrite), so the
 # `ROLLBACK TO SAVEPOINT` of a change that runs in a savepoint (`begin_nested`) finds none
-# and raises this instead of the error that caused it.
-_COLLISION_CODES = (1020, 1205, 1213, 1305, 1451, 1452)
+# and raises this instead of the error that caused it. The number alone is not enough -- 1305
+# is also "FUNCTION ... does not exist", a programming error that must not pass as a
+# collision -- so the message has to name the savepoint.
+_SAVEPOINT_GONE = 1305
 
 _COLLISION_MESSAGE = (
     "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
     "Es wurde nichts geändert -- bitte die Seite neu laden und es erneut versuchen."
 )
 
+log = logging.getLogger(__name__)
+
 
 def _is_collision(exc: DBAPIError) -> bool:
     args = exc.orig.args if exc.orig is not None else ()
-    return bool(args) and args[0] in _COLLISION_CODES
+    if not args:
+        return False
+    if args[0] == _SAVEPOINT_GONE:
+        return len(args) > 1 and "SAVEPOINT" in str(args[1]).upper()
+    return bool(args[0] in _COLLISION_CODES)
+
+
+def _collision(exc: DBAPIError) -> ConcurrentChange:
+    """The answer to a collision -- with the database's own error in the log, since the
+    caller only gets the neutral sentence."""
+    log.warning(
+        "Gleichzeitige Verwaltungsänderung abgewiesen",
+        extra={"fehler": str(exc.orig)[:200] if exc.orig is not None else str(exc)[:200]},
+    )
+    return ConcurrentChange(_COLLISION_MESSAGE)
 
 
 @contextmanager
@@ -83,9 +105,9 @@ def serialized_change(session: Session) -> Iterator[None]:
     The collision with another change can surface anywhere up to the commit: at a locking
     read (`_locked`), at the `UPDATE`/`DELETE`/`INSERT` of the change itself (snapshot
     isolation refuses to overwrite a row the other transaction committed meanwhile), or at
-    a foreign key the other transaction broke. Without this the answer was a 500 (and, at
-    the commit after the response, not even that). Here every such error becomes
-    `ConcurrentChange` with the transaction rolled back, nothing changed.
+    a foreign key the other transaction broke. Every such error becomes `ConcurrentChange`
+    with the transaction rolled back, nothing changed -- never a 500, and the commit is made
+    here, inside the guard, not after the response.
     """
     try:
         yield
@@ -95,7 +117,7 @@ def serialized_change(session: Session) -> Iterator[None]:
         if not _is_collision(exc):
             raise
         session.rollback()
-        raise ConcurrentChange(_COLLISION_MESSAGE) from exc
+        raise _collision(exc) from exc
 
 
 def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
@@ -121,7 +143,7 @@ def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
         return list(session.execute(statement.with_for_update()).scalars())
     except OperationalError as exc:
         if _is_collision(exc):
-            raise ConcurrentChange(_COLLISION_MESSAGE) from exc
+            raise _collision(exc) from exc
         raise
 
 

@@ -490,7 +490,7 @@ def test_every_question_about_who_holds_the_admin_rights_is_asked_after_the_lock
     assert events.index("lock") < events.index("holders")
 
 
-@pytest.mark.parametrize("code", [1020, 1205, 1213, 1305, 1451, 1452])
+@pytest.mark.parametrize("code", [1020, 1062, 1205, 1213, 1305, 1451, 1452])
 def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch, code: int
 ) -> None:
@@ -509,10 +509,12 @@ def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
     session.add(group)
     session.flush()
     session.commit()  # the failing request rolls back; what the test set up must survive
-    error_class = IntegrityError if code in (1451, 1452) else OperationalError
+    error_class = IntegrityError if code in (1062, 1451, 1452) else OperationalError
+
+    message = "SAVEPOINT sa_savepoint_1 does not exist" if code == 1305 else "Kollision"
 
     def collide(*args: object, **kwargs: object) -> None:
-        raise error_class("UPDATE", {}, Exception(code, "Kollision"))
+        raise error_class("UPDATE", {}, Exception(code, message))
 
     for name, method, url, body in [
         ("set_user_active", "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False}),
