@@ -12,9 +12,11 @@ Jeder Fall läuft mit `innodb_snapshot_isolation` ON und OFF (je Verbindung, nic
 
 import os
 import threading
+import time
 from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,12 +27,15 @@ from tests.helpers import ensure_permission, source
 from thermoctl.app import create_app
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.passwords import hash_password
+from thermoctl.auth.secrets import hash_secret
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
 from thermoctl.config import Settings, get_settings
-from thermoctl.db.models.credential import ApiToken, Session_
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.credential import ApiToken, ApiTokenPermission, Session_
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.passkey import UserPasskey
 
 UM = "user.manage"
 GM = "group.manage"
@@ -341,6 +346,169 @@ def _other_sessions_revoked_twice(s: Session) -> list[Request]:
     ]
 
 
+# -- Konto: Sitzungen, Abmelden, Token-Rechte, Passkey, Token ausstellen -----------------
+# Zwei (oder mehr) Anfragen desselben Kontos oder eines Verwalters treffen dieselben Zeilen.
+# Die Sitzungen sind „länger nicht gesehen“: dann schreibt schon das Auflösen des Cookies
+# (`last_seen_at`) in die eigene Zeile -- das ist der gewöhnliche Fall eines Browsers, der
+# eine Weile offen stand, und es macht jede Anfrage zum Mitspieler im Rennen um die Zeile.
+
+
+def _more_sessions(s: Session, user_id: int, count: int) -> list[tuple[int, str]]:
+    """`count` further sessions of the same account: (row id, cookie secret)."""
+    user = s.get(User, user_id)
+    assert user is not None
+    result = []
+    for _ in range(count):
+        entry, secret = create_session(s, user, 3600)
+        result.append((entry.id, secret))
+    return result
+
+
+def _idle(s: Session, user_id: int) -> None:
+    """Every session of the account was last seen minutes ago."""
+    for entry in s.scalars(select(Session_).where(Session_.user_id == user_id)):
+        entry.last_seen_at = utcnow() - timedelta(minutes=5)
+    s.flush()
+
+
+def _own_session_id(s: Session, secret: str) -> int:
+    return int(s.scalar(select(Session_.id).where(Session_.token_hash == hash_secret(secret))))
+
+
+def _others_revoked_by_each(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    rest = _more_sessions(s, user_id, 3)
+    _idle(s, user_id)
+    return [
+        Request(first, "POST", "/ui-api/account/sessions/revoke-others", None),
+        *(Request(secret, "POST", "/ui-api/account/sessions/revoke-others", None)
+          for _id, secret in rest),
+    ]
+
+
+def _one_session_revoked_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    (_i2, second), (target, _third) = _more_sessions(s, user_id, 2)
+    _idle(s, user_id)
+    url = f"/ui-api/account/sessions/{target}/revoke"
+    return [Request(first, "POST", url, None), Request(second, "POST", url, None)]
+
+
+def _one_session_revoked_against_revoke_others(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    (_i2, second), (target, _third) = _more_sessions(s, user_id, 2)
+    _idle(s, user_id)
+    return [
+        Request(first, "POST", f"/ui-api/account/sessions/{target}/revoke", None),
+        Request(second, "POST", "/ui-api/account/sessions/revoke-others", None),
+    ]
+
+
+def _logout_against_revoke(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    ((_i2, second),) = _more_sessions(s, user_id, 1)
+    _idle(s, user_id)
+    return [
+        Request(first, "POST", "/ui-api/logout", None),
+        Request(second, "POST", f"/ui-api/account/sessions/{_own_session_id(s, first)}/revoke", None),
+    ]
+
+
+def _logout_against_revoke_others(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    ((_i2, second),) = _more_sessions(s, user_id, 1)
+    _idle(s, user_id)
+    return [
+        Request(first, "POST", "/ui-api/logout", None),
+        Request(second, "POST", "/ui-api/account/sessions/revoke-others", None),
+    ]
+
+
+def _logout_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    _user_id, first = _person(s, "t", plain)
+    _idle(s, _user_id)
+    return [Request(first, "POST", "/ui-api/logout", None) for _ in range(3)]
+
+
+def _own_token(s: Session, user_id: int, *, name: str = "t", prefix: str = "thermo_x") -> int:
+    """A token that already carries two grants (so changing them deletes and inserts rows)."""
+    token = ApiToken(user_id=user_id, name=name, prefix=prefix, token_hash="h" * 64)
+    s.add(token)
+    s.flush()
+    for code in ("token.self", "token.manage"):
+        s.add(
+            ApiTokenPermission(
+                api_token_id=token.id, permission_id=ensure_permission(s, code).id, zone_id=None
+            )
+        )
+    s.flush()
+    return token.id
+
+
+def _token_permissions_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self", "token.manage"])
+    user_id, first = _person(s, "t", plain)
+    ((_i2, second),) = _more_sessions(s, user_id, 1)
+    _idle(s, user_id)
+    url = f"/ui-api/access/tokens/{_own_token(s, user_id)}/permissions"
+    return [
+        Request(first, "PUT", url, {"permissions": [{"code": "token.self"}]}),
+        Request(second, "PUT", url, {"permissions": [{"code": "token.manage"}]}),
+    ]
+
+
+def _token_permissions_against_revoke(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self", "token.manage"])
+    user_id, first = _person(s, "t", plain)
+    ((_i2, second),) = _more_sessions(s, user_id, 1)
+    _idle(s, user_id)
+    token_id = _own_token(s, user_id)
+    return [
+        Request(
+            first, "PUT", f"/ui-api/access/tokens/{token_id}/permissions",
+            {"permissions": [{"code": "token.self"}]},
+        ),
+        Request(second, "POST", f"/ui-api/access/tokens/{token_id}/revoke", None),
+    ]
+
+
+def _passkey_deleted_twice(s: Session) -> list[Request]:
+    plain = _group(s, "p", ["token.self"])
+    user_id, first = _person(s, "t", plain)
+    ((_i2, second),) = _more_sessions(s, user_id, 1)
+    _idle(s, user_id)
+    passkey = UserPasskey(
+        user_id=user_id, credential_id="cred-" + "x" * 20, public_key="k", label="Schluessel"
+    )
+    s.add(passkey)
+    s.flush()
+    url = f"/ui-api/account/passkeys/{passkey.id}"
+    return [Request(first, "DELETE", url, None), Request(second, "DELETE", url, None)]
+
+
+def _token_issued_against_password(s: Session) -> list[Request]:
+    admins, plain = _group(s, "g", EVERYTHING), _group(s, "p", ["token.self"])
+    _a, sa = _person(s, "a", admins)
+    target, secret = _person(s, "t", plain, OLD_PASSWORD)
+    rest = _more_sessions(s, target, 2)
+    _idle(s, target)
+    issue: dict[str, object] = {"name": "neu", "permissions": [{"code": "token.self"}]}
+    return [
+        Request(secret, "POST", "/ui-api/access/tokens", issue),
+        *(Request(other, "POST", "/ui-api/access/tokens", issue) for _id, other in rest),
+        Request(
+            sa, "PUT", f"/ui-api/access/users/{target}/password",
+            {"password": "ein-neues-langes-Passwort"},
+        ),
+    ]
+
+
 def _mutual_deactivation(s: Session) -> list[Request]:
     group = _group(s, "g", EVERYTHING)
     (a, sa), (b, sb) = _person(s, "a", group), _person(s, "b", group)
@@ -369,6 +537,16 @@ SCENARIOS = {
     "kiosk-token-zweimal-widerrufen": _kiosk_token_revoked_twice,
     "andere-sitzungen-zweimal-beenden": _other_sessions_revoked_twice,
     "gegenseitig-deaktivieren": _mutual_deactivation,
+    "andere-sitzungen-von-vier-sitzungen-beenden": _others_revoked_by_each,
+    "dieselbe-sitzung-zweimal-beenden": _one_session_revoked_twice,
+    "sitzung-beenden-gegen-andere-beenden": _one_session_revoked_against_revoke_others,
+    "abmelden-gegen-sitzung-beenden": _logout_against_revoke,
+    "abmelden-gegen-andere-beenden": _logout_against_revoke_others,
+    "dreimal-abmelden": _logout_twice,
+    "token-rechte-zweimal-aendern": _token_permissions_twice,
+    "token-rechte-gegen-widerruf": _token_permissions_against_revoke,
+    "passkey-zweimal-loeschen": _passkey_deleted_twice,
+    "token-ausstellen-gegen-passwort-setzen": _token_issued_against_password,
 }
 
 # The answers a loser may get: nothing changed (409), the group is gone (404), or its own
@@ -433,6 +611,80 @@ def test_concurrent_administration_requests_never_end_in_a_500_or_without_an_adm
     assert sum(outcomes.values()) == ROUNDS
 
 
+@pytest.mark.parametrize("offset_ms", [-120, -40, 0, 40, 120, 250], ids=lambda ms: f"versatz-{ms}ms")
+def test_a_login_with_the_old_password_leaves_no_session_when_the_password_is_set_meanwhile(
+    offset_ms: int, engine: Engine, app_client: Callable[[str], TestClient]
+) -> None:
+    """Passwort setzen parallel zur Anmeldung: nach beiden lebt keine Sitzung des Kontos.
+
+    Der Verwalter setzt das Passwort und beendet damit jede Sitzung. Eine Anmeldung, die das
+    alte Passwort geprüft hat und ihre Sitzung erst danach anlegt, überlebte das (gemessen:
+    6 von 6 Läufen bei 0 bis 400 ms Versatz). Die Anmeldung gilt nur für den Stand, gegen den
+    sie geprüft wurde -- entweder sie scheitert (401), oder ihre Sitzung ist beendet.
+    Negativer Versatz: die Anmeldung startet später als das Setzen.
+    """
+    known_permissions: set[str] = set()
+    try:
+        for _round in range(ROUNDS):
+            with Session(engine) as setup:
+                if not known_permissions:
+                    known_permissions = set(setup.scalars(select(Permission.code)))
+                source(setup, "web")
+                admins, plain = _group(setup, "g", EVERYTHING), _group(setup, "p", ["token.self"])
+                _a, admin_secret = _person(setup, "a", admins)
+                target, _secret = _person(setup, "t", plain, OLD_PASSWORD)
+                setup.commit()
+            anonymous, admin = app_client("anonymous"), app_client(admin_secret)
+            barrier = threading.Barrier(2)
+            statuses: dict[str, int] = {}
+
+            def login(
+                anonymous: TestClient = anonymous, barrier: threading.Barrier = barrier,
+                statuses: dict[str, int] = statuses,
+            ) -> None:
+                barrier.wait(timeout=20)
+                time.sleep(max(0, -offset_ms) / 1000)
+                reply = anonymous.post(
+                    "/ui-api/login", json={"username": "t", "password": OLD_PASSWORD}
+                )
+                statuses["login"] = reply.status_code
+
+            def set_password(
+                admin: TestClient = admin, barrier: threading.Barrier = barrier,
+                statuses: dict[str, int] = statuses, target: int = target,
+            ) -> None:
+                barrier.wait(timeout=20)
+                time.sleep(max(0, offset_ms) / 1000)
+                reply = admin.put(
+                    f"/ui-api/access/users/{target}/password",
+                    json={"password": "ein-neues-langes-Passwort"},
+                )
+                statuses["password"] = reply.status_code
+
+            threads = [threading.Thread(target=login), threading.Thread(target=set_password)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=60)
+                assert not thread.is_alive(), "eine Anfrage hängt (Verklemmung?)"
+
+            assert statuses["login"] in (200, 401, 409, 429), statuses
+            assert statuses["password"] in (200, 409), statuses  # never a 5xx
+            with Session(engine) as check:
+                alive = check.scalar(
+                    select(func.count()).select_from(Session_).where(
+                        Session_.user_id == target,
+                        Session_.revoked_at.is_(None),
+                        Session_.expires_at > utcnow(),
+                    )
+                )
+            if statuses["password"] == 200:
+                assert alive == 0, f"Sitzung mit altem Passwort lebt: {statuses}"
+            _clean(engine, known_permissions)
+    finally:
+        _clean(engine, known_permissions)
+
+
 def _duplicate_permission_rows(engine: Engine) -> int:
     """The unique key does not apply to `zone_id IS NULL`, so two administrators who add the
     same permission to one group in the same moment can leave it there twice -- and revoking
@@ -464,7 +716,7 @@ def _clean(engine: Engine, known_permissions: set[str]) -> None:
     with Session(engine) as cleanup:
         cleanup.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         for model in (
-            ApiToken, Session_, AuditEvent, UserAccessGroup, GroupPermission, AccessGroup, User
+            ApiTokenPermission, ApiToken, Session_, AuditEvent, UserPasskey, UserAccessGroup, GroupPermission, AccessGroup, User
         ):
             cleanup.execute(delete(model))
         if known_permissions:
