@@ -60,6 +60,7 @@ from thermoctl.domain.administration import (
     is_sole_holder,
     lock_guarded_permissions,
     revoke_token,
+    serialized_change,
     set_group_permissions,
     set_group_ui_profile,
     set_password,
@@ -556,7 +557,8 @@ def set_active(
     if not body.active:
         _not_self(principal, user, "deaktivieren")
     try:
-        set_user_active(session, user, body.active, actor_id=principal.user_id)
+        with serialized_change(session):
+            set_user_active(session, user, body.active, actor_id=principal.user_id)
     except ConcurrentChange as exc:
         raise RoomApiError(409, str(exc), "concurrent_change") from None
     except AdministrationError as exc:
@@ -582,7 +584,7 @@ def set_group_of_user(
     if body.group_id is not None:
         _within_own_rights(session, principal, _group_grants(session, body.group_id))
     try:
-        with _no_self_made_sole_holder(session, principal):
+        with serialized_change(session), _no_self_made_sole_holder(session, principal):
             set_user_group(session, user, body.group_id, actor_id=principal.user_id)
     except ConcurrentChange as exc:
         raise RoomApiError(409, str(exc), "concurrent_change") from None
@@ -763,7 +765,7 @@ def remove_group(
     _admin(principal, "group.manage")
     group = _group_or_404(session, group_id)
     try:
-        with _no_self_made_sole_holder(session, principal):
+        with serialized_change(session), _no_self_made_sole_holder(session, principal):
             delete_group(session, group, actor_id=principal.user_id)
     except ConcurrentChange as exc:
         raise RoomApiError(409, str(exc), "concurrent_change") from None
@@ -851,7 +853,7 @@ def set_permissions(
     _within_own_rights(session, principal, wanted - _group_grants(session, group.id))
     _no_self_grant(session, principal, group, wanted)
     try:
-        with _no_self_made_sole_holder(session, principal):
+        with serialized_change(session), _no_self_made_sole_holder(session, principal):
             set_group_permissions(session, group, wanted, actor_id=principal.user_id)
     except ConcurrentChange as exc:
         raise RoomApiError(409, str(exc), "concurrent_change") from None

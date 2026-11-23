@@ -14,11 +14,12 @@ those rules are the actual reason for this module:
   enforced it.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from sqlalchemy import Select, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -56,8 +57,41 @@ GUARDED_PERMISSIONS = (ADMIN_PERMISSION, GROUP_PERMISSION)
 
 # MariaDB/MySQL error numbers of a statement that met another transaction: 1020 "Record has
 # changed since last read" (snapshot isolation, the default since MariaDB 11.6), 1205 lock
-# wait timeout, 1213 deadlock.
-_COLLISION_CODES = (1020, 1205, 1213)
+# wait timeout, 1213 deadlock; 1451/1452 a foreign key that the other transaction just broke
+# (the group a user was moved into is deleted in the same moment, or the other way round).
+_COLLISION_CODES = (1020, 1205, 1213, 1451, 1452)
+
+_COLLISION_MESSAGE = (
+    "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
+    "Es wurde nichts geändert -- bitte die Seite neu laden und es erneut versuchen."
+)
+
+
+def _is_collision(exc: DBAPIError) -> bool:
+    args = exc.orig.args if exc.orig is not None else ()
+    return bool(args) and args[0] in _COLLISION_CODES
+
+
+@contextmanager
+def serialized_change(session: Session) -> Iterator[None]:
+    """Carries a change of the guarded permissions through to its commit.
+
+    The collision with another change can surface anywhere up to the commit: at a locking
+    read (`_locked`), at the `UPDATE`/`DELETE`/`INSERT` of the change itself (snapshot
+    isolation refuses to overwrite a row the other transaction committed meanwhile), or at
+    a foreign key the other transaction broke. Without this the answer was a 500 (and, at
+    the commit after the response, not even that). Here every such error becomes
+    `ConcurrentChange` with the transaction rolled back, nothing changed.
+    """
+    try:
+        yield
+        session.flush()
+        session.commit()
+    except (OperationalError, IntegrityError) as exc:
+        if not _is_collision(exc):
+            raise
+        session.rollback()
+        raise ConcurrentChange(_COLLISION_MESSAGE) from exc
 
 
 def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
@@ -68,20 +102,22 @@ def _locked(session: Session, statement: Select[Any]) -> Sequence[Any]:
     that has not committed yet. Two administrators who deactivate, regroup or demote each
     other at the same time would each see the other one still in place; both checks pass,
     both commit, nobody is left. A plain `SELECT` cannot prevent that: under REPEATABLE
-    READ it reads the snapshot taken at the transaction's first read, and a locked-out
-    row is invisible to it. A locking read waits for the other transaction and reads what
-    it left (MariaDB with snapshot isolation refuses instead, 1020, and the loser tries
-    again). SQLite has no row locks and one writer at a time; there the clause is dropped.
+    READ it reads the snapshot taken at the transaction's first read, and what the other
+    transaction committed since is invisible to it. A locking read waits for the other
+    transaction and reads what it left (MariaDB with snapshot isolation refuses instead,
+    1020, and the loser tries again). SQLite has no row locks and one writer at a time;
+    there the clause is dropped.
+
+    **Every** read that feeds a decision about the guarded permissions goes through here,
+    also the ones that look harmless (`_grants_admin_permission`: does the group the user
+    is moved into still carry the permission?) -- a plain read next to locking ones sees the
+    old snapshot and lets the check pass on stale data.
     """
     try:
         return list(session.execute(statement.with_for_update()).scalars())
     except OperationalError as exc:
-        args = exc.orig.args if exc.orig is not None else ()
-        if args[:1] and args[0] in _COLLISION_CODES:
-            raise ConcurrentChange(
-                "Gleichzeitig hat jemand anderes Verwaltungsrechte geändert. "
-                "Es wurde nichts geändert -- bitte die Seite neu laden und es erneut versuchen."
-            ) from exc
+        if _is_collision(exc):
+            raise ConcurrentChange(_COLLISION_MESSAGE) from exc
         raise
 
 
@@ -216,11 +252,12 @@ def _what_it_manages(code: str) -> str:
 def _grants_admin_permission(
     session: Session, group_id: int | None, code: str = ADMIN_PERMISSION
 ) -> bool:
-    """Whether this group carries this plant-wide permission."""
+    """Whether this group carries this plant-wide permission (a locking read, see `_locked`)."""
     if group_id is None:
         return False
-    return (
-        session.scalar(
+    return bool(
+        _locked(
+            session,
             select(GroupPermission.id)
             .join(Permission, Permission.id == GroupPermission.permission_id)
             .where(
@@ -228,9 +265,8 @@ def _grants_admin_permission(
                 Permission.code == code,
                 GroupPermission.zone_id.is_(None),
             )
-            .limit(1)
+            .limit(1),
         )
-        is not None
     )
 
 
@@ -248,17 +284,15 @@ def set_user_group(
     memberships were not part of the reported gap and are not built speculatively;
     whoever needs them can widen this function and the form that calls it later.
     """
+    lock_guarded_permissions(session)
     new_group: AccessGroup | None = None
     if group_id is not None:
         new_group = session.get(AccessGroup, group_id)
         if new_group is None:
             raise AdministrationError("Die Gruppe gibt es nicht.")
 
-    lock_guarded_permissions(session)
     current = list(
-        session.scalars(
-            select(UserAccessGroup).where(UserAccessGroup.user_id == user.id)
-        )
+        _locked(session, select(UserAccessGroup).where(UserAccessGroup.user_id == user.id))
     )
     old_ids = {m.access_group_id for m in current}
     new_ids = {group_id} if group_id is not None else set()

@@ -408,6 +408,7 @@ def test_a_concurrent_change_is_answered_with_409_concurrent_change_and_changes_
     group = AccessGroup(name="verlierer")
     session.add(group)
     session.flush()
+    session.commit()  # the failing request rolls back; what the test set up must survive
     before = _actions(session)
 
     def collide(*args: object, **kwargs: object) -> None:
@@ -438,6 +439,52 @@ def test_a_concurrent_change_is_answered_with_409_concurrent_change_and_changes_
     assert other.is_active is True
     assert session.get(AccessGroup, group.id) is not None
     assert _actions(session) == before
+
+
+@pytest.mark.parametrize("code", [1020, 1205, 1213, 1451, 1452])
+def test_a_database_collision_anywhere_in_a_guarded_change_is_a_409_not_a_500(
+    client_als: Als, session: Session, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    """Der Fehler der Datenbank kommt nicht nur beim sperrenden Lesen, sondern auch beim
+    Schreiben der Änderung selbst (1020 bei Snapshot-Isolation, 1213 Verklemmung, 1451/1452
+    Fremdschlüssel, den die andere Seite zerstört hat). Überall ist die Antwort 409
+    `concurrent_change`, nie 500; `Fremdschlüssel` kommt als IntegrityError, die übrigen als
+    OperationalError."""
+    from sqlalchemy.exc import IntegrityError, OperationalError
+
+    import thermoctl.web.ui_api_access as access
+
+    client = client_als(ADMIN)
+    other = create_user(session, "anna")
+    group = AccessGroup(name="kollision")
+    session.add(group)
+    session.flush()
+    session.commit()  # the failing request rolls back; what the test set up must survive
+    error_class = IntegrityError if code in (1451, 1452) else OperationalError
+
+    def collide(*args: object, **kwargs: object) -> None:
+        raise error_class("UPDATE", {}, Exception(code, "Kollision"))
+
+    for name, method, url, body in [
+        ("set_user_active", "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False}),
+        ("set_user_group", "PUT", f"/ui-api/access/users/{other.id}/group", {"group_id": None}),
+        ("delete_group", "DELETE", f"/ui-api/access/groups/{group.id}", None),
+        (
+            "set_group_permissions", "PUT", f"/ui-api/access/groups/{group.id}/permissions",
+            {"permissions": []},
+        ),
+    ]:
+        with monkeypatch.context() as patched:
+            patched.setattr(access, name, collide)
+            _err(_call(client, method, url, body), 409, "concurrent_change")
+
+    # An error that is no collision stays what it is -- here an unknown one (1146).
+    def other_error(*args: object, **kwargs: object) -> None:
+        raise OperationalError("UPDATE", {}, Exception(1146, "Tabelle fehlt"))
+
+    monkeypatch.setattr(access, "set_user_active", other_error)
+    with pytest.raises(OperationalError):
+        _call(client, "PUT", f"/ui-api/access/users/{other.id}/active", {"active": False})
 
 
 def test_a_second_administrator_lifts_the_guard(client_als: Als, session: Session) -> None:

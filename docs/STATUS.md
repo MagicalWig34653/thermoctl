@@ -24,10 +24,14 @@ Letzte Aktualisierung: 2026-11-22. Diese Datei sagt, was **jetzt** gilt. Verlauf
   eine Gruppe löschen, konnten unter MariaDB beide durchkommen (jede Prüfung sah den anderen noch) und alle aussperren. Jede solche
   Änderung nimmt jetzt zuerst `administration.lock_guarded_permissions` (die beiden geschützten Rechte-Zeilen in fester Reihenfolge,
   vor dem ersten Schreiben), und die Prüfungen sind sperrende Lesevorgänge (`_locked`): die zweite Änderung wartet und sieht, was die
-  erste hinterlassen hat. MariaDB mit Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213 ebenso: das wird
-  `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"). Unter SQLite gibt es nur einen Schreiber,
-  dort entfällt die Klausel. Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB; vier Wege,
-  ohne die Sperre rot), `tests/test_login_throttle.py`.
+  erste hinterlassen hat; **jede** Lesung, die in eine solche Entscheidung eingeht, ist eine sperrende (auch „trägt die Zielgruppe das
+  Recht noch?" und die bisherigen Mitgliedschaften beim Umgruppieren -- eine einfache Lesung sähe den alten Snapshot). MariaDB mit
+  Snapshot-Isolation lehnt statt zu warten mit 1020 ab, 1205/1213 und die Fremdschlüsselfehler 1451/1452 (Zielgruppe gleichzeitig
+  gelöscht) ebenso -- an jeder Stelle bis zum Commit (`administration.serialized_change`, von den vier Endpunkten benutzt): das wird
+  `ConcurrentChange` (409 `concurrent_change`, „nichts geändert, bitte erneut versuchen"), nie 500. Unter SQLite gibt es nur einen Schreiber,
+  dort entfällt die Klausel. Geprüft: `tests/test_administration_race.py` (echte gleichzeitige Transaktionen, nur MariaDB, je mit
+  `innodb_snapshot_isolation` ON und OFF; gegenseitiges Aussperren auf vier Wegen, Umgruppieren gegen Entzug/Löschung/Leeren der
+  Zielgruppe in beiden Reihenfolgen, zwei Umgruppierungen derselben Person, Fremdschlüssel; ohne die Sperre rot), `tests/test_login_throttle.py`.
 - **Parametergrenzen (L1, in 0.25.0):** Eine Quelle (`PARAMETERS`) für Raum und globale Standardwerte, gemeinsamer Prüfweg `zone_settings.check_parameter_value`, Test der PI-Constraints gegen die Tabelle, OpenAPI nennt die Bereiche. Das Speichern aller Raumfelder (REST, `/ui-api`) erzwingt dieselben Bereiche wie Einzelwert und MCP (`validate_inherited_parameters`); unveränderte Altwerte außerhalb des Bereichs blockieren es nicht, die Hysterese wird immer geprüft. Grenzfälle: `tests/test_parameter_limits.py`.
 - **Anlage:** läuft seit 2026-09-02 scharf mit `thermoctl` und seit 2-3 Wochen im Produktivbetrieb ohne Auffälligkeiten
   (Projektinhaber, 2026-10-18). Phase 2 gilt als abgeschlossen, das Altsystem ist abgelöst. Repository öffentlich

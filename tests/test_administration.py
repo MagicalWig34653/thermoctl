@@ -687,3 +687,30 @@ def test_setting_a_groups_permissions_takes_the_lock_before_it_writes(
 
     assert events[0] == "lock"
     assert "grant" in events
+
+
+def test_a_collision_rolls_the_change_back_completely(session: Session) -> None:
+    """`serialized_change` lässt nichts Halbes zurück: was die Änderung schon vorgemerkt hat,
+    wird nicht doch noch mit der nächsten Abfrage (Autoflush) geschrieben."""
+    from sqlalchemy.exc import OperationalError
+
+    from thermoctl.domain.administration import ConcurrentChange, serialized_change
+
+    session.commit()
+    with pytest.raises(ConcurrentChange):
+        with serialized_change(session):
+            session.add(AccessGroup(name="halb-fertig"))
+            raise OperationalError("UPDATE", {}, Exception(1020, "Konflikt"))
+
+    assert session.scalar(select(AccessGroup).where(AccessGroup.name == "halb-fertig")) is None
+    assert not session.new
+
+
+def test_a_change_without_a_collision_is_committed(session: Session) -> None:
+    from thermoctl.domain.administration import serialized_change
+
+    with serialized_change(session):
+        session.add(AccessGroup(name="fertig"))
+    session.expire_all()
+
+    assert session.scalar(select(AccessGroup).where(AccessGroup.name == "fertig")) is not None
