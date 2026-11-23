@@ -39,7 +39,7 @@ setpoint that really is regulated against.
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -49,6 +49,7 @@ from thermoctl.db.models.lookup import ActorSource, CommandOutcome
 from thermoctl.db.models.sensor_failure import ActuatorDecision
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.solar_setback_log import setback_transitions
+from thermoctl.domain.time import naive_utc
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
@@ -78,19 +79,6 @@ class CommandLogEntry:
     reason: str | None
     entry_kind: str = ENTRY_KIND_COMMAND
     simulated: bool = False
-
-
-def naive_utc(moment: datetime | None) -> datetime | None:
-    """Normalizes an incoming filter bound to the naive UTC the column is stored in.
-
-    A caller may reasonably send an aware value (REST and MCP both accept ISO 8601
-    with an offset). A naive value is assumed to already be UTC, the convention every
-    other naive datetime in this project follows -- there is no local timezone to
-    guess it from at this layer.
-    """
-    if moment is None or moment.tzinfo is None:
-        return moment
-    return moment.astimezone(UTC).replace(tzinfo=None)
 
 
 def list_commands(

@@ -18,6 +18,7 @@ from thermoctl.domain.modes import check_temperature
 from thermoctl.domain.time import (
     local_day_start_utc,
     local_time,
+    naive_utc,
     schedule_clock,
     wall_clock_reached_at,
 )
@@ -1100,6 +1101,17 @@ def create_override(
 ) -> ZoneOverride:
     """Creates a concrete override; web, API and MCP share this mutation.
 
+    **Moments are normalized here, once.** `starts_at` and `ends_at` are naive UTC
+    columns, which drop a timezone offset without a word: the MCP tool `override`
+    accepts any ISO 8601 value, and `2026-11-23T20:00:00+02:00` used to be stored as
+    20:00 -- two hours late. An aware `ends_at` (or `now`) is converted to UTC and
+    stripped of its zone (`naive_utc`); a **naive value is taken as UTC**, as everywhere
+    else in the project, and `None` stays `None` (an open end). The adapters (web, REST,
+    MCP, absence, boost, setpoint dial) all end up in this function, so none of them
+    needs -- or can forget -- its own conversion. Not checked, as before: that
+    `ends_at` lies after `starts_at`; an override that ends before it starts simply
+    never applies.
+
     `now` is the moment the override starts from, and callers that already have one
     must pass it. Reading the clock again here looked harmless -- the two values are
     milliseconds apart in normal operation -- but they are not the same value, and
@@ -1126,8 +1138,8 @@ def create_override(
     entry = ZoneOverride(
         zone_id=zone.id,
         temperature_c=temperature_c,
-        starts_at=now if now is not None else utcnow(),
-        ends_at=ends_at,
+        starts_at=naive_utc(now) if now is not None else utcnow(),
+        ends_at=naive_utc(ends_at),
         created_by_user_id=user_id,
         created_by_token_id=token_id,
         source_id=source_id,

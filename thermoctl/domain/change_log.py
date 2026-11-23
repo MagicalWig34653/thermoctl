@@ -42,7 +42,6 @@ from thermoctl.domain import remote_control as remote_control_domain
 from thermoctl.domain import schedule as schedule_domain
 from thermoctl.domain import zone_settings as zone_settings_domain
 from thermoctl.domain.authz import require
-from thermoctl.domain.device_commands import naive_utc
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import Boost
 from thermoctl.domain.sensor_failure_policy import (
@@ -53,6 +52,7 @@ from thermoctl.domain.sensor_failure_policy import (
     read_defaults,
     read_profile,
 )
+from thermoctl.domain.time import naive_utc
 
 CONTROL_PARAMETER = "control_parameter"
 SCHEDULE_POINT = "schedule_point"

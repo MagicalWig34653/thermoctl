@@ -8,6 +8,21 @@ from thermoctl.db.base import utcnow
 UTC = ZoneInfo("UTC")
 
 
+def naive_utc(moment: datetime | None) -> datetime | None:
+    """Normalizes an incoming moment to the naive UTC the datetime columns are stored in.
+
+    A caller may reasonably send an aware value (REST and MCP both accept ISO 8601 with
+    an offset), and a naive datetime column silently drops the offset -- 20:00+02:00 would
+    be stored as 20:00, two hours late. An aware value is therefore converted to UTC and
+    stripped of its zone. A naive value is assumed to already be UTC, the convention
+    every other naive datetime in this project follows -- there is no local timezone to
+    guess it from at this layer. `None` stays `None`.
+    """
+    if moment is None or moment.tzinfo is None:
+        return moment
+    return moment.astimezone(UTC).replace(tzinfo=None)
+
+
 def local_time(moment_utc: datetime, timezone_name: str | None) -> datetime:
     """Convert the project's naive UTC representation to an aware local moment.
 

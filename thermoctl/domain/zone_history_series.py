@@ -28,7 +28,7 @@ from math import ceil, floor
 
 from sqlalchemy.orm import Session
 
-from thermoctl.domain.device_commands import naive_utc
+from thermoctl.domain.time import naive_utc
 from thermoctl.domain.zone_history_chart import Sample, read_samples
 
 MAX_SPAN = timedelta(days=7)

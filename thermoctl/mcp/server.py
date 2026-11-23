@@ -41,7 +41,6 @@ from thermoctl.domain.device_commands import (
     MAX_LIMIT,
     CommandLogEntry,
     list_commands,
-    naive_utc,
 )
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
@@ -60,6 +59,7 @@ from thermoctl.domain.sensor_failure_policy import (
     read_defaults,
     read_profile,
 )
+from thermoctl.domain.time import naive_utc
 from thermoctl.domain.zone_history_series import (
     DEFAULT_HOURS,
     DEFAULT_POINTS,

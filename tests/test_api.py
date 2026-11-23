@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -846,3 +846,27 @@ def test_device_commands_absenkung_entries_need_audit_read(
 ) -> None:
     head = token_fuer([("zone.read", None)])
     assert client.get("/api/v1/device-commands?zone=sonnenbad", headers=head).status_code == 403
+
+
+def test_overriding_by_duration_keeps_start_and_end_naive_utc_and_exact(
+    client, token_fuer, session
+) -> None:
+    """Befund 5: REST nimmt kein `ends_at` an, nur eine Dauer; Beginn und Ende bleiben
+    naive UTC und liegen genau die Dauer auseinander.
+
+    (Ein mitgeschicktes `ends_at` ignoriert das Schema ohne Fehler -- Bestand, nicht Teil
+    der Offset-Behebung.)
+    """
+    from thermoctl.db.models.override import ZoneOverride
+
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+
+    response = client.post("/api/v1/zones/1/override", headers=head,
+                          json={"temperature_c": "22.0", "duration_minutes": 30})
+
+    assert response.status_code == 201
+    entry = session.query(ZoneOverride).one()
+    assert entry.ends_at is not None
+    assert entry.ends_at.tzinfo is None
+    # `starts_at` liest die Uhr in der Domäne noch einmal (Mikrosekunden nach dem Ende der Route).
+    assert abs(entry.ends_at - entry.starts_at - timedelta(minutes=30)) < timedelta(seconds=1)

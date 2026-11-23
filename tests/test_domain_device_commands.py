@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import command_outcome, create_device, create_device_command, create_zone, source
 from thermoctl.db.models.state import DeviceCommand
-from thermoctl.domain.device_commands import MAX_LIMIT, list_commands, naive_utc
+from thermoctl.domain.device_commands import MAX_LIMIT, list_commands
+from thermoctl.domain.time import naive_utc
 
 
 def test_lists_newest_first(session: Session) -> None:
