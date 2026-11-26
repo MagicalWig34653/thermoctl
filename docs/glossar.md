@@ -280,7 +280,7 @@ Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [PI-Regelung (Beta)](#pi-
 
 *Regelung* — Der Teil des PI-Reglers, der sich merkt, wie lange ein Raum zu kalt war.
 
-Ein Wert von 0 bis 100 Prozent: Je länger die Raumtemperatur unter dem Sollwert liegt, desto höher steigt er und desto länger fordert der Regler Wärme an. Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet, beginnt er danach bei 0. Raumseite, Verlauf und die Kachel Regler zeigen ihn nur an; ändern lässt er sich dort nicht. Die Wohnungssicht zeigt ihn nicht.
+Ein Wert von 0 bis 100 Prozent: Je länger die Raumtemperatur unter dem Sollwert liegt, desto höher steigt er und desto länger fordert der Regler Wärme an. Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0. Raumseite, Verlauf und die Kachel Regler zeigen ihn nur an; ändern lässt er sich dort nicht. Die Wohnungssicht zeigt ihn nicht.
 
 Auch: I-Anteil, Integralanteil
 

@@ -51,6 +51,7 @@ def _query_measurement(
             session.execute(text("DROP INDEX ix_shadow_decision_retention"))
             session.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
             session.execute(text("DROP INDEX ix_shadow_decision_zone_heat_decided_id"))
+            session.execute(text("DROP INDEX ix_shadow_decision_zone_integrator_decided"))
             session.execute(
                 text("DROP INDEX ix_shadow_decision_zone_outcome_decided_id")
             )
@@ -77,6 +78,7 @@ def _query_measurement(
                 "ix_shadow_decision_solar_setback",
                 "ix_shadow_decision_zone_decided_id",
                 "ix_shadow_decision_zone_heat_decided_id",
+                "ix_shadow_decision_zone_integrator_decided",
                 "ix_shadow_decision_zone_outcome_decided_id",
             ]
         )
@@ -188,6 +190,8 @@ def _insert_measurement(rows: int, with_old_index: bool) -> dict[str, object]:
         connection.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
         # Gleiches gilt für die beiden späteren Zonen-Indizes (Migration d4a8e1b73c52).
         connection.execute(text("DROP INDEX ix_shadow_decision_zone_heat_decided_id"))
+        # Und der Index für den letzten Reset des I-Anteils (Migration c7e2a9f4d813).
+        connection.execute(text("DROP INDEX ix_shadow_decision_zone_integrator_decided"))
         connection.execute(
             text("DROP INDEX ix_shadow_decision_zone_outcome_decided_id")
         )

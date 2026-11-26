@@ -7,7 +7,7 @@ import { TILE_KINDS } from '../src/lib/dashboard/types.ts';
 import { buildPoints, DEFAULT_FLAGS, gapSpans, runs } from '../src/lib/history/series.ts';
 import { seriesList, TECHNICAL, TENANT } from '../src/lib/history/wording.ts';
 import type { Bucket } from '../src/lib/history/types.ts';
-import { controllerRows, lastResetText, resetMarks } from '../src/lib/rooms/pi.ts';
+import { controllerRows, lastResetText, resetMarks, resetsAt } from '../src/lib/rooms/pi.ts';
 import type { Room } from '../src/lib/rooms/types.ts';
 
 const T0 = Date.UTC(2026, 10, 26, 0, 0, 0);
@@ -104,4 +104,13 @@ test('Verlaufskachel: „I-Anteil zeigen“ ist anfangs aus und lässt sich eins
   assert.equal(tile.show_pi, false);
   const next = updateTile([{ key: 's', title: 'S', tiles: [tile] }], tile.key, { show_pi: true });
   assert.equal(next[0].tiles[0].show_pi, true);
+});
+
+test('Tooltip: der Reset gilt für sein Fach und für Zeiger knapp daneben (schmale Fächer)', () => {
+  const marks = [{ t: 10_000, reason: 'r' }];
+  const at = (start: number) => ({ start, end: start + 100, t: start + 50 });
+  assert.equal(resetsAt(marks, at(9_990), 0).length, 1, 'im Fach');
+  assert.equal(resetsAt(marks, at(10_400), 0).length, 0, 'Tastatur: nur das Fach selbst');
+  assert.equal(resetsAt(marks, at(10_400), 600).length, 1, 'Zeiger: innerhalb der Fangweite');
+  assert.equal(resetsAt(marks, at(10_800), 600).length, 0, 'außerhalb der Fangweite');
 });

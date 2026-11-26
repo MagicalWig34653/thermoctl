@@ -70,7 +70,7 @@
   import { historyWording, seriesList } from '$lib/history/wording';
   import { historyLimiter } from '$lib/history/shared';
   import { shareAsPercent } from '$lib/operations/logic';
-  import { resetMarks } from '$lib/rooms/pi';
+  import { resetMarks, resetsAt } from '$lib/rooms/pi';
 
   let {
     zones,
@@ -316,7 +316,9 @@
   const readIdx = $derived(selected !== null && points[selected] ? selected : lastIdx);
   const reading = $derived(readIdx >= 0 ? points[readIdx] : null);
   const picked = $derived(selected !== null && points[selected] ? points[selected] : null);
-  const pickedResets = $derived(picked ? marks.filter((m) => m.t >= picked.start && m.t < picked.end) : []);
+  // Fangweite für Zeiger und Finger um eine Reset-Marke (Tastatur: genau das Fach).
+  const resetReach = $derived(keyboard ? 0 : ((finePointer ? 6 : 14) / plotW) * span);
+  const pickedResets = $derived(picked ? resetsAt(marks, picked, resetReach) : []);
 
   const TIP_W = $derived(narrow ? 184 : 214);
   const tip = $derived(

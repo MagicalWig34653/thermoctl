@@ -98,8 +98,8 @@ Verlauf. Je nach Recht gibt es darin:
 merkt sich, wie lange der Raum zu kalt war (0 bis 100 %). Die Karte zeigt den gespeicherten
 Wert laufend und den **letzten Reset** mit Zeitpunkt und Grund. Bei offenem Fenster,
 Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt der Wert stehen; zurückgesetzt
-wird er nach mehr als 24 Stunden ohne Wärmeanforderung. Wird der PI-Regler ausgeschaltet,
-beginnt der Wert danach bei 0. Der Reset-Zeitpunkt stammt aus dem Schaltprotokoll der
+wird er nach mehr als 24 Stunden ohne Wärmeanforderung. Wird der PI-Regler ausgeschaltet
+oder ist der Raum nicht mehr dafür geeignet, beginnt der Wert danach bei 0. Der Reset-Zeitpunkt stammt aus dem Schaltprotokoll der
 Entscheidungen und reicht so weit zurück wie dessen Aufbewahrungsfrist. Ändern lässt sich
 der Wert nicht.
 

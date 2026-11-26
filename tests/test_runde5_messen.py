@@ -21,6 +21,7 @@ def test_queries_report_the_real_shadow_index_state(
             "ix_shadow_decision_solar_setback",
             "ix_shadow_decision_zone_decided_id",
             "ix_shadow_decision_zone_heat_decided_id",
+            "ix_shadow_decision_zone_integrator_decided",
             "ix_shadow_decision_zone_outcome_decided_id",
         ]
         for entry in production

@@ -25,6 +25,16 @@ export function resetMarks(resets: readonly PiReset[] | null, view: { start: num
     .filter((m) => m.t >= view.start && m.t <= view.end);
 }
 
+/** Resets zum gewählten Fach: die darin liegenden, und für Zeiger auch solche innerhalb von
+ *  `reachMs` neben der Fachmitte -- ein Fach ist oft schmaler als ein Pixel. */
+export function resetsAt(
+  marks: readonly ResetMark[],
+  bucket: { start: number; end: number; t: number },
+  reachMs: number,
+): ResetMark[] {
+  return marks.filter((m) => (m.t >= bucket.start && m.t < bucket.end) || Math.abs(m.t - bucket.t) <= reachMs);
+}
+
 export interface ControllerRow {
   id: number;
   name: string;

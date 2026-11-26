@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glossar – thermoctl</title>
-<meta name="description" content="Die Fachbegriffe von thermoctl in einfachen Worten: 54 Begriffe von Abwesenheit bis Zonen, alphabetisch und durchsuchbar.">
+<meta name="description" content="Die Fachbegriffe von thermoctl in einfachen Worten: 55 Begriffe von Abwesenheit bis Zonen, alphabetisch und durchsuchbar.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)">
@@ -13,7 +13,7 @@
 <meta property="og:locale" content="de_DE">
 <meta property="og:site_name" content="thermoctl">
 <meta property="og:title" content="Glossar – thermoctl">
-<meta property="og:description" content="Die Fachbegriffe von thermoctl in einfachen Worten: 54 Begriffe von Abwesenheit bis Zonen, alphabetisch und durchsuchbar.">
+<meta property="og:description" content="Die Fachbegriffe von thermoctl in einfachen Worten: 55 Begriffe von Abwesenheit bis Zonen, alphabetisch und durchsuchbar.">
 <meta property="og:url" content="https://magicalwig34653.github.io/thermoctl/glossar.html">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="stil.css">
@@ -39,7 +39,7 @@
 <div class="page-head">
 <p class="eyebrow">Glossar</p>
 <h1>Fachbegriffe in einfachen Worten</h1>
-<p>54 Begriffe, alphabetisch. Dieselben Erklärungen stehen in der Oberfläche von
+<p>55 Begriffe, alphabetisch. Dieselben Erklärungen stehen in der Oberfläche von
 thermoctl unter <code>/glossar</code>; die Quelle ist die Datei
 <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/thermoctl/data/glossar.json"><code>thermoctl/data/glossar.json</code></a>.
 Die Texte erklären Begriffe und nennen, wo etwas eingestellt wird; sie sichern kein
@@ -60,7 +60,7 @@ placeholder="zum Beispiel „Hysterese“" aria-controls="glossar-liste">
 <li><a href="#buchstabe-f" data-buchstabe="F" aria-label="Begriffe mit F">F</a></li>
 <li><a href="#buchstabe-g" data-buchstabe="G" aria-label="Begriffe mit G">G</a></li>
 <li><a href="#buchstabe-h" data-buchstabe="H" aria-label="Begriffe mit H">H</a></li>
-<li><span aria-hidden="true">I</span></li>
+<li><a href="#buchstabe-i" data-buchstabe="I" aria-label="Begriffe mit I">I</a></li>
 <li><span aria-hidden="true">J</span></li>
 <li><a href="#buchstabe-k" data-buchstabe="K" aria-label="Begriffe mit K">K</a></li>
 <li><span aria-hidden="true">L</span></li>
@@ -283,6 +283,17 @@ placeholder="zum Beispiel „Hysterese“" aria-controls="glossar-liste">
 <p>Die Hysterese legt fest, wie weit die Temperatur vom Sollwert abweichen muss, bevor die Hysterese-Regelung ihre Entscheidung wechselt. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen. Einstellbar sind Werte von 0,0001 K bis 5 K in Schritten von 0,0001 K; feinere Angaben werden abgelehnt, nicht gerundet. Weitere Regeln, etwa Mindestschaltdauer und Fensterkontakt, können vorgehen; die Begründung jeder Entscheidung steht auf der Betriebsseite.</p>
 <p class="small">Auch: Hysterese (K), Schalthysterese, Hysterese-Regelung</p>
 <p class="small">Siehe auch: <a href="#mindestschaltdauer">Mindestschaltdauer</a>, <a href="#pi-regelung">PI-Regelung (Beta)</a>, <a href="#sollwert">Sollwert</a></p>
+</article>
+</section>
+<section class="group" data-gruppe="I" aria-labelledby="buchstabe-i">
+<h2 id="buchstabe-i">I</h2>
+<article class="entry" id="i-anteil" data-suche="i-anteil (pi-regler) i-anteil integralanteil der teil des pi-reglers, der sich merkt, wie lange ein raum zu kalt war. ein wert von 0 bis 100 prozent: je länger die raumtemperatur unter dem sollwert liegt, desto höher steigt er und desto länger fordert der regler wärme an. bei offenem fenster, frostschutz, sensorausfall, ventilschutz und neustart bleibt er stehen. zurückgesetzt wird er nach mehr als 24 stunden ohne wärmeanforderung; wird der pi-regler ausgeschaltet oder ist der raum nicht mehr dafür geeignet, beginnt er danach bei 0. raumseite, verlauf und die kachel regler zeigen ihn nur an; ändern lässt er sich dort nicht. die wohnungssicht zeigt ihn nicht.">
+<h3>I-Anteil (PI-Regler) <a class="perma" href="#i-anteil" aria-label="Link zum Begriff I-Anteil (PI-Regler)">#</a></h3>
+<p class="area">Regelung</p>
+<p class="short">Der Teil des PI-Reglers, der sich merkt, wie lange ein Raum zu kalt war.</p>
+<p>Ein Wert von 0 bis 100 Prozent: Je länger die Raumtemperatur unter dem Sollwert liegt, desto höher steigt er und desto länger fordert der Regler Wärme an. Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0. Raumseite, Verlauf und die Kachel Regler zeigen ihn nur an; ändern lässt er sich dort nicht. Die Wohnungssicht zeigt ihn nicht.</p>
+<p class="small">Auch: I-Anteil, Integralanteil</p>
+<p class="small">Siehe auch: <a href="#pi-regelung">PI-Regelung (Beta)</a></p>
 </article>
 </section>
 <section class="group" data-gruppe="K" aria-labelledby="buchstabe-k">
