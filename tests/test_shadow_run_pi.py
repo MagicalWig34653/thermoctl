@@ -2301,6 +2301,8 @@ class TestIntegralIsCarriedNotReset:
             if row.pi_reset_reason == PI_FALLBACK_HYSTERESIS_MINIMUM:
                 saw_hold = True
                 assert state.pi_integral == self.I_STORED
+                assert row.pi_integral_before == self.I_STORED
+                assert row.pi_integral_after == self.I_STORED
                 assert row.pi_integrator_action == INTEGRATOR_HOLD
                 assert state.pi_last_switch_at is None
             now += timedelta(minutes=1)
@@ -2378,6 +2380,9 @@ class TestIntegralDroppedAfter24HoursWithoutHeating:
         assert row.pi_reset_reason == RESET_REASON_NO_HEATING
         assert row.pi_integrator_action == INTEGRATOR_RESET
         assert state.pi_integral == Decimal("0")
+        # Auch ein Zyklus ohne PI-Rechnung hält fest, was mit dem I-Wert geschah.
+        assert row.pi_integral_before == Decimal("0.5")
+        assert row.pi_integral_after == Decimal("0")
 
     def test_a_restart_after_a_long_pause_resets(self, session: Session) -> None:
         zone, state = self._zone(session, "neustart-24h", measured_c=WARM_C)
@@ -2387,6 +2392,8 @@ class TestIntegralDroppedAfter24HoursWithoutHeating:
         assert row.controller_fallback_reason == RESET_REASON_INVALID_STATE
         assert row.pi_reset_reason == RESET_REASON_NO_HEATING
         assert state.pi_integral == Decimal("0")
+        assert row.pi_integral_before == Decimal("0.5")
+        assert row.pi_integral_after == Decimal("0")
 
     def test_history_without_any_heating_counts_from_its_oldest_row(
         self, session: Session
