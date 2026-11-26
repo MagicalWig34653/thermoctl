@@ -6,7 +6,7 @@ Die Fachbegriffe der Oberfläche in einfachen Worten. Dieselben Erklärungen ste
 
 **Bereiche:** Regelung · Sensorik · Betrieb · Oberfläche — der Bereich steht unter jedem Begriff.
 
-[A](#a) · [B](#b) · [E](#e) · [F](#f) · [G](#g) · [H](#h) · [I](#i) · [K](#k) · [M](#m) · [N](#n) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [U](#u) · [V](#v) · [W](#w) · [Z](#z)
+[A](#a) · [B](#b) · [E](#e) · [F](#f) · [G](#g) · [H](#h) · [K](#k) · [M](#m) · [N](#n) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [U](#u) · [V](#v) · [W](#w) · [Z](#z)
 
 ## A
 
@@ -272,19 +272,6 @@ Die Hysterese legt fest, wie weit die Temperatur vom Sollwert abweichen muss, be
 Auch: Hysterese (K), Schalthysterese, Hysterese-Regelung
 
 Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [PI-Regelung (Beta)](#pi-regelung), [Sollwert](#sollwert)
-
-## I
-
-<a id="i-anteil"></a>
-### I-Anteil (PI-Regler)
-
-*Regelung* — Der Teil des PI-Reglers, der sich merkt, wie lange ein Raum zu kalt war.
-
-Ein Wert von 0 bis 100 Prozent: Je länger die Raumtemperatur unter dem Sollwert liegt, desto höher steigt er und desto länger fordert der Regler Wärme an. Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0. Raumseite, Verlauf und die Kachel Regler zeigen ihn nur an; ändern lässt er sich dort nicht. Die Wohnungssicht zeigt ihn nicht.
-
-Auch: I-Anteil, Integralanteil
-
-Siehe auch: [PI-Regelung (Beta)](#pi-regelung)
 
 ## K
 

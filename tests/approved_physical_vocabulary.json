@@ -469,12 +469,9 @@
     ],
     "thermoctl/data/glossar.json": [
       "Aktor",
-      "Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen.",
-      "Ein Wert von 0 bis 100 Prozent: Je länger die Raumtemperatur unter dem Sollwert liegt, desto höher steigt er und desto länger fordert der Regler Wärme an.",
       "Für eine Weile wärmer",
       "Selbstregelndes Thermostatventil",
-      "Ventilschutz",
-      "Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0."
+      "Ventilschutz"
     ],
     "thermoctl/db/models/dashboard.py": [
       "heating",
