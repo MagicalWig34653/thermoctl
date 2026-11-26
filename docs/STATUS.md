@@ -1,8 +1,9 @@
 # Stand
 
-Letzte Aktualisierung: 2026-11-23. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
+Letzte Aktualisierung: 2026-11-26. Diese Datei sagt, was **jetzt** gilt. Verlauf steht in `CHANGELOG.md` und in Git.
 
 - **Letzte Freigabe:** 0.25.0 (2026-11-20: PI-Beta zum Praxistest mit neuen Regeln standardmäßig aus, Codex-Befunde 1–3, eine Quelle für Parametergrenzen; Einzelheiten `CHANGELOG.md`). Davor 0.24.0 (Hysterese bis 0,0001 K; enthält die bis dahin unveröffentlichten Änderungen). Davor 0.23.0 (Schalter je Raum für Ausfallbenachrichtigungen): Tag `v0.23.0`, GitHub-Release, Abbild auf ghcr.io, Add-on-Repository nachgezogen. Davor 0.22.2 (Netzfehler stoppt die Regelung nicht mehr; PI behält den Integralanteil bei Zeitlücke und Kontextwechsel).
+- **Glossarbegriff „I-Anteil“ veröffentlicht (Freigabe des Projektinhabers 2026-11-26), die Anzeige noch nicht:** `glossar.json`, `docs/glossar.md` und die Projektseite beschreiben den I-Anteil schon. Raumseite, Verlauf und Kacheln dazu liegen auf `feat/pi-i-anteil` und kommen erst nach bestandenem Gegenlesen auf `main`.
 - **Verlauf (Temperatur & Heizzeit), unveröffentlicht:** Standard ist ein Raum (der erste sichtbare), „Alle Räume“ wählbar; die Wahl steht in der Adresse (`?zone=<id>`/`?zone=alle`) und überlebt Neuladen. Nur Frontend, nichts am Backend.
 - **Matter-Bridge (optional, `matter-bridge/`, lokal auf `main`, nicht gepusht, nicht veröffentlicht, kein CI-Job):** Eigener Node-Dienst (Matter.js 0.18.0) für Apple Home
   und optional Google Home, je Zone ein Heating-only-Thermostat (nur Aus/Heizen). Sollwertrad → `command/temporary_setpoint` (befristete Übersteuerung, nie
