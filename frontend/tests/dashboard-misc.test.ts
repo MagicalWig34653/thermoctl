@@ -47,11 +47,11 @@ test('Netzwerk, Sitzung, Berechtigung und Sonstiges', () => {
   assert.equal(dashboardFailure(new Error('x')).kind, 'other');
 });
 
-test('Katalog: alle elf Kacheltypen genau einmal', () => {
+test('Katalog: alle zwölf Kacheltypen genau einmal', () => {
   assert.deepEqual([...CATALOG.map((e) => e.kind)].sort(), [...TILE_KINDS].sort());
-  assert.equal(CATALOG.length, 11);
+  assert.equal(CATALOG.length, 12);
   for (const e of CATALOG) assert.equal(e.needsZone, ['room', 'chart', 'schedule', 'heating', 'control'].includes(e.kind), e.kind);
-  assert.deepEqual(CATALOG.filter((e) => e.adminOnly).map((e) => e.kind).sort(), ['devices', 'system']);
+  assert.deepEqual(CATALOG.filter((e) => e.adminOnly).map((e) => e.kind).sort(), ['controller', 'devices', 'system']);
 });
 
 test('Zeiträume: Verlauf 1/7/30, Heizzeit 7/30/90, sonst keiner', () => {
@@ -66,7 +66,7 @@ test('Zeiträume: Verlauf 1/7/30, Heizzeit 7/30/90, sonst keiner', () => {
 
 test('Galeriesuche findet über Name, Beschreibung und Stichworte', () => {
   const find = (q: string) => CATALOG.filter((e) => matchesQuery(e, q)).map((e) => e.kind);
-  assert.equal(find('').length, 11);
+  assert.equal(find('').length, 12);
   assert.deepEqual(find('verlauf'), ['chart']);
   assert.ok(find('trockenlauf').includes('system'));
   assert.deepEqual(find('xyz'), []);

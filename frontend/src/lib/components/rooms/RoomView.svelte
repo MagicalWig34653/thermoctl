@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { ArrowLeft, Minus, Pencil, Plus, SkipForward, Trash2 } from '@lucide/svelte';
   import { useApp } from '$lib/context';
   import { appHref } from '$lib/paths';
@@ -26,6 +26,7 @@
   import HelpTip from './HelpTip.svelte';
   import Notice from './Notice.svelte';
   import RoomJumps from './RoomJumps.svelte';
+  import PiCard from './PiCard.svelte';
   import RoomTechnik from '$lib/components/operations/RoomTechnik.svelte';
   import ReportCard from '$lib/components/zones/ReportCard.svelte';
   import RoomDeleteDialog from '$lib/components/zones/RoomDeleteDialog.svelte';
@@ -178,8 +179,16 @@
   // Verlauf des Raums: derselbe Baustein wie unter Auswertung, Raum fest, Zeitraum wählbar.
   let historyPeriod = $state<PeriodId>('24h');
 
-  // Mobil: zwei Ansichten
-  let view = $state<'control' | 'tech'>('control');
+  // Mobil: zwei Ansichten. `?ansicht=technik` (Regler-Kachel) öffnet die Technik und
+  // rollt einmal zum I-Anteil.
+  const wantsTech = new URLSearchParams(router.search).get('ansicht') === 'technik';
+  let view = $state<'control' | 'tech'>(wantsTech ? 'tech' : 'control');
+  let scrolled = false;
+  $effect(() => {
+    if (!wantsTech || scrolled || !room?.pi) return;
+    scrolled = true;
+    void tick().then(() => document.getElementById('room-pi')?.scrollIntoView({ block: 'start' }));
+  });
 
   const fieldInvalid = (scope: string, field: string) =>
     field === 'temperature_c' ? isTemperatureField(errors[scope]?.field ?? null) : errors[scope]?.field === field;
@@ -455,6 +464,8 @@
           <div class="mt-3"><Notice tone="warn"><strong>{room.emergency.headline}</strong> {room.emergency.detail}</Notice></div>
         {/if}
       </details>
+
+      {#if room.pi}<PiCard pi={room.pi} timezone={tz} />{/if}
 
       <details class={card} open>
         <summary class="flex cursor-pointer items-center gap-1 text-base font-semibold">Temperaturen je Modus<HelpTip term="mode_setpoints" /></summary>

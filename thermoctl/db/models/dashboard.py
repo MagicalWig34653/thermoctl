@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +46,7 @@ TileKind = Literal[
     "note",
     "shortcut",
     "control",
+    "controller",
 ]
 Metric = Literal["rooms", "heating", "issues", "outdoor"]
 Destination = Literal[
@@ -131,6 +133,10 @@ class DashboardTile(Base):
     metric: Mapped[str | None] = mapped_column(String(16), nullable=True)
     destination: Mapped[str | None] = mapped_column(String(16), nullable=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nur für die Verlaufskachel: I-Anteil des PI-Reglers als eigene Reihe zeigen.
+    show_pi: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
 
 class DashboardTemplate(Base):
@@ -198,3 +204,7 @@ class DashboardTemplateTile(Base):
     metric: Mapped[str | None] = mapped_column(String(16), nullable=True)
     destination: Mapped[str | None] = mapped_column(String(16), nullable=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nur für die Verlaufskachel: I-Anteil des PI-Reglers als eigene Reihe zeigen.
+    show_pi: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )

@@ -8,6 +8,7 @@
   import HelpTip from '$lib/components/rooms/HelpTip.svelte';
   import HistoryChart from '$lib/components/history/HistoryChart.svelte';
   import RoomCard from '$lib/components/rooms/RoomCard.svelte';
+  import ControllerTile from './ControllerTile.svelte';
   import ControlTile from './ControlTile.svelte';
   import { DESTINATION_LABELS, DESTINATION_PATHS, entryOf } from '$lib/dashboard/catalog';
   import { agendaItems, metricValue, tileTitle } from '$lib/dashboard/tiles';
@@ -40,8 +41,8 @@
   {#if room}<ControlTile {room} heading={tile.title.trim() || undefined} timezone={data.timezone} {onchanged} />{/if}
 {:else if tile.kind === 'chart'}
   {#if tile.zone_id !== null && zones.some((z) => z.id === tile.zone_id)}
-    {#key `${tile.zone_id}|${chartPeriod}`}
-      <HistoryChart {zones} zoneId={tile.zone_id} period={chartPeriod} filters={false} compact lazy heading="h3" title={tile.title.trim()} />
+    {#key `${tile.zone_id}|${chartPeriod}|${tile.show_pi}`}
+      <HistoryChart {zones} zoneId={tile.zone_id} period={chartPeriod} filters={false} compact lazy heading="h3" title={tile.title.trim()} showPi={tile.show_pi} />
     {/key}
   {/if}
 {:else if tile.kind === 'metric'}
@@ -96,6 +97,8 @@
     </dl>
     <Button href={appHref(prefix, DESTINATION_PATHS.operation)} variant="outline" class="mt-auto w-full">Betrieb öffnen</Button>
   </TileCard>
+{:else if tile.kind === 'controller'}
+  <ControllerTile rooms={data.rooms} timezone={data.timezone} {title} />
 {:else if tile.kind === 'note'}
   <TileCard title={tile.title.trim() || 'Notiz'} icon={StickyNote} testid="tile-note">
     <!-- Reiner Text: nie als HTML gedeutet. -->

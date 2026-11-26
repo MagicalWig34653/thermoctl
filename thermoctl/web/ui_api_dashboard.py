@@ -54,6 +54,7 @@ from thermoctl.db.models.dashboard import (
 )
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.ui_api_rooms import RoomApiError, _RoomsRoute
 
 router = APIRouter(
@@ -97,6 +98,7 @@ class TileModel(BaseModel):
     metric: Metric | None = None
     destination: Destination | None = None
     note: str = Field("", max_length=MAX_NOTE_LENGTH)
+    show_pi: bool = False
 
 
 class SectionModel(BaseModel):
@@ -130,6 +132,11 @@ class _Access:
     zone_order: tuple[int, ...]  # Reihenfolge der Anlage (`visible_zones`)
     zone_ids: frozenset[int]
 
+    @property
+    def plant_view(self) -> bool:
+        """Sieht dieses Konto Anlagentechnik (I-Anteil)? Wohnungskonten nicht."""
+        return self.principal.ui_profile is WebUiProfile.ADMIN
+
     def permitted(self, code: str | None) -> bool:
         if code is None:
             return True
@@ -148,6 +155,8 @@ class _Access:
             return self.permitted("device.read")
         if kind == "system":
             return self.permitted("control.arm")
+        if kind == "controller":
+            return self.plant_view and self.permitted("zone.read")
         if kind == "shortcut":
             destination = tile.destination
             if destination is None:
@@ -198,7 +207,11 @@ def _filtered(access: _Access, sections: list[SectionModel]) -> list[SectionMode
     return [
         SectionModel(
             title=section.title,
-            tiles=[tile for tile in section.tiles if access.tile_allowed(tile)],
+            tiles=[
+                tile if access.plant_view else tile.model_copy(update={"show_pi": False})
+                for tile in section.tiles
+                if access.tile_allowed(tile)
+            ],
         )
         for section in sections
     ]
@@ -229,6 +242,7 @@ def _stored_sections(session: Session, user_id: int) -> list[SectionModel]:
                 metric=row.metric,
                 destination=row.destination,
                 note=row.note,
+                show_pi=row.show_pi,
             )
         )
     return [
@@ -290,6 +304,7 @@ def _normalised(access: _Access, tile: TileModel) -> TileModel:
         metric=tile.metric if kind == "metric" else None,
         destination=tile.destination if kind == "shortcut" else None,
         note=tile.note if kind == "note" else "",
+        show_pi=tile.show_pi and kind == "chart" and access.plant_view,
     )
 
 
@@ -376,6 +391,7 @@ def save_layout(session: Session, principal: Principal, body: LayoutIn) -> Layou
                 metric=tile.metric,
                 destination=tile.destination,
                 note=tile.note,
+                show_pi=tile.show_pi,
             )
             for index, tile in enumerate(section.tiles)
         )

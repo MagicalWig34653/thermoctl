@@ -81,7 +81,7 @@ def test_dashboard_tables_forward_backward_forward(migrations_database_url: str)
         assert TABLES <= set(inspector.get_table_names())
         assert {c["name"] for c in inspector.get_columns("dashboard_tile")} == {
             "id", "section_id", "position", "kind", "zone_id", "title", "period_days",
-            "width", "metric", "destination", "note",
+            "width", "metric", "destination", "note", "show_pi",
         }
         zone_fk = next(
             fk for fk in inspector.get_foreign_keys("dashboard_tile")

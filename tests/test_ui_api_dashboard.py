@@ -195,6 +195,7 @@ def test_save_roundtrip_keeps_order_and_counts_the_version(
         "metric": None,
         "destination": None,
         "note": "Müll raus",
+        "show_pi": False,
     }
     assert [t["kind"] for t in unten["tiles"]] == [
         "chart", "metric", "shortcut", "devices", "system",
@@ -468,7 +469,7 @@ def test_negative_or_missing_version_is_refused(client: TestClient, session: Ses
 
 
 def test_the_enumerations_cover_what_the_schema_allows() -> None:
-    assert len(TILE_KINDS) == 11
+    assert len(TILE_KINDS) == 12
     assert set(METRICS) == {"rooms", "heating", "issues", "outdoor"}
     assert set(DESTINATIONS) == {
         "schedule", "absence", "history", "devices", "mapping", "solar", "operation", "account",

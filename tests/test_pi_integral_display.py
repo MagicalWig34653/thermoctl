@@ -162,12 +162,11 @@ def test_room_without_reset_state_or_pi(client_als: Als, session: Session) -> No
 def test_unknown_reset_reason_is_shown_as_stored(client_als: Als, session: Session) -> None:
     create_settings(session)
     zone = _pi_zone(session, "alt")
-    _row(session, zone, _now() - timedelta(hours=3), action=INTEGRATOR_RESET, reason="frueher_mal")
-    _row(session, zone, _now() - timedelta(hours=2), action=INTEGRATOR_RESET, reason=None)
+    _row(session, zone, _now() - timedelta(hours=2), action=INTEGRATOR_RESET, reason="frueher_mal")
 
     reset = _room(client_als(READ), zone)["pi"]["last_reset"]
 
-    assert reset["reason"] is None
+    assert reset["reason"] == "frueher_mal"
     assert reset["reason_label"] is None
 
 

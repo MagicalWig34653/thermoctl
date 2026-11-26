@@ -5,6 +5,7 @@
   --h-sched: #7c3aed;
   --h-heat: #dc2626;
   --h-solar: #a16207;
+  --h-pi: #15803d;
   --h-grid: color-mix(in oklch, var(--foreground) 9%, transparent);
   --h-axis: color-mix(in oklch, var(--foreground) 62%, transparent);
 }
@@ -14,6 +15,7 @@
   --h-sched: #a78bfa;
   --h-heat: #f87171;
   --h-solar: #facc15;
+  --h-pi: #4ade80;
 }
 .hist-svg text {
   font-family: inherit;

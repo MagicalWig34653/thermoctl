@@ -39,6 +39,7 @@ export const TECHNICAL: HistoryWording = {
     effective: 'Wirksam',
     heating: 'Heizanforderung',
     solar: 'Sonnenabsenkung',
+    pi: 'I-Anteil',
   },
   short: {
     actual: 'Messwert',
@@ -47,6 +48,7 @@ export const TECHNICAL: HistoryWording = {
     effective: 'Wirksam',
     heating: 'Heizen',
     solar: 'Sonne',
+    pi: 'I-Anteil',
   },
   descriptions: {
     actual: 'Mittel der gemessenen Raumtemperatur je Zeitabschnitt.',
@@ -55,6 +57,7 @@ export const TECHNICAL: HistoryWording = {
     effective: 'Sollwert, der tatsächlich galt (nach Übersteuerung, Urlaub, Sonnenabsenkung).',
     heating: 'Anteil der Regelentscheidungen mit Heizanforderung.',
     solar: 'Zeiten, in denen der Sollwert wegen Sonneneinstrahlung gesenkt wurde.',
+    pi: 'I-Anteil des PI-Reglers, Achse rechts von 0 bis 100 %.',
   },
   kUnit: 'K',
   setbackUnknown: 'unbekannt',
@@ -76,6 +79,8 @@ export const TENANT: HistoryWording = {
     effective: 'Tatsächlicher Zielwert',
     heating: 'Heizanforderung',
     solar: 'Sonnenabsenkung',
+    // Wird der Wohnungssicht nie angeboten (der Server liefert dort keine Werte).
+    pi: 'I-Anteil',
   },
   short: {
     actual: 'Gemessen',
@@ -84,6 +89,7 @@ export const TENANT: HistoryWording = {
     effective: 'Tatsächlicher Zielwert',
     heating: 'Heizanforderung',
     solar: 'Sonnenabsenkung',
+    pi: 'I-Anteil',
   },
   descriptions: {
     actual: 'Durchschnitt der gemessenen Temperatur je Abschnitt.',
@@ -92,6 +98,7 @@ export const TENANT: HistoryWording = {
     effective: 'Der Zielwert, nach dem die Regelung gearbeitet hat.',
     heating: 'Anteil der Zeit mit Heizanforderung. Das sagt nichts darüber, wie es im Raum war.',
     solar: 'Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken.',
+    pi: 'I-Anteil des Reglers.',
   },
   kUnit: 'Grad',
   setbackUnknown: 'keine Angabe',
@@ -115,9 +122,12 @@ export const TENANT: HistoryWording = {
 
 export const historyWording = (tenant: boolean): HistoryWording => (tenant ? TENANT : TECHNICAL);
 
-/** Reihen in der Reihenfolge des Schalters, mit den Namen der gewählten Fassung. */
-export function seriesList(w: HistoryWording): { key: SeriesKey; label: string; description: string }[] {
-  return (Object.keys(w.names) as SeriesKey[]).map((key) => ({ key, label: w.names[key], description: w.descriptions[key] }));
+/** Reihen in der Reihenfolge des Schalters, mit den Namen der gewählten Fassung. Den I-Anteil
+ *  gibt es nur, wenn der Server ihn anbietet (`withPi`), und nie in der Wohnungssicht. */
+export function seriesList(w: HistoryWording, withPi = false): { key: SeriesKey; label: string; description: string }[] {
+  return (Object.keys(w.names) as SeriesKey[])
+    .filter((key) => key !== 'pi' || (withPi && !w.tenant))
+    .map((key) => ({ key, label: w.names[key], description: w.descriptions[key] }));
 }
 
 // -- Heizzeit ----------------------------------------------------------------------------

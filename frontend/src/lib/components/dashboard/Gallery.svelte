@@ -14,6 +14,7 @@
     sections,
     zones,
     admin,
+    plantView,
     targetKey = $bindable(''),
     onAdd,
   }: {
@@ -21,6 +22,8 @@
     sections: readonly DraftSection[];
     zones: { id: number; name: string }[];
     admin: boolean;
+    /** Konto sieht Anlagentechnik (keine Wohnungssicht). */
+    plantView: boolean;
     targetKey: string;
     /** Fügt hinzu und liefert die Ansage („… in Dein Tag als Kachel 3“) oder null bei Ablehnung. */
     onAdd: (kind: TileKind, sectionKey: string | 'new', zoneId: number | null) => string | null;
@@ -36,7 +39,7 @@
   const effectiveTarget = $derived(targetKey === NEW || sections.some((s) => s.key === targetKey) ? targetKey : (sections[0]?.key ?? NEW));
   const target = $derived(effectiveTarget === NEW ? null : (sections.find((s) => s.key === effectiveTarget) ?? null));
   const shown = $derived(
-    CATALOG.filter((e) => (category === 'all' || e.category === category) && matchesQuery(e, query) && (admin || !e.adminOnly)),
+    CATALOG.filter((e) => (category === 'all' || e.category === category) && matchesQuery(e, query) && (admin || !e.adminOnly) && (plantView || !e.plantView)),
   );
   const slotEntry = $derived<CatalogEntry>(CATALOG.find((e) => e.kind === hovered) ?? CATALOG[0]);
   const full = $derived(target ? !canAddTile(sections, target.key) : !canAddSection(sections));

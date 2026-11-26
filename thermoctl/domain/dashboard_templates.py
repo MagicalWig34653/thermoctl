@@ -33,6 +33,7 @@ TILE_FIELDS = (
     "metric",
     "destination",
     "note",
+    "show_pi",
 )
 
 Tile = dict[str, Any]

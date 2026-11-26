@@ -63,6 +63,11 @@ und Sollwert samt Begründung und einem Farbband mit dem Tagesverlauf.
 
 ![Übersicht weiter unten: Anlagenstatus, Temperaturverlauf eines Raums und die Liste „Heute relevant“](bilder/anlage-startseite-2.png)
 
+Für Anlagen mit PI-Regler bietet die Galerie dem Anlagenprofil zwei Anzeigen des **I-Anteils**
+(siehe [Raum](#raum)): Die Kachel **Temperaturverlauf** hat die Einstellung **I-Anteil zeigen**
+(zweite Achse von 0 bis 100 %), und die Kachel **Regler** zeigt je Raum mit PI-Regler einen
+Balken mit dem letzten Reset; ein Klick führt zur Raumtechnik des Raums. Beides zeigt nur an.
+
 Auf dem Telefon sieht ein Wohnungskonto dieselbe Übersicht ohne Anlagentechnik:
 
 ![Übersicht auf dem Telefon mit Notbetriebs-Hinweis und Kennzahlen](bilder/wohnung-startseite-mobil.png)
@@ -88,6 +93,23 @@ Verlauf. Je nach Recht gibt es darin:
   Frostschutz. **Entfernen** löscht den Wert; der Raum erbt dann den anlagenweiten Vorgabewert.
 - **Raumtechnik** (Regelparameter dieses Raums, auch der Notbetrieb, siehe unten) und
   **Problem melden** an die Verwaltung, wenn das Recht dafür da ist.
+
+**PI-Regler: I-Anteil** (Anlagenprofil, nur bei eingeschaltetem PI-Regler): Der I-Anteil
+merkt sich, wie lange der Raum zu kalt war (0 bis 100 %). Die Karte zeigt den gespeicherten
+Wert laufend und den **letzten Reset** mit Zeitpunkt und Grund. Bei offenem Fenster,
+Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt der Wert stehen; zurückgesetzt
+wird er nach mehr als 24 Stunden ohne Wärmeanforderung. Wird der PI-Regler ausgeschaltet,
+beginnt der Wert danach bei 0. Der Reset-Zeitpunkt stammt aus dem Schaltprotokoll der
+Entscheidungen und reicht so weit zurück wie dessen Aufbewahrungsfrist. Ändern lässt sich
+der Wert nicht.
+
+Im **Verlauf** des Raums (auch unter Auswertung) ist der I-Anteil eine eigene Reihe mit
+Achse rechts von 0 bis 100 %, in der Legende bzw. unter **Datenreihen** ein- und
+ausblendbar. Eine Raute unten markiert einen Reset, der Grund steht beim Überfahren oder
+Antippen im Tooltip. Wo kein Wert aufgezeichnet ist (zum Beispiel ohne PI-Regler), bleibt
+eine Lücke. Entscheidungen aus Versionen bis 0.25.0 haben während offener Fenster,
+Frostschutz und ähnlicher Haltephasen keinen Wert gespeichert; dort ist die Reihe
+unterbrochen.
 
 Räume anlegen, bearbeiten und löschen geht auf der Seite **Übersicht → Räume**; ein Raum
 braucht nur einen Namen, Geräte und Zeitplan kommen danach dazu. Löschen lässt sich mit

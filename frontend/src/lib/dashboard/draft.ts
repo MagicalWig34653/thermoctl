@@ -78,6 +78,7 @@ export function makeTile(entry: CatalogEntry, zoneId: number | null): DraftTile 
     metric: entry.kind === 'metric' ? 'rooms' : null,
     destination: entry.kind === 'shortcut' ? 'schedule' : null,
     note: '',
+    show_pi: false,
   };
 }
 

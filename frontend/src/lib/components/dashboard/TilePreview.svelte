@@ -30,6 +30,8 @@
     {#each [0, 1, 2] as i (i)}<div class="mb-1.5 flex items-center justify-between gap-2"><span class="h-2 w-1/2 rounded bg-muted"></span><span class="h-2 w-1/5 rounded bg-emerald-500/60"></span></div>{/each}
   {:else if kind === 'system'}
     {#each [0, 1, 2] as i (i)}<div class="mb-1 flex items-center gap-2 rounded bg-muted/70 px-2 py-1"><span class="size-2 rounded-full {['bg-emerald-600', 'bg-amber-500', 'bg-muted-foreground'][i]}"></span><span class="h-1.5 flex-1 rounded bg-background"></span></div>{/each}
+  {:else if kind === 'controller'}
+    {#each [65, 30, 85] as w (w)}<div class="mb-2"><div class="mb-1 flex items-center justify-between gap-2"><span class="h-2 w-1/2 rounded bg-muted"></span><span class="text-xs tabular-nums text-muted-foreground">{w} %</span></div><div class="h-1.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full bg-[var(--h-pi)]" style="width:{w}%"></div></div></div>{/each}
   {:else if kind === 'note'}
     <div class="mb-1.5 h-2 w-full rounded bg-muted"></div><div class="mb-1.5 h-2 w-5/6 rounded bg-muted"></div><div class="h-2 w-1/2 rounded bg-muted"></div>
   {:else}

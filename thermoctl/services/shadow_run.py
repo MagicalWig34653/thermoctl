@@ -1649,6 +1649,12 @@ def _pi_outcome(
         )
     carried_integral = Decimal(0) if integral_dropped else stored_integral
     carry_action = INTEGRATOR_RESET if integral_dropped else INTEGRATOR_HOLD
+    # Nur Protokoll (Anzeige des I-Anteils): was gehalten bzw. verworfen wurde, steht auch
+    # in Zyklen ohne PI-Rechnung in der Entscheidung. Die Regelung liest diese Felder nie.
+    carried_log: dict[str, object] = {
+        "pi_integral_before": stored_integral,
+        "pi_integral_after": carried_integral,
+    }
 
     armed = bool(settings.control_armed)
     previous_armed = state.pi_last_control_armed
@@ -1673,6 +1679,7 @@ def _pi_outcome(
         fields["controller_fallback_reason"] = reason
         fields["pi_reset_reason"] = RESET_REASON_NO_HEATING if integral_dropped else reason
         fields["pi_integrator_action"] = carry_action
+        fields.update(carried_log)
         return (
             decision.heating,
             f"PI-Rückfall: {reason}, wartet auf die nächste Fenstergrenze.",
@@ -1718,6 +1725,7 @@ def _pi_outcome(
         _write_reset_state(state, reset_pi_state(gate, now=now, integral=carried_integral))
         fields["pi_reset_reason"] = RESET_REASON_NO_HEATING if integral_dropped else gate
         fields["pi_integrator_action"] = carry_action
+        fields.update(carried_log)
         return decision.heating, None, fields
 
     # General invariant (project owner, second security review, 2026-09-27):
@@ -1735,6 +1743,7 @@ def _pi_outcome(
             RESET_REASON_NO_HEATING if integral_dropped else PI_FALLBACK_HYSTERESIS_MINIMUM
         )
         fields["pi_integrator_action"] = carry_action
+        fields.update(carried_log)
         return (
             decision.heating,
             "PI hält: die aktuelle Phase hat unter Hysterese begonnen und deren "

@@ -173,6 +173,15 @@ class ShadowDecision(Base):
         # Für `services/shadow_run.py::_previous_state`: "neueste Zeile der Zone mit dem
         # anderen `would_heat`" bzw. "neuester Rückkehr-Marker der Zone" sind Einzelzugriffe
         # (Schlüsselsuche) statt eines Durchlaufs durch die ganze Historie der Zone.
+        # Für `domain/pi_view.last_reset`: "neueste Zeile der Zone, in der der I-Anteil
+        # zurückgesetzt wurde" -- ohne Index ein Durchlauf durch die ganze Historie, wenn
+        # es nie einen Reset gab, und das bei jedem Abruf der Raumliste.
+        Index(
+            "ix_shadow_decision_zone_integrator_decided",
+            "zone_id",
+            "pi_integrator_action",
+            "decided_at",
+        ),
         Index(
             "ix_shadow_decision_zone_heat_decided_id",
             "zone_id",

@@ -1250,11 +1250,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (Laufindizes des Schattenprotokolls), then `e9b4c27a1f60`
     # (`zone.fault_notifications_enabled`), then `f7c2a91d4e08` (Hysterese mit vier
     # Nachkommastellen), then `a3e8c5d17b94` (PI-Erweiterungen), then `b5d1f8a3c264`
-    # (Einstellungen für die befristete Übersteuerung am Sollwertrad) -- every time the
+    # (Einstellungen für die befristete Übersteuerung am Sollwertrad), then `c7e2a9f4d813`
+    # (I-Anteil-Anzeige) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["b5d1f8a3c264"]
+    assert scripts.get_heads() == ["c7e2a9f4d813"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

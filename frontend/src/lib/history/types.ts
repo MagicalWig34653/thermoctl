@@ -1,6 +1,8 @@
 // Server-Vertrag der Auswertung (thermoctl/web/ui_api_reports.py). Temperaturen sind
 // Decimal-Strings, Zeitpunkte ISO-8601 mit Zeitzone. Hier steht nichts, was der Server nicht liefert.
 
+import type { PiReset } from '../rooms/types';
+
 export interface Bucket {
   start: string;
   /** 0: keine Zeile im Fach -- eine Lücke, alle Werte sind dann `null`. */
@@ -18,6 +20,8 @@ export interface Bucket {
   solar_setback_min_k: string | null;
   /** Größte Absenkung im Fach; `null`: unbekannt (vor der Aufzeichnung), `"0"`: belegt keine Absenkung. */
   solar_setback_k: string | null;
+  /** I-Anteil (0..1), letzter Wert im Fach; `null`: keiner aufgezeichnet oder nicht sichtbar. */
+  pi_integral: string | null;
 }
 
 export interface Gap {
@@ -45,6 +49,8 @@ export interface History {
   };
   buckets: Bucket[];
   gaps: Gap[];
+  /** Resets des I-Anteils; `null`: die Reihe gibt es für diesen Raum bzw. dieses Konto nicht. */
+  pi_resets: PiReset[] | null;
 }
 
 export interface HeatingTime {

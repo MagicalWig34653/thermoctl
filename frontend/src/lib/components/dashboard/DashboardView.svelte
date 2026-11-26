@@ -51,6 +51,8 @@
   const foreign = target !== undefined;
 
   const { api, session } = useApp();
+  // Anlagentechnik (I-Anteil) bietet die Galerie nur der Anlagensicht an; der Server prüft selbst.
+  const plantView = $derived(session.bootstrap?.ui_profile !== 'tenant');
   const rooms = createResource(() => api.get<Rooms>('/ui-api/rooms'));
   // svelte-ignore state_referenced_locally
   const dash = createDashboard(api, target);
@@ -506,6 +508,6 @@
     {/if}
   </div>
 
-  <Gallery bind:open={galleryOpen} sections={dash.draft} {zones} admin bind:targetKey={galleryTarget} onAdd={addFromGallery} />
-  <TileSettings bind:open={settingsOpen} tile={settingsTile} sections={dash.draft} {zones} {onPatch} onMove={onMoveToSection} />
+  <Gallery bind:open={galleryOpen} sections={dash.draft} {zones} admin {plantView} bind:targetKey={galleryTarget} onAdd={addFromGallery} />
+  <TileSettings bind:open={settingsOpen} tile={settingsTile} sections={dash.draft} {zones} {plantView} {onPatch} onMove={onMoveToSection} />
 {/if}

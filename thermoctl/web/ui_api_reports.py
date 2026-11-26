@@ -75,15 +75,18 @@ from thermoctl.domain.statistics import (
     relay_operations,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
+from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zone_history_chart import GAP
 from thermoctl.domain.zone_settings import ParameterOutOfRange
 from thermoctl.web.shared.changes import confirmation_token
 from thermoctl.web.ui_api_rooms import (
+    PiResetOut,
     RoomApiError,
     _actor,
     _iso,
     _RoomsRoute,
     _visible_zone,
+    pi_reset_out,
 )
 
 router = APIRouter(
@@ -179,6 +182,9 @@ class BucketOut(BaseModel):
     #: Kleinste und größte Absenkung im Fach (`solar_setback_k` ist die größte).
     solar_setback_min_k: str | None
     solar_setback_k: str | None
+    #: I-Anteil des PI-Reglers (0..1), letzter Wert im Fach; `null`: keiner aufgezeichnet
+    #: oder nicht sichtbar (Wohnungssicht).
+    pi_integral: str | None
 
 
 class GapOut(BaseModel):
@@ -215,6 +221,9 @@ class HistoryOut(BaseModel):
     limits: LimitsOut
     buckets: list[BucketOut]
     gaps: list[GapOut]
+    #: Resets des I-Anteils. `null`: Die Reihe gibt es für diesen Aufruf nicht
+    #: (Wohnungssicht, oder der Raum hat im Zeitraum keinen PI-Regler und keine Werte).
+    pi_resets: list[PiResetOut] | None
 
 
 def _history(
@@ -238,6 +247,13 @@ def _history(
         )
     except history_report.ReportRangeError as exc:
         raise _invalid(str(exc), exc.field or "from") from None
+    # Anlagentechnik: Die Wohnungssicht bekommt weder Werte noch Resets.
+    admin_ui = principal.ui_profile is WebUiProfile.ADMIN
+    offer_pi = admin_ui and (
+        zone.pi_enabled
+        or bool(report.pi_resets)
+        or any(bucket.pi_integral is not None for bucket in report.buckets)
+    )
     out = HistoryOut(
         zone_id=zone.id,
         zone_name=zone.display_name,
@@ -270,10 +286,16 @@ def _history(
                 heat_percent=b.heat_percent,
                 solar_setback_min_k=_num(b.solar_setback_min_k),
                 solar_setback_k=_num(b.solar_setback_k),
+                pi_integral=_num(b.pi_integral) if offer_pi else None,
             )
             for b in report.buckets
         ],
         gaps=[GapOut(start=g.start.isoformat(), end=g.end.isoformat()) for g in report.gaps],
+        pi_resets=(
+            [pi_reset_out(r.at.isoformat(), r.reason) for r in report.pi_resets]
+            if offer_pi
+            else None
+        ),
     )
     return out, report
 

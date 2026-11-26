@@ -92,6 +92,7 @@ test('Katalog: Regler-Kachel nur für die Anlagensicht, ohne eigenen Raum', () =
   const entry = entryOf('controller');
   assert.equal(entry.name, 'Regler');
   assert.equal(entry.adminOnly, true);
+  assert.equal(entry.plantView, true);
   assert.equal(entry.needsZone, false);
   assert.ok(TILE_KINDS.includes('controller'));
   assert.equal(CATALOG.length, TILE_KINDS.length);

@@ -21,6 +21,8 @@ Regeln (jede ist eine Zusicherung an den Aufrufer):
   Zeilen des Fachs. Sollwerte: kleinster und größter Wert im Fach (kein Mittel eines
   Sprungs). Heizanforderung: Anteil der Zeilen mit `would_heat`. Sonnenabsenkung: größte
   Absenkung; `None` heißt unbekannt (Zeilen vor der Aufzeichnung), `0.0` belegt keine.
+  I-Anteil: letzter aufgezeichneter Wert des Fachs; Resets stehen mit genauem Zeitpunkt in
+  `pi_resets`.
 
 Keine Rechteprüfung hier: der Adapter prüft die Zone vorher.
 """
@@ -65,6 +67,15 @@ class Bucket:
     #: nur den Höchstwert zu zeigen würde die Absenkung für das ganze Fach behaupten.
     solar_setback_min_k: float | None
     solar_setback_k: float | None
+    #: I-Anteil (0..1): der letzte im Fach aufgezeichnete Wert, kein Mittel (er ist ein
+    #: Zustand). `None`: keine Zeile des Fachs trägt einen -- Lücke, nichts fortgeschrieben.
+    pi_integral: float | None
+
+
+@dataclass(frozen=True)
+class Reset:
+    at: datetime  # UTC mit Zeitzone
+    reason: str | None
 
 
 @dataclass(frozen=True)
@@ -81,6 +92,8 @@ class HistoryReport:
     rows: int
     buckets: tuple[Bucket, ...]
     gaps: tuple[Gap, ...]
+    #: Resets des I-Anteils im Zeitraum; eine ununterbrochene Folge zählt einmal.
+    pi_resets: tuple[Reset, ...]
 
 
 def resolve_resolution(span: timedelta, requested: int | None) -> int:
@@ -133,7 +146,18 @@ def history_report(
         rows=len(samples),
         buckets=buckets,
         gaps=_gaps(samples, start, min(end, now)),
+        pi_resets=_resets(samples),
     )
+
+
+def _resets(samples: list[Sample]) -> tuple[Reset, ...]:
+    found: list[Reset] = []
+    resetting = False
+    for sample in samples:
+        if sample.pi_reset and not resetting:
+            found.append(Reset(_aware(sample.at), sample.pi_reset_reason))
+        resetting = sample.pi_reset
+    return tuple(found)
 
 
 def _gaps(samples: list[Sample], start: datetime, limit: datetime) -> tuple[Gap, ...]:
@@ -153,6 +177,7 @@ def _bucket(at: datetime, samples: list[Sample]) -> Bucket:
     scheduled = [s.scheduled for s in samples if s.scheduled is not None]
     effective = [s.effective for s in samples if s.effective is not None]
     setbacks = [s.solar_k for s in samples if s.solar_k is not None]
+    integrals = [s.pi_integral for s in samples if s.pi_integral is not None]
     return Bucket(
         start=_aware(at),
         rows=len(samples),
@@ -169,6 +194,7 @@ def _bucket(at: datetime, samples: list[Sample]) -> Bucket:
         ),
         solar_setback_min_k=min(setbacks) if setbacks else None,
         solar_setback_k=max(setbacks) if setbacks else None,
+        pi_integral=integrals[-1] if integrals else None,
     )
 
 

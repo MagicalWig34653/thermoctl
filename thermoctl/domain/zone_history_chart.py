@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.state import ShadowDecision
 from thermoctl.domain.number_text import temperature_text
+from thermoctl.domain.pi_control import INTEGRATOR_RESET
 from thermoctl.domain.time import local_time
 
 MAX_POINTS = 600
@@ -190,6 +191,11 @@ class Sample:
     # None = unbekannt: Zeilen aus der Zeit vor der Aufzeichnung tragen keine Aussage über die
     # Absenkung. 0.0 heißt dagegen belegt: keine Absenkung.
     solar_k: float | None = 0.0
+    # I-Anteil (0..1) nach dieser Entscheidung; None = die Zeile trägt keinen (kein PI).
+    pi_integral: float | None = None
+    # Der I-Anteil wurde in dieser Entscheidung zurückgesetzt, mit diesem Grund.
+    pi_reset: bool = False
+    pi_reset_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -296,6 +302,9 @@ def read_samples(
             ShadowDecision.scheduled_setpoint_c,
             ShadowDecision.would_heat,
             ShadowDecision.solar_setback_k,
+            ShadowDecision.pi_integral_after,
+            ShadowDecision.pi_integrator_action,
+            ShadowDecision.pi_reset_reason,
         )
         .where(
             ShadowDecision.zone_id == zone_id,
@@ -318,8 +327,11 @@ def read_samples(
             _float(scheduled),
             heat,
             None if scheduled is None and solar is None else _solar_value(solar),
+            _float(integral),
+            action == INTEGRATOR_RESET,
+            reason,
         )
-        for at, temp, effective, scheduled, heat, solar in rows
+        for at, temp, effective, scheduled, heat, solar, integral, action, reason in rows
     ]
 
 

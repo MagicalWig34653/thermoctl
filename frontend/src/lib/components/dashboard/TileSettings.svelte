@@ -29,6 +29,7 @@
     tile,
     sections,
     zones,
+    plantView,
     onPatch,
     onMove,
   }: {
@@ -36,6 +37,7 @@
     tile: DraftTile | null;
     sections: readonly DraftSection[];
     zones: { id: number; name: string }[];
+    plantView: boolean;
     onPatch: (key: string, patch: TilePatch, field: string) => void;
     onMove: (key: string, sectionKey: string) => void;
   } = $props();
@@ -101,6 +103,14 @@
               {#each periods as p (p)}<option value={p}>{PERIOD_LABELS[p]}</option>{/each}
             </select>
           </label>
+        {/if}
+
+        {#if tile.kind === 'chart' && plantView}
+          <label class="flex min-h-10 items-center gap-2 text-sm font-medium">
+            <input type="checkbox" class="size-5" checked={tile.show_pi} onchange={(e) => onPatch(tile.key, { show_pi: e.currentTarget.checked }, 'show_pi')} />
+            I-Anteil zeigen
+          </label>
+          <p class="-mt-2 mb-0 text-xs text-muted-foreground">Zweite Achse von 0 bis 100 %; nur für Räume mit PI-Regler.</p>
         {/if}
 
         {#if tile.kind === 'note'}

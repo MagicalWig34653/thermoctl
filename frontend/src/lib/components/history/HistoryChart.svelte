@@ -69,6 +69,8 @@
   import { labelFits, markPath, solarDrawing, solarRuns } from '$lib/history/bands';
   import { historyWording, seriesList } from '$lib/history/wording';
   import { historyLimiter } from '$lib/history/shared';
+  import { shareAsPercent } from '$lib/operations/logic';
+  import { resetMarks } from '$lib/rooms/pi';
 
   let {
     zones,
@@ -79,6 +81,7 @@
     lazy = false,
     heading = 'h2',
     title = '',
+    showPi = true,
     onLoaded,
   }: {
     zones: { id: number; name: string }[];
@@ -92,6 +95,8 @@
     lazy?: boolean;
     heading?: 'h2' | 'h3';
     title?: string;
+    /** I-Anteil anfangs einblenden (Kacheln: Einstellung „I-Anteil zeigen“). */
+    showPi?: boolean;
     onLoaded?: (ms: number, controlArmed: boolean) => void;
   } = $props();
 
@@ -100,7 +105,6 @@
   // Zwei Fassungen derselben Beschriftungen (Anlagensicht und Wohnungssicht); die Zahlen sind gleich.
   const tenant = $derived(session.bootstrap?.ui_profile === 'tenant');
   const w = $derived(historyWording(tenant));
-  const series = $derived(seriesList(w));
   const setbackText = (b: { solar_setback_min_k: string | null; solar_setback_k: string | null }) =>
     formatSetbackRange(b.solar_setback_min_k, b.solar_setback_k, w.kUnit, w.setbackUnknown);
 
@@ -226,12 +230,18 @@
   const minSpanMs = $derived(Math.max(5, 5 * ((history?.limits.min_resolution_seconds ?? 60) / 60)) * 60_000);
 
   // -- Reihen ------------------------------------------------------------------------------
-  let flags = $state<SeriesFlags>({ ...DEFAULT_FLAGS });
+  let flags = $state<SeriesFlags>({ ...DEFAULT_FLAGS, pi: untrack(() => showPi) });
+  // Der Server bietet die Reihe nur an, wo sie etwas bedeutet (PI-Raum, Anlagensicht).
+  const piOffered = $derived(!tenant && Array.isArray(history?.pi_resets));
+  const series = $derived(seriesList(w, piOffered));
+  const piShown = $derived(piOffered && flags.pi);
+  const piText = (v: string | null) => shareAsPercent(v);
 
   // -- Geometrie ---------------------------------------------------------------------------
   let expanded = $state(false);
   const narrow = $derived(width < 520);
-  const M = $derived({ l: narrow ? 52 : 60, r: 14, t: 12, b: 28 });
+  // Rechts Platz für die zweite Achse (0 bis 100 %), sobald der I-Anteil gezeichnet wird.
+  const M = $derived({ l: narrow ? 52 : 60, r: piShown ? (narrow ? 40 : 48) : 14, t: 12, b: 28 });
   const height = $derived(expanded ? Math.max(320, viewportHeight - 330) : compact ? 190 : narrow ? 260 : 320);
   const plotW = $derived(Math.max(10, width - M.l - M.r));
   const plotH = $derived(Math.max(10, height - M.t - M.b));
@@ -241,6 +251,8 @@
 
   const scale = $derived(temperatureScale(temperatureValues(points, { start: view.from, end: view.to }, flags), compact ? 3 : 5));
   const yOf = (v: number) => M.t + (1 - (v - scale.low) / (scale.high - scale.low)) * plotH;
+  const yPi = (v: number) => M.t + (1 - v / 100) * plotH;
+  const piTicks = $derived(narrow || compact ? [0, 50, 100] : [0, 25, 50, 75, 100]);
   const xTicks = $derived(timeTicks(view.from, view.to, timezone, narrow ? 4 : compact ? 5 : 7));
   const heatH = $derived(plotH * 0.16);
 
@@ -248,7 +260,11 @@
   const effRuns = $derived(runs(points, (p) => p.effMax !== null && p.effMin !== null, []));
   const schedRuns = $derived(runs(points, (p) => p.schedMax !== null && p.schedMin !== null, []));
 
+  const piRuns = $derived(runs(points, (p) => p.pi !== null, gaps));
+  const marks = $derived(piShown ? resetMarks(history?.pi_resets ?? null, { start: view.from, end: view.to }) : []);
+
   const r1 = (n: number) => Math.round(n * 10) / 10;
+  const piPath = (idx: number[]) => idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xOf(points[i].t))},${r1(yPi(points[i].pi as number))}`).join('');
 
   function linePath(idx: number[]): string {
     return idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xOf(points[i].t))},${r1(yOf(points[i].temp as number))}`).join('');
@@ -300,6 +316,7 @@
   const readIdx = $derived(selected !== null && points[selected] ? selected : lastIdx);
   const reading = $derived(readIdx >= 0 ? points[readIdx] : null);
   const picked = $derived(selected !== null && points[selected] ? points[selected] : null);
+  const pickedResets = $derived(picked ? marks.filter((m) => m.t >= picked.start && m.t < picked.end) : []);
 
   const TIP_W = $derived(narrow ? 184 : 214);
   const tip = $derived(
@@ -433,10 +450,21 @@
       ? 'Zum Zoomen mit gedrückter Maustaste einen Bereich aufziehen (auch rückwärts), Doppelklick zeigt den Gesamtzeitraum, Esc bricht ab. Mit Pfeiltasten, Pos1 und Ende einzelne Punkte wählen.'
       : 'Tippen oder über das Diagramm wischen wählt einen Punkt, die Seite lässt sich dabei normal scrollen. Zum Eingrenzen den Zeitraum oben wählen.',
   );
-  const announce = $derived(selected !== null && keyboard && points[selected] ? describeBucket(points[selected].raw, whenOf(points[selected]), w.names) : '');
+  const announce = $derived(
+    selected !== null && keyboard && points[selected]
+      ? describeBucket(points[selected].raw, whenOf(points[selected]), w.names) +
+          (piShown ? ` I-Anteil ${piText(points[selected].raw.pi_integral)}.` : '') +
+          pickedResets.map((m) => ` I-Anteil zurückgesetzt: ${m.reason}`).join('')
+      : '',
+  );
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
+
+{#snippet resetKey()}
+  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5,0L10,5L5,10L0,5Z" fill="var(--h-pi)" /></svg>
+  I-Anteil zurückgesetzt
+{/snippet}
 
 <section
   bind:this={host}
@@ -594,6 +622,12 @@
             <dt class="flex items-center gap-1 text-muted-foreground">{tenant ? w.names.scheduled : 'Geplanter Sollwert'}<HelpTip term="planned" /></dt>
             <dd class="m-0 font-medium tabular-nums">{formatRange(reading.raw.scheduled_min_c, reading.raw.scheduled_max_c)}</dd>
           </div>
+          {#if piShown}
+            <div>
+              <dt class="flex items-center gap-1 text-muted-foreground">{w.names.pi}<HelpTip term="pi_integral" /></dt>
+              <dd class="m-0 font-medium tabular-nums" data-testid="readout-pi">{piText(reading.raw.pi_integral)}</dd>
+            </div>
+          {/if}
           {#if !compact}
             <div>
               <dt class="flex items-center gap-1 text-muted-foreground">{w.names.heating}<HelpTip term="heat_request" /></dt>
@@ -661,6 +695,12 @@
             <line x1={M.l} x2={M.l + plotW} y1={r1(yOf(v))} y2={r1(yOf(v))} stroke="var(--h-grid)" />
             <text x={M.l - 8} y={r1(yOf(v)) + 4} text-anchor="end">{temperatureTickLabel(v)}</text>
           {/each}
+          {#if piShown}
+            {#each piTicks as v (v)}
+              <line x1={M.l + plotW} x2={M.l + plotW + 4} y1={r1(yPi(v))} y2={r1(yPi(v))} stroke="var(--h-pi)" />
+              <text x={M.l + plotW + 7} y={r1(yPi(v)) + 4} text-anchor="start" class="hist-pi-label" data-testid="pi-axis">{v} %</text>
+            {/each}
+          {/if}
           {#each xTicks as tk (tk.t)}
             <line x1={r1(xOf(tk.t))} x2={r1(xOf(tk.t))} y1={M.t + plotH} y2={M.t + plotH + 4} stroke="var(--h-axis)" />
             <text x={r1(xOf(tk.t))} y={M.t + plotH + 18} text-anchor="middle">{tk.label}</text>
@@ -737,6 +777,19 @@
               {/each}
             {/if}
 
+            {#if piShown}
+              {#each piRuns as run (run[0])}
+                {#if run.length > 1}
+                  <path d={piPath(run)} fill="none" stroke="var(--h-pi)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" data-testid="pi-line" />
+                {:else}
+                  <circle cx={xOf(points[run[0]].t)} cy={yPi(points[run[0]].pi as number)} r="2.6" fill="var(--h-pi)" data-testid="pi-dot" />
+                {/if}
+              {/each}
+              {#each marks as m (m.t)}
+                <line x1={r1(xOf(m.t))} x2={r1(xOf(m.t))} y1={M.t} y2={M.t + plotH} stroke="var(--h-pi)" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.8" />
+              {/each}
+            {/if}
+
             <!-- Zoom-Auswahl -->
             {#if selection}
               <rect
@@ -758,6 +811,12 @@
             {/each}
           {/if}
 
+          {#each marks as m (m.t)}
+            <path d="M{r1(xOf(m.t))},{M.t + plotH - 11}l5.5,5.5l-5.5,5.5l-5.5,-5.5Z" fill="var(--h-pi)" stroke="var(--card)" stroke-width="1" data-testid="pi-reset-mark">
+              <title>I-Anteil zurückgesetzt: {m.reason}</title>
+            </path>
+          {/each}
+
           <line x1={M.l} x2={M.l + plotW} y1={M.t + plotH} y2={M.t + plotH} stroke="var(--h-axis)" opacity="0.5" />
 
           {#if picked}
@@ -767,6 +826,9 @@
             {/if}
             {#if picked.effMax !== null && flags.effective}
               <circle cx={xOf(picked.t)} cy={yOf(picked.effMax)} r="3.5" fill="var(--h-eff)" />
+            {/if}
+            {#if picked.pi !== null && piShown}
+              <circle cx={xOf(picked.t)} cy={yPi(picked.pi)} r="3.5" fill="var(--background)" stroke="var(--h-pi)" stroke-width="2" />
             {/if}
           {/if}
         </svg>
@@ -789,7 +851,9 @@
                 {#if flags.scheduled}<tr><td>{w.short.scheduled}</td><td class="text-right tabular-nums">{formatRange(picked.raw.scheduled_min_c, picked.raw.scheduled_max_c)}</td></tr>{/if}
                 {#if flags.heating}<tr><td>{w.short.heating}</td><td class="text-right tabular-nums">{formatHeat(picked.raw.heat_percent)}</td></tr>{/if}
                 {#if flags.solar}<tr><td>{w.short.solar}</td><td class="text-right tabular-nums">{setbackText(picked.raw)}</td></tr>{/if}
+                {#if piShown}<tr><td>{w.short.pi}</td><td class="text-right tabular-nums">{piText(picked.raw.pi_integral)}</td></tr>{/if}
               </tbody></table>
+              {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt:</strong> {m.reason}</div>{/each}
             {/if}
           </div>
         {/if}
@@ -812,6 +876,7 @@
               {:else if s.key === 'scheduled'}<span class="hist-sw" style="color:var(--h-sched);border-top-style:dashed"></span>
               {:else if s.key === 'effective'}<span class="hist-sw" style="color:var(--h-eff)"></span>
               {:else if s.key === 'heating'}<span class="hist-sw-box" style="background:var(--h-heat);opacity:.6"></span>
+              {:else if s.key === 'pi'}<span class="hist-sw" style="color:var(--h-pi)"></span>
               {:else}<span class="hist-sw-box" style="background:var(--h-solar)"></span>{/if}
               {s.label}
             </button>
@@ -823,12 +888,30 @@
             {w.legendShortMark}
           </li>
         {/if}
+        {#if marks.length > 0}
+          <li class="inline-flex min-h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">{@render resetKey()}</li>
+        {/if}
         <li class="inline-flex min-h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
           <span class="hist-sw-box" style="background:repeating-linear-gradient(45deg,var(--muted),var(--muted) 3px,var(--h-axis) 3px,var(--h-axis) 4px)"></span>
           Messlücke<HelpTip term="gap" />
         </li>
       </ul>
       {#if tenant}<p class="m-0 mt-1 px-2 text-xs text-muted-foreground" data-testid="legend-solar">{w.legendSolar}</p>{/if}
+    {:else if piOffered}
+      <!-- Flache Variante: nur der I-Anteil braucht eine Legende (zweite Achse), schaltbar. -->
+      <ul class="m-0 mt-2 flex list-none flex-wrap items-center gap-x-1 p-0" aria-label="Legende">
+        <li>
+          <button
+            type="button"
+            class="inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs hover:bg-muted {flags.pi ? '' : 'text-muted-foreground line-through opacity-70'}"
+            aria-pressed={flags.pi}
+            onclick={() => (flags.pi = !flags.pi)}
+          ><span class="hist-sw" style="color:var(--h-pi)"></span>{w.names.pi}</button>
+        </li>
+        {#if marks.length > 0}
+          <li class="inline-flex min-h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">{@render resetKey()}</li>
+        {/if}
+      </ul>
     {/if}
 
     <p id="{uid}-hint" class="m-0 mt-2 text-xs text-muted-foreground" data-testid="hint" data-input={finePointer ? 'mouse' : 'touch'}>
@@ -860,6 +943,7 @@
               <th scope="col" class="px-2 py-1.5">{w.short.effective}</th>
               <th scope="col" class="px-2 py-1.5">{w.short.heating}</th>
               <th scope="col" class="px-2 py-1.5">{w.short.solar}</th>
+              {#if piOffered}<th scope="col" class="px-2 py-1.5">{w.short.pi}</th>{/if}
             </tr>
           </thead>
           <tbody>
@@ -867,7 +951,7 @@
               <tr class="border-t">
                 <th scope="row" class="px-2 py-1 text-left font-normal whitespace-nowrap">{whenOf(p)}</th>
                 {#if p.rows === 0}
-                  <td colspan="6" class="px-2 py-1 text-muted-foreground">Messlücke – keine Messwerte</td>
+                  <td colspan={piOffered ? 7 : 6} class="px-2 py-1 text-muted-foreground">Messlücke – keine Messwerte</td>
                 {:else}
                   <td class="px-2 py-1">{formatCelsius(p.raw.temperature_c)}</td>
                   <td class="px-2 py-1">{formatRange(p.raw.temperature_min_c, p.raw.temperature_max_c)}</td>
@@ -875,6 +959,7 @@
                   <td class="px-2 py-1">{formatRange(p.raw.effective_min_c, p.raw.effective_max_c)}</td>
                   <td class="px-2 py-1">{formatHeat(p.raw.heat_percent)}</td>
                   <td class="px-2 py-1">{setbackText(p.raw)}</td>
+                  {#if piOffered}<td class="px-2 py-1">{piText(p.raw.pi_integral)}</td>{/if}
                 {/if}
               </tr>
             {/each}

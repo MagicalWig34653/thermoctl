@@ -35,7 +35,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain import change_log
+from thermoctl.domain import change_log, pi_view
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.fault import OK
 from thermoctl.domain.modes import DomainError, step_setpoint, update_setpoints
@@ -53,6 +53,7 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.services import cluster
+from thermoctl.web.shared.control import PI_FALLBACK_LABELS
 from thermoctl.web.shared.home_notice import home_notice
 from thermoctl.web.shared.zone_status import MINUTES_PER_DAY, zone_status_context
 
@@ -193,6 +194,41 @@ class ActionsOut(BaseModel):
     set_operating_mode: bool
 
 
+class PiResetOut(BaseModel):
+    at: str
+    reason: str | None
+    #: Lesbarer Grund (`web/shared/control.PI_FALLBACK_LABELS`); `null` ohne bekannten Grund.
+    reason_label: str | None
+
+
+class PiOut(BaseModel):
+    """I-Anteil des PI-Reglers, nur lesend. `integral` (0..1) ist `null`, solange für den
+    Raum noch kein Zustand gespeichert ist."""
+
+    integral: str | None
+    last_reset: PiResetOut | None
+
+
+def pi_reset_out(at: str, reason: str | None) -> PiResetOut:
+    label = None if reason is None else PI_FALLBACK_LABELS.get(reason)
+    return PiResetOut(at=at, reason=reason, reason_label=label)
+
+
+def _pi(
+    session: Session, principal: Principal, zone: Zone, state: ZoneState | None
+) -> PiOut | None:
+    """Anlagentechnik: nicht in der Wohnungssicht, und nur für Räume mit PI-Regler."""
+    if principal.ui_profile is not WebUiProfile.ADMIN or not zone.pi_enabled:
+        return None
+    reset = pi_view.last_reset(session, zone.id)
+    return PiOut(
+        integral=_dec(state.pi_integral) if state is not None else None,
+        last_reset=(
+            pi_reset_out(cast("str", _iso(reset.at)), reset.reason) if reset is not None else None
+        ),
+    )
+
+
 class RoomOut(BaseModel):
     id: int
     name: str
@@ -211,6 +247,8 @@ class RoomOut(BaseModel):
     plan_applies: bool
     day_track: list[DaySegmentOut]
     actions: ActionsOut
+    #: `null` in der Wohnungssicht und bei Räumen ohne PI-Regler.
+    pi: PiOut | None
 
 
 class ActuationOut(BaseModel):
@@ -488,6 +526,7 @@ def _rooms(
                     )
                     for segment in tracks.get(zone.id, [])
                 ],
+                pi=_pi(session, principal, zone, state),
                 actions=_actions(principal, zone),
             )
         )

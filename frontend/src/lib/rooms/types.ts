@@ -61,6 +61,18 @@ export interface Actions {
   set_operating_mode: boolean;
 }
 
+export interface PiReset {
+  at: string;
+  reason: string | null;
+  reason_label: string | null;
+}
+
+/** I-Anteil des PI-Reglers (0..1 als Dezimalzeichenkette), nur lesend. */
+export interface PiInfo {
+  integral: string | null;
+  last_reset: PiReset | null;
+}
+
 export interface Room {
   id: number;
   name: string;
@@ -78,6 +90,8 @@ export interface Room {
   plan_applies: boolean;
   day_track: DaySegment[];
   actions: Actions;
+  /** `null`: Wohnungssicht oder Raum ohne PI-Regler. */
+  pi: PiInfo | null;
 }
 
 export type ActuationState = 'dry_run' | 'armed_restart_missing' | 'live';

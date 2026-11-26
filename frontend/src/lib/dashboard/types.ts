@@ -13,7 +13,8 @@ export type TileKind =
   | 'system'
   | 'note'
   | 'shortcut'
-  | 'control';
+  | 'control'
+  | 'controller';
 export type Metric = 'rooms' | 'heating' | 'issues' | 'outdoor';
 export type Destination =
   | 'schedule'
@@ -45,6 +46,7 @@ export const TILE_KINDS: readonly TileKind[] = [
   'note',
   'shortcut',
   'control',
+  'controller',
 ];
 export const METRICS: readonly Metric[] = ['rooms', 'heating', 'issues', 'outdoor'];
 export const DESTINATIONS: readonly Destination[] = [
@@ -69,6 +71,8 @@ export interface Tile {
   metric: Metric | null;
   destination: Destination | null;
   note: string;
+  /** Nur Verlaufskachel: I-Anteil als eigene Reihe zeigen. */
+  show_pi: boolean;
 }
 
 export interface Section {

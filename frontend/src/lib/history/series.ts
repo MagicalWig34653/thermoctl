@@ -24,6 +24,8 @@ export interface Point {
   heat: number | null;
   /** > 0: Sonnenabsenkung wirkte; 0 oder `null`: keine bzw. unbekannt. */
   solar: number | null;
+  /** I-Anteil in Prozent (0..100); `null`: Lücke in dieser Reihe. */
+  pi: number | null;
   raw: Bucket;
 }
 
@@ -36,6 +38,12 @@ const num = (v: string | null): number | null => {
   if (v === null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+};
+
+/** Anteil 0..1 als Prozent, ohne Fließkomma-Reste. */
+const percent = (v: string | null): number | null => {
+  const n = num(v);
+  return n === null ? null : Math.round(n * 1_000_000) / 10_000;
 };
 
 export function parseTime(iso: string): number {
@@ -62,6 +70,7 @@ export function buildPoints(history: Pick<History, 'buckets' | 'resolution_secon
       effMax: empty ? null : num(b.effective_max_c),
       heat: empty ? null : b.heat_percent,
       solar: empty ? null : num(b.solar_setback_k),
+      pi: empty ? null : percent(b.pi_integral),
       raw: b,
     };
   });
@@ -212,6 +221,7 @@ export interface SeriesFlags {
   effective: boolean;
   heating: boolean;
   solar: boolean;
+  pi: boolean;
 }
 
 export const DEFAULT_FLAGS: SeriesFlags = {
@@ -221,6 +231,7 @@ export const DEFAULT_FLAGS: SeriesFlags = {
   effective: true,
   heating: true,
   solar: true,
+  pi: true,
 };
 
 export const SERIES: readonly { key: keyof SeriesFlags; label: string; description: string }[] = [

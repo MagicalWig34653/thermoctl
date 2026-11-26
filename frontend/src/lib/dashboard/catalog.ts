@@ -1,4 +1,4 @@
-// Die elf Kacheltypen: Beschriftung, Kategorie, was sie brauchen. Reine Darstellungsdaten.
+// Die zwölf Kacheltypen: Beschriftung, Kategorie, was sie brauchen. Reine Darstellungsdaten.
 // Ob eine Kachel gezeigt werden darf, entscheidet der Server bei jedem Abruf.
 
 import type { Destination, Metric, PeriodDays, TileKind, Width } from './types';
@@ -21,6 +21,8 @@ export interface CatalogEntry {
   needsZone: boolean;
   /** Nur in der Anlagensicht (Verwaltungsprofil) sinnvoll; der Server entscheidet endgültig. */
   adminOnly: boolean;
+  /** Anlagentechnik (I-Anteil): in der Wohnungssicht nicht in der Galerie. */
+  plantView?: boolean;
   keywords: string;
   defaultWidth: Width;
 }
@@ -35,6 +37,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   { kind: 'heating', name: 'Heizzeit', description: 'Wie lange ein Raum Wärme angefordert hat.', category: 'time', needsZone: true, adminOnly: false, keywords: 'heizanforderung dauer stunden', defaultWidth: 4 },
   { kind: 'devices', name: 'Gerätestatus', description: 'Zugang zu Sensoren und Aktoren.', category: 'plant', needsZone: false, adminOnly: true, keywords: 'sensor aktor geräte', defaultWidth: 4 },
   { kind: 'system', name: 'Anlagenstatus', description: 'Freigabe, Versand und Primärrolle als drei getrennte Zustände.', category: 'plant', needsZone: false, adminOnly: true, keywords: 'trockenlauf mqtt freigabe führung betrieb', defaultWidth: 6 },
+  { kind: 'controller', name: 'Regler', description: 'I-Anteil des PI-Reglers je Raum mit letztem Reset.', category: 'plant', needsZone: false, adminOnly: true, plantView: true, keywords: 'pi i-anteil integral integralanteil regler', defaultWidth: 4 },
   { kind: 'note', name: 'Notiz', description: 'Eigener Text auf der Übersicht, nur für dich.', category: 'own', needsZone: false, adminOnly: false, keywords: 'text erinnerung hinweis', defaultWidth: 4 },
   { kind: 'shortcut', name: 'Schnellzugriff', description: 'Eine häufig genutzte Seite direkt öffnen.', category: 'own', needsZone: false, adminOnly: false, keywords: 'link verknüpfung seite', defaultWidth: 4 },
 ];

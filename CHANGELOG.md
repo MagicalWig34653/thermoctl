@@ -9,6 +9,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (`c7e2a9f4d813`): Spalte `show_pi` an den Übersichtskacheln, neue Kachelart `controller` und ein Index auf dem Schattenprotokoll (bei großem Protokoll dauert der erste Start etwas länger). Beim Zurückstufen entfallen die Regler-Kacheln, die Spalte und der Index.
+
+### Neu
+
+- **I-Anteil des PI-Reglers anzeigen (nur lesend, nur Anlagenprofil):** Karte auf der Raumseite mit letztem Reset (Zeit und Grund), eigene Reihe im Verlauf mit Achse 0–100 % und Reset-Markern, Einstellung „I-Anteil zeigen“ der Verlaufskachel und neue Kachel „Regler“. Zurücksetzen und Setzen gibt es nicht.
+- Entscheidungen ohne PI-Rechnung (Fenster, Frostschutz, Sensorausfall, Ventilschutz, Haltephase, sicherer Anlauf) protokollieren jetzt den gehaltenen bzw. zurückgesetzten Integralanteil (`pi_integral_before`/`after`). Die Regelung selbst ist unverändert.
+
+---
+
 ## 0.25.0 — 2026-11-20
 
 **PI-Regelung (Beta) zum Praxistest: alle neuen Regeln sind standardmäßig aus.** Mit den Vorgaben verhält sich die Regelung (PI wie Ein/Aus) bitgleich wie in 0.24.0; ein Test vergleicht das Zyklus für Zyklus mit einer Kopie der alten Formel. Wer PI (Beta) nutzt, aktiviert die neuen Regeln je Raum selbst. **Nicht gemessen:** Die Wirksamkeit ist nur in einer Simulation und einem Replay (offene Schleife) gezeigt, nicht an der Anlage. Offen sind dort **Überschwingen nach Sonne ≤ +0,3 K** (Simulation: +0,6 bis +0,7 K) und **Zeit im Band ±0,2 K ≥ 80 %** auf der trägen Strecke (Simulation: etwa 76 %); I erreicht den nötigen Wert bei fallender Außentemperatur nur mit eingeschalteter Vorsteuerung innerhalb von 1,5 h. Praxisdaten nach dem Update stehen aus. Die Vorsteuerung ist mit **festem** Wert c (`pi_feedforward_gain`) umgesetzt, ein lernender Wert ist nicht enthalten; der Anti-Windup beim Annähern von unten (B) ist als Integraltrennung umgesetzt, nicht als Vorhersage.
