@@ -26,6 +26,7 @@ const bucket = (i: number, pi: string | null, rows = 60): Bucket => ({
   solar_setback_min_k: null,
   solar_setback_k: null,
   pi_integral: pi,
+  pi_break: false,
 });
 const build = (buckets: Bucket[]) => buildPoints({ buckets, resolution_seconds: 3600 });
 
@@ -113,4 +114,9 @@ test('Tooltip: der Reset gilt für sein Fach und für Zeiger knapp daneben (schm
   assert.equal(resetsAt(marks, at(10_400), 0).length, 0, 'Tastatur: nur das Fach selbst');
   assert.equal(resetsAt(marks, at(10_400), 600).length, 1, 'Zeiger: innerhalb der Fangweite');
   assert.equal(resetsAt(marks, at(10_800), 600).length, 0, 'außerhalb der Fangweite');
+});
+
+test('I-Anteil: der Server meldet einen Bruch (Zyklen ohne Wert zwischen zwei Fächern)', () => {
+  const points = build([bucket(0, '0.42'), { ...bucket(1, '0.61'), pi_break: true }, bucket(2, '0.62')]);
+  assert.deepEqual(runs(points, (p) => p.pi !== null, [], (p) => p.piBreak), [[0], [1, 2]]);
 });

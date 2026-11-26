@@ -23,6 +23,12 @@ Das Profil hängt an der Gruppe, nicht am Benutzer: thermoctl ordnet Benutzer sc
 heute Gruppen zu, und die Gruppe ist auch der Ort, an dem die Rechte hängen. Ein
 zweiter Zuordnungsweg nur für die Oberfläche wäre eine zweite Wahrheit darüber, wer
 wozu gehört.
+
+**Eine Ausnahme** (Vorgabe des Projektinhabers 2026-11-17, nach der Entscheidung oben): Die
+PI-Zahlen -- der I-Anteil und woraus er sich errechnen lässt -- sind Anlagentechnik und
+gehen nicht an Mieter-Profile (`domain.pi_view.visible_to`: Raumseite, Verlauf, Kacheln,
+Betriebsübersicht, MCP). Die Rechte werden zusätzlich geprüft; das Profil gibt auch hier
+niemandem etwas frei.
 """
 
 from enum import Enum

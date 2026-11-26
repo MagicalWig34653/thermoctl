@@ -39,7 +39,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import history_report
+from thermoctl.domain import history_report, pi_view
 from thermoctl.domain.audit_query import (
     ENTRIES_PER_PAGE,
     MAX_EXPORT_ROWS,
@@ -75,7 +75,6 @@ from thermoctl.domain.statistics import (
     relay_operations,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zone_history_chart import GAP
 from thermoctl.domain.zone_settings import ParameterOutOfRange
 from thermoctl.web.shared.changes import confirmation_token
@@ -185,6 +184,8 @@ class BucketOut(BaseModel):
     #: I-Anteil des PI-Reglers (0..1), letzter Wert im Fach; `null`: keiner aufgezeichnet
     #: oder nicht sichtbar (Wohnungssicht).
     pi_integral: str | None
+    #: Die I-Linie darf nicht mit dem Wert davor verbunden werden.
+    pi_break: bool
 
 
 class GapOut(BaseModel):
@@ -248,8 +249,7 @@ def _history(
     except history_report.ReportRangeError as exc:
         raise _invalid(str(exc), exc.field or "from") from None
     # Anlagentechnik: Die Wohnungssicht bekommt weder Werte noch Resets.
-    admin_ui = principal.ui_profile is WebUiProfile.ADMIN
-    offer_pi = admin_ui and (
+    offer_pi = pi_view.visible_to(principal) and (
         zone.pi_enabled
         or bool(report.pi_resets)
         or any(bucket.pi_integral is not None for bucket in report.buckets)
@@ -287,6 +287,7 @@ def _history(
                 solar_setback_min_k=_num(b.solar_setback_min_k),
                 solar_setback_k=_num(b.solar_setback_k),
                 pi_integral=_num(b.pi_integral) if offer_pi else None,
+                pi_break=offer_pi and b.pi_break,
             )
             for b in report.buckets
         ],

@@ -228,6 +228,42 @@ def test_a_tenant_sees_no_trace_of_the_integral(
     expect(page.get_by_text("I-Anteil")).to_have_count(0)
 
 
+def test_without_any_temperature_the_integral_and_its_reset_are_still_drawn(
+    admin_page: Page, live_server: LiveServer, zones: dict[str, int]
+) -> None:
+    """Sensorausfall: keine Messung, aber der Reset steht im Protokoll und gehört ins Bild."""
+    now = datetime.now(UTC).replace(tzinfo=None, second=0, microsecond=0)
+    with live_server.session() as session:
+        zone = create_schedule_zone(session, "Fühlerausfall")
+        zone.pi_enabled = True
+        for minute in range(180, -1, -1):
+            reset = minute == 90
+            session.add(
+                ShadowDecision(
+                    decided_at=now - timedelta(minutes=minute),
+                    zone_id=zone.id,
+                    setpoint_c=Decimal("21.0"),
+                    setpoint_reason="Zeitplan",
+                    would_heat=False,
+                    outcome_code="aus",
+                    reason="Sensorausfall.",
+                    pi_integral_after=Decimal("0.5") if minute > 90 else Decimal(0),
+                    pi_integrator_action=INTEGRATOR_RESET if reset else INTEGRATOR_CONTINUE,
+                    pi_reset_reason=RESET_REASON_NO_HEATING if reset else None,
+                )
+            )
+        session.commit()
+        zone_id = zone.id
+
+    admin_page.set_viewport_size({"width": 1280, "height": 900})
+    admin_page.goto(f"/app/raeume/{zone_id}")
+    history = _history_card(admin_page)
+
+    expect(history.get_by_test_id("pi-line").first).to_be_attached()
+    expect(history.get_by_test_id("pi-reset-mark")).to_have_count(1)
+    expect(history.get_by_test_id("temp-line")).to_have_count(0)
+
+
 def test_tapping_beside_a_reset_mark_on_a_phone_names_the_reason(
     browser: Browser, live_server: LiveServer, zones: dict[str, int]
 ) -> None:

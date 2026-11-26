@@ -22,6 +22,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain import change_log as change_log_domain
+from thermoctl.domain import pi_view
 from thermoctl.domain.authz import (
     Forbidden,
     has_permission,
@@ -357,6 +358,7 @@ def shadow_decisions(
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         .limit(count)
     )
+    pi_numbers = pi_view.visible_to(principal)
     return [
         {
             "moment": _moment(row.decided_at),
@@ -368,12 +370,13 @@ def shadow_decisions(
             "reason": row.reason,
             "requested_controller": row.requested_controller,
             "effective_controller": row.effective_controller,
-            # PI-Zahlen als Anteile von 0 bis 1 (None ohne PI-Rechnung in diesem Zyklus).
-            "pi_integral_before": _decimal(row.pi_integral_before),
-            "pi_integral_after": _decimal(row.pi_integral_after),
-            "pi_raw_duty": _decimal(row.pi_raw_duty),
-            "pi_frozen_duty": _decimal(row.pi_frozen_duty),
-            "pi_feedforward_duty": _decimal(row.pi_feedforward_duty),
+            # PI-Zahlen als Anteile von 0 bis 1 (None ohne PI-Rechnung in diesem Zyklus
+            # und für Wohnungskonten: Anlagentechnik).
+            "pi_integral_before": _decimal(row.pi_integral_before) if pi_numbers else None,
+            "pi_integral_after": _decimal(row.pi_integral_after) if pi_numbers else None,
+            "pi_raw_duty": _decimal(row.pi_raw_duty) if pi_numbers else None,
+            "pi_frozen_duty": _decimal(row.pi_frozen_duty) if pi_numbers else None,
+            "pi_feedforward_duty": _decimal(row.pi_feedforward_duty) if pi_numbers else None,
         }
         for row in rows
     ]

@@ -235,6 +235,10 @@
   const piOffered = $derived(!tenant && Array.isArray(history?.pi_resets));
   const series = $derived(seriesList(w, piOffered));
   const piShown = $derived(piOffered && flags.pi);
+  // Ohne jede Temperatur (Sensorausfall) bleiben I-Anteil und seine Resets trotzdem sichtbar.
+  const hasData = $derived(
+    hasMeasurements || (piOffered && (points.some((p) => p.pi !== null) || Boolean(history?.pi_resets?.length))),
+  );
   const piText = (v: string | null) => shareAsPercent(v);
 
   // -- Geometrie ---------------------------------------------------------------------------
@@ -260,7 +264,7 @@
   const effRuns = $derived(runs(points, (p) => p.effMax !== null && p.effMin !== null, []));
   const schedRuns = $derived(runs(points, (p) => p.schedMax !== null && p.schedMin !== null, []));
 
-  const piRuns = $derived(runs(points, (p) => p.pi !== null, gaps));
+  const piRuns = $derived(runs(points, (p) => p.pi !== null, gaps, (p) => p.piBreak));
   const marks = $derived(piShown ? resetMarks(history?.pi_resets ?? null, { start: view.from, end: view.to }) : []);
 
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -678,7 +682,7 @@
       }}
       data-testid="chart-surface"
     >
-      {#if !hasMeasurements}
+      {#if !hasData}
         <div class="grid h-full place-items-center rounded-md border border-dashed text-center text-sm text-muted-foreground">
           <p class="m-0 px-4">Für diesen Zeitraum liegen keine Messwerte vor{visibleGaps.length ? ' (Messlücke).' : '.'}</p>
         </div>

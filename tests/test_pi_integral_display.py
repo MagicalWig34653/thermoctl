@@ -9,13 +9,20 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_settings, create_zone, sensor_status_of, user_with_permissions
+from tests.helpers import (
+    create_settings,
+    create_zone,
+    sensor_status_of,
+    user_with_permissions,
+)
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
+from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.dashboard import DashboardTile
@@ -31,6 +38,7 @@ from thermoctl.domain.pi_control import (
     RESET_REASON_WINDOW_OPEN,
 )
 from thermoctl.domain.ui_profile import WebUiProfile
+from thermoctl.mcp import server as mcp_server
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
 
@@ -122,6 +130,7 @@ def test_room_shows_the_live_integral_and_the_newest_reset(
     now = _now()
     _row(session, zone, now - timedelta(days=5), after="0", action=INTEGRATOR_RESET,
          reason=RESET_REASON_WINDOW_OPEN)
+    _row(session, zone, now - timedelta(days=3), after="0.1", action=INTEGRATOR_CONTINUE)
     _row(session, zone, now - timedelta(days=2), after="0", action=INTEGRATOR_RESET,
          reason=RESET_REASON_NO_HEATING)
     # Jünger, aber kein Reset: angehalten zählt nicht, auch mit Grund.
@@ -187,6 +196,64 @@ def test_tenant_profile_never_sees_the_integral(
     assert {bucket["pi_integral"] for bucket in history["buckets"]} == {None}
 
 
+PI_NUMBERS = (
+    "pi_integral_before",
+    "pi_integral_after",
+    "pi_raw_duty",
+    "pi_frozen_duty",
+    "pi_feedforward_duty",
+)
+
+
+def _decision_with_pi_numbers(session: Session, zone: Zone) -> None:
+    _row(session, zone, _now() - timedelta(minutes=1), after="0.42", action=INTEGRATOR_HOLD)
+    decision = session.scalars(select(ShadowDecision)).one()
+    decision.pi_integral_before = Decimal("0.42")
+    decision.pi_raw_duty = Decimal("0.56")
+    decision.pi_frozen_duty = Decimal("0.55")
+    decision.pi_feedforward_duty = Decimal("0.10")
+    session.flush()
+
+
+@pytest.mark.parametrize("profile", [WebUiProfile.ADMIN, WebUiProfile.TENANT])
+def test_operation_overview_gives_pi_numbers_to_the_plant_view_only(
+    client_als: Als, tenant_client: Als, session: Session, profile: WebUiProfile
+) -> None:
+    """Die Rohwerte verraten den I-Anteil: Alle PI-Zahlen sind Anlagentechnik."""
+    create_settings(session)
+    zone = _pi_zone(session, "betrieb")
+    _decision_with_pi_numbers(session, zone)
+    client = (client_als if profile is WebUiProfile.ADMIN else tenant_client)(READ)
+
+    response = client.get("/ui-api/operation")
+
+    assert response.status_code == 200, response.text
+    decision = response.json()["rooms"][0]["decision"]
+    assert decision["reason"] == "Test"
+    visible = [decision[key] is not None for key in PI_NUMBERS]
+    assert visible == [profile is WebUiProfile.ADMIN] * len(PI_NUMBERS)
+
+
+@pytest.mark.parametrize("profile", [WebUiProfile.ADMIN, WebUiProfile.TENANT])
+def test_mcp_decisions_give_pi_numbers_to_the_plant_view_only(
+    session: Session, profile: WebUiProfile
+) -> None:
+    zone = _pi_zone(session, "mcp")
+    _decision_with_pi_numbers(session, zone)
+    owner = user_with_permissions(session, f"mcp-{profile.value}", [("zone.read", zone.id)])
+    for group in session.scalars(select(AccessGroup)):
+        group.ui_profile = profile.value
+    _token, plaintext = issue_token(
+        session, owner, "diagnose", [("zone.read", zone.id)], None
+    )
+
+    [entry] = mcp_server.shadow_decisions(session, plaintext, zone.id, 1)
+
+    assert entry["reason"] == "Test"
+    visible = [entry[key] is not None for key in PI_NUMBERS]
+    assert visible == [profile is WebUiProfile.ADMIN] * len(PI_NUMBERS)
+
+
 # -- Verlauf ------------------------------------------------------------------------------
 
 
@@ -241,6 +308,51 @@ def test_history_marks_a_run_of_reset_rows_once(client_als: Als, session: Sessio
     assert [reset["at"] for reset in body["pi_resets"]] == [
         (start + timedelta(minutes=minute)).isoformat() + "+00:00" for minute in (1, 4)
     ]
+
+
+def test_history_breaks_the_line_where_rows_without_a_value_lie_between(
+    client_als: Als, session: Session
+) -> None:
+    """Zwei Fächer mit Wert, dazwischen Zyklen ohne: nichts darf sie verbinden."""
+    create_settings(session)
+    zone = _pi_zone(session, "bruch")
+    start = _now() - timedelta(hours=1)
+    _row(session, zone, start + timedelta(minutes=1), after="0.40", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, start + timedelta(minutes=2), after="0.42", action=INTEGRATOR_CONTINUE)
+    for minute in range(3, 16):  # 13 Zyklen ohne I-Wert, über die Fachgrenze hinweg
+        _row(session, zone, start + timedelta(minutes=minute))
+    _row(session, zone, start + timedelta(minutes=16), after="0.61", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, start + timedelta(minutes=21), after="0.62", action=INTEGRATOR_CONTINUE)
+    # Lange Pause ganz ohne Zeilen: auch das trennt.
+    _row(session, zone, start + timedelta(minutes=39), after="0.70", action=INTEGRATOR_CONTINUE)
+
+    body = _history(client_als(READ), zone, start, start + timedelta(hours=1))
+
+    assert [b["pi_break"] for b in body["buckets"]] == [False, True, False, True, False, False]
+
+
+def test_room_and_history_date_a_run_of_reset_rows_the_same(
+    client_als: Als, session: Session
+) -> None:
+    create_settings(session)
+    zone = _pi_zone(session, "gleich")
+    start = _now() - timedelta(hours=1)
+    for minute, action in (
+        (1, INTEGRATOR_RESET),
+        (2, INTEGRATOR_CONTINUE),
+        (3, INTEGRATOR_RESET),
+        (4, INTEGRATOR_RESET),
+    ):
+        _row(session, zone, start + timedelta(minutes=minute), after="0", action=action,
+             reason=RESET_REASON_NO_HEATING)
+    client = client_als(READ)
+    began = (start + timedelta(minutes=3)).isoformat() + "+00:00"
+
+    assert _room(client, zone)["pi"]["last_reset"]["at"] == began
+    assert _history(client, zone, start, start + timedelta(hours=1))["pi_resets"][-1]["at"] == began
+    # Beginnt der Ausschnitt mitten in der Folge, liegt ihr Anfang außerhalb: keine Marke.
+    later = _history(client, zone, start + timedelta(minutes=4), start + timedelta(hours=1))
+    assert later["pi_resets"] == []
 
 
 def test_history_offers_the_series_only_where_it_means_something(

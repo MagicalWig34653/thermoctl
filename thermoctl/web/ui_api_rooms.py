@@ -218,7 +218,7 @@ def _pi(
     session: Session, principal: Principal, zone: Zone, state: ZoneState | None
 ) -> PiOut | None:
     """Anlagentechnik: nicht in der Wohnungssicht, und nur für Räume mit PI-Regler."""
-    if principal.ui_profile is not WebUiProfile.ADMIN or not zone.pi_enabled:
+    if not pi_view.visible_to(principal) or not zone.pi_enabled:
         return None
     reset = pi_view.last_reset(session, zone.id)
     return PiOut(

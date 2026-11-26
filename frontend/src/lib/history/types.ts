@@ -22,6 +22,8 @@ export interface Bucket {
   solar_setback_k: string | null;
   /** I-Anteil (0..1), letzter Wert im Fach; `null`: keiner aufgezeichnet oder nicht sichtbar. */
   pi_integral: string | null;
+  /** Die I-Linie darf nicht mit dem Wert davor verbunden werden. */
+  pi_break: boolean;
 }
 
 export interface Gap {

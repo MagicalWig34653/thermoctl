@@ -26,6 +26,8 @@ export interface Point {
   solar: number | null;
   /** I-Anteil in Prozent (0..100); `null`: Lücke in dieser Reihe. */
   pi: number | null;
+  /** Vor diesem I-Wert reißt die Linie (Server: Zeilen ohne Wert dazwischen). */
+  piBreak: boolean;
   raw: Bucket;
 }
 
@@ -71,6 +73,7 @@ export function buildPoints(history: Pick<History, 'buckets' | 'resolution_secon
       heat: empty ? null : b.heat_percent,
       solar: empty ? null : num(b.solar_setback_k),
       pi: empty ? null : percent(b.pi_integral),
+      piBreak: b.pi_break,
       raw: b,
     };
   });
@@ -97,12 +100,14 @@ function gapBetween(a: Point, b: Point, gaps: readonly Span[]): boolean {
 /**
  * Zusammenhängende Läufe von Punktindizes, in denen `has` gilt. Ein Lauf endet an jedem Punkt
  * ohne Wert, an jedem Fach ohne Zeile dazwischen und an jeder Lücke, die der Server zwischen
- * zwei Fachmitten meldet -- auch wenn beide Fächer Zeilen haben.
+ * zwei Fachmitten meldet -- auch wenn beide Fächer Zeilen haben. `breaksBefore` trennt eine
+ * Reihe zusätzlich vor einem Punkt (I-Anteil).
  */
 export function runs(
   points: readonly Point[],
   has: (p: Point) => boolean,
   gaps: readonly Span[] = [],
+  breaksBefore: (p: Point) => boolean = () => false,
 ): number[][] {
   const out: number[][] = [];
   let current: number[] = [];
@@ -114,7 +119,7 @@ export function runs(
       continue;
     }
     const prev = current.length ? points[current[current.length - 1]] : null;
-    if (prev && gapBetween(prev, p, gaps)) {
+    if (prev && (gapBetween(prev, p, gaps) || breaksBefore(p))) {
       out.push(current);
       current = [];
     }

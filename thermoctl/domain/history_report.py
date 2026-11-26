@@ -33,6 +33,7 @@ from math import ceil, floor
 
 from sqlalchemy.orm import Session
 
+from thermoctl.domain import pi_view
 from thermoctl.domain.zone_history_chart import GAP, Sample, read_samples
 from thermoctl.domain.zone_history_series import _mean
 
@@ -70,6 +71,9 @@ class Bucket:
     #: I-Anteil (0..1): der letzte im Fach aufgezeichnete Wert, kein Mittel (er ist ein
     #: Zustand). `None`: keine Zeile des Fachs trägt einen -- Lücke, nichts fortgeschrieben.
     pi_integral: float | None
+    #: Vor dem I-Wert dieses Fachs reißt die Linie: Seit dem vorigen Wert gab es Zeilen
+    #: ohne I-Wert oder eine Pause länger als `GAP`. Die Fachwerte allein zeigen das nicht.
+    pi_break: bool
 
 
 @dataclass(frozen=True)
@@ -135,10 +139,17 @@ def history_report(
         # Eine Zeile genau auf `end` gehört noch ins letzte Fach.
         index = min(floor((sample.at - start).total_seconds() / width), count - 1)
         grouped.setdefault(index, []).append(sample)
+    broken = {
+        min(floor((at - start).total_seconds() / width), count - 1) for at in _pi_breaks(samples)
+    }
     buckets = tuple(
-        _bucket(start + timedelta(seconds=index * width), grouped.get(index, []))
+        _bucket(start + timedelta(seconds=index * width), grouped.get(index, []), index in broken)
         for index in range(count)
     )
+    resets = _resets(samples)
+    # Lief die erste Folge schon vor dem Ausschnitt, liegt ihr Reset außerhalb.
+    if samples and samples[0].pi_reset and pi_view.run_began_before(session, zone_id, start):
+        resets = resets[1:]
     return HistoryReport(
         start=_aware(start),
         end=_aware(end),
@@ -146,8 +157,23 @@ def history_report(
         rows=len(samples),
         buckets=buckets,
         gaps=_gaps(samples, start, min(end, now)),
-        pi_resets=_resets(samples),
+        pi_resets=resets,
     )
+
+
+def _pi_breaks(samples: list[Sample]) -> list[datetime]:
+    """Zeitpunkte der I-Werte, die nicht mit dem Wert davor verbunden werden dürfen."""
+    found: list[datetime] = []
+    previous: datetime | None = None
+    missing = False
+    for sample in samples:
+        if sample.pi_integral is None:
+            missing = previous is not None
+            continue
+        if previous is not None and (missing or sample.at - previous > GAP):
+            found.append(sample.at)
+        previous, missing = sample.at, False
+    return found
 
 
 def _resets(samples: list[Sample]) -> tuple[Reset, ...]:
@@ -172,7 +198,7 @@ def _gaps(samples: list[Sample], start: datetime, limit: datetime) -> tuple[Gap,
     return tuple(found)
 
 
-def _bucket(at: datetime, samples: list[Sample]) -> Bucket:
+def _bucket(at: datetime, samples: list[Sample], pi_break: bool) -> Bucket:
     temperatures = [s.temperature for s in samples if s.temperature is not None]
     scheduled = [s.scheduled for s in samples if s.scheduled is not None]
     effective = [s.effective for s in samples if s.effective is not None]
@@ -195,6 +221,7 @@ def _bucket(at: datetime, samples: list[Sample]) -> Bucket:
         solar_setback_min_k=min(setbacks) if setbacks else None,
         solar_setback_k=max(setbacks) if setbacks else None,
         pi_integral=integrals[-1] if integrals else None,
+        pi_break=pi_break,
     )
 
 

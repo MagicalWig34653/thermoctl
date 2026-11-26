@@ -52,9 +52,9 @@ from thermoctl.db.models.dashboard import (
     TileKind,
     Width,
 )
+from thermoctl.domain import pi_view
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.ui_api_rooms import RoomApiError, _RoomsRoute
 
 router = APIRouter(
@@ -135,7 +135,7 @@ class _Access:
     @property
     def plant_view(self) -> bool:
         """Sieht dieses Konto Anlagentechnik (I-Anteil)? Wohnungskonten nicht."""
-        return self.principal.ui_profile is WebUiProfile.ADMIN
+        return pi_view.visible_to(self.principal)
 
     def permitted(self, code: str | None) -> bool:
         if code is None:
