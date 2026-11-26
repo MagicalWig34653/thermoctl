@@ -1,4 +1,4 @@
-"""Migration `c7e2a9f4d813`: Kachelart `controller`, `show_pi` je Kachel, Index für den letzten Reset.
+"""Migration `c7e2a9f4d813`: Kachelart `controller`, `show_pi`, Index für den letzten Reset.
 
 Der Rückweg entfernt nur die neuen Kacheln; alles Übrige bleibt stehen.
 """
