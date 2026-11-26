@@ -855,7 +855,7 @@
                 {#if flags.solar}<tr><td>{w.short.solar}</td><td class="text-right tabular-nums">{setbackText(picked.raw)}</td></tr>{/if}
                 {#if piShown}<tr><td>{w.short.pi}</td><td class="text-right tabular-nums">{piText(picked.raw.pi_integral)}</td></tr>{/if}
               </tbody></table>
-              {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt:</strong> {m.reason}</div>{/each}
+              {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt ({formatMoment(m.t, timezone)}):</strong> {m.reason}</div>{/each}
             {/if}
           </div>
         {/if}

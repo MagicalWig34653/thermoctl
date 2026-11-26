@@ -245,6 +245,9 @@ def test_tapping_beside_a_reset_mark_on_a_phone_names_the_reason(
         box = mark.bounding_box()
         assert box is not None
         page.touchscreen.tap(box["x"] + box["width"] / 2 + 5, box["y"] - 40)
-        expect(history.get_by_test_id("tooltip-reset")).to_contain_text(REASON)
+        reset = history.get_by_test_id("tooltip-reset")
+        expect(reset).to_contain_text(REASON)
+        # Der angetippte Punkt kann neben dem Reset liegen: dessen eigene Uhrzeit steht dabei.
+        expect(reset).to_contain_text(re.compile(r"zurückgesetzt \(.*\d\d:\d\d Uhr\)"))
     finally:
         context.close()
