@@ -37,7 +37,7 @@
     viewRange,
     type Point,
     type SeriesFlags,
-    clampTime,
+    piTime,
   } from '$lib/history/series';
   import { formatMoment, temperatureScale, temperatureTickLabel, timeTicks } from '$lib/history/scales';
   import { tooltipPlacement } from '$lib/history/tooltip';
@@ -269,8 +269,8 @@
   const marks = $derived(piShown ? resetMarks(history?.pi_resets ?? null, { start: view.from, end: view.to }) : []);
 
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  const xPi = (t: number) => xOf(clampTime(t, { start: view.from, end: view.to }));
-  const piPath = (idx: number[]) => idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xPi(points[i].t))},${r1(yPi(points[i].pi as number))}`).join('');
+  const xPi = (p: Point) => xOf(piTime(p, { start: view.from, end: view.to }));
+  const piPath = (idx: number[]) => idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xPi(points[i]))},${r1(yPi(points[i].pi as number))}`).join('');
 
   function linePath(idx: number[]): string {
     return idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xOf(points[i].t))},${r1(yOf(points[i].temp as number))}`).join('');
@@ -790,10 +790,10 @@
                 {#if run.length > 1}
                   <path d={piPath(run)} fill="none" stroke="var(--h-pi)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" data-testid="pi-line" />
                 {:else}
-                  <circle cx={xPi(points[run[0]].t)} cy={yPi(points[run[0]].pi as number)} r="2.6" fill="var(--h-pi)" data-testid="pi-dot" />
+                  <circle cx={xPi(points[run[0]])} cy={yPi(points[run[0]].pi as number)} r="2.6" fill="var(--h-pi)" data-testid="pi-dot" />
                 {/if}
               {/each}
-              {#each marks as m (m.t)}
+              {#each marks as m}
                 <line x1={r1(xOf(m.t))} x2={r1(xOf(m.t))} y1={M.t} y2={M.t + plotH} stroke="var(--h-pi)" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.8" />
               {/each}
             {/if}
@@ -819,7 +819,7 @@
             {/each}
           {/if}
 
-          {#each marks as m (m.t)}
+          {#each marks as m}
             <path d="M{r1(xOf(m.t))},{M.t + plotH - 11}l5.5,5.5l-5.5,5.5l-5.5,-5.5Z" fill="var(--h-pi)" stroke="var(--card)" stroke-width="1" data-testid="pi-reset-mark">
               <title>I-Anteil zurückgesetzt: {m.reason}</title>
             </path>
@@ -836,7 +836,7 @@
               <circle cx={xOf(picked.t)} cy={yOf(picked.effMax)} r="3.5" fill="var(--h-eff)" />
             {/if}
             {#if picked.pi !== null && piShown}
-              <circle cx={xOf(picked.t)} cy={yPi(picked.pi)} r="3.5" fill="var(--background)" stroke="var(--h-pi)" stroke-width="2" />
+              <circle cx={xPi(picked)} cy={yPi(picked.pi)} r="3.5" fill="var(--background)" stroke="var(--h-pi)" stroke-width="2" />
             {/if}
           {/if}
         </svg>
@@ -862,7 +862,7 @@
                 {#if piShown}<tr><td>{w.short.pi}</td><td class="text-right tabular-nums">{piText(picked.raw.pi_integral)}</td></tr>{/if}
               </tbody></table>
             {/if}
-            {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt ({formatMoment(m.t, timezone)}):</strong> {m.reason}</div>{/each}
+            {#each pickedResets as m}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt ({formatMoment(m.t, timezone)}):</strong> {m.reason}</div>{/each}
           </div>
         {/if}
       {/if}

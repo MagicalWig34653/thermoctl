@@ -36,8 +36,15 @@ def visible_to(principal: Principal) -> bool:
     return principal.ui_profile is WebUiProfile.ADMIN
 
 
-#: Der Tastgrad im Begründungstext (`shadow_run._pi_reason_text`), auch abgeschnitten.
-_DUTY_IN_TEXT = re.compile(r"Tastgrad[ \d,.-]*%?(?:, )?")
+#: Der Tastgrad im PI-Teil eines Begründungstexts (`shadow_run._pi_reason_text`), auch in
+#: den älteren Fassungen des aufbewahrten Protokolls („Fehler“, ungerundeter Anteil) und auf
+#: die Spaltenbreite abgeschnitten. Nur hinter diesem Vorspann: Gerätenamen und andere
+#: Begründungen bleiben unangetastet.
+_DUTY_IN_TEXT = re.compile(
+    r"(PI-Regelung: (?:Abweichung|Fehler) [-+\d.,Ee]+ ?K)"
+    r", T(?:astgrad(?: (?:[-+]?\d+(?:[.,]\d*)?(?:E[-+]?\d*)?)?(?: ?%)?)?"
+    r"|a(?:s(?:t(?:g(?:ra?)?)?)?)?$|$)"
+)
 
 
 @overload
@@ -49,7 +56,7 @@ def reason_for(principal: Principal, reason: str | None) -> str | None:
     Anlagensicht fehlt der Tastgrad, aus dem sich der I-Anteil errechnen lässt."""
     if reason is None or visible_to(principal):
         return reason
-    return _DUTY_IN_TEXT.sub("", reason)
+    return _DUTY_IN_TEXT.sub(r"\1", reason)
 
 
 def _earlier(at: datetime, row_id: int) -> ColumnElement[bool]:

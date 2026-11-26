@@ -4,7 +4,7 @@ import { CATALOG, entryOf } from '../src/lib/dashboard/catalog.ts';
 import { makeTile, updateTile } from '../src/lib/dashboard/draft.ts';
 import { tileTitle } from '../src/lib/dashboard/tiles.ts';
 import { TILE_KINDS } from '../src/lib/dashboard/types.ts';
-import { buildPoints, clampTime, DEFAULT_FLAGS, gapSpans, runs } from '../src/lib/history/series.ts';
+import { buildPoints, DEFAULT_FLAGS, gapSpans, piTime, runs } from '../src/lib/history/series.ts';
 import { seriesList, TECHNICAL, TENANT } from '../src/lib/history/wording.ts';
 import type { Bucket } from '../src/lib/history/types.ts';
 import { controllerRows, lastResetText, resetMarks, resetsAt } from '../src/lib/rooms/pi.ts';
@@ -121,7 +121,12 @@ test('I-Anteil: der Server meldet einen Bruch (Zyklen ohne Wert zwischen zwei F�
   assert.deepEqual(runs(points, (p) => p.pi !== null, [], (p) => p.piBreak), [[0], [1, 2]]);
 });
 
-test('I-Anteil: ein Punkt, dessen Fachmitte außerhalb des Ausschnitts liegt, bleibt am Rand sichtbar', () => {
+test('I-Anteil: angeschnittenes Fach bleibt am Rand sichtbar, ein Fach außerhalb wandert nicht hinein', () => {
   const view = { start: 1000, end: 2000 };
-  assert.deepEqual([900, 1500, 2300].map((t) => clampTime(t, view)), [1000, 1500, 2000]);
+  const at = (start: number, end: number) => piTime({ t: (start + end) / 2, start, end }, view);
+  assert.equal(at(800, 1100), 1000, 'links angeschnitten');
+  assert.equal(at(1400, 1600), 1500, 'ganz innen');
+  assert.equal(at(1900, 2700), 2000, 'rechts angeschnitten');
+  assert.equal(at(2100, 2300), 2200, 'ganz rechts: bleibt draußen (abgeschnitten)');
+  assert.equal(at(500, 700), 600, 'ganz links: bleibt draußen');
 });

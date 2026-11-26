@@ -48,9 +48,13 @@ const percent = (v: string | null): number | null => {
   return n === null ? null : Math.round(n * 1_000_000) / 10_000;
 };
 
-/** Zeitpunkt auf den Ausschnitt begrenzt: Die Mitte eines angeschnittenen Fachs kann außerhalb liegen. */
-export function clampTime(t: number, view: Span): number {
-  return Math.min(Math.max(t, view.start), view.end);
+/**
+ * Wo der I-Punkt eines Fachs sitzt: in der Fachmitte, bei einem angeschnittenen Fach höchstens
+ * am Rand des Ausschnitts. Ein Fach außerhalb (beim Nachladen noch das alte) wandert nicht hinein.
+ */
+export function piTime(p: { t: number; start: number; end: number }, view: Span): number {
+  if (p.end <= view.start || p.start >= view.end) return p.t;
+  return Math.min(Math.max(p.t, view.start), view.end);
 }
 
 export function parseTime(iso: string): number {

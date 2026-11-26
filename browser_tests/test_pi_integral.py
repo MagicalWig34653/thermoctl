@@ -305,6 +305,58 @@ def test_the_reset_reason_also_shows_when_the_pointer_rests_on_a_gap_beside_it(
     expect(history.get_by_test_id("tooltip-reset")).to_contain_text(REASON)
 
 
+def test_two_resets_with_the_same_timestamp_do_not_break_the_chart(
+    admin_page: Page, live_server: LiveServer, zones: dict[str, int]
+) -> None:
+    """Reset, Fortsetzen, Reset zur selben Zeit: zwei Ereignisse, das Diagramm steht."""
+    now = datetime.now(UTC).replace(tzinfo=None, second=0, microsecond=0)
+    errors: list[str] = []
+    admin_page.on("pageerror", lambda exc: errors.append(str(exc)))
+    with live_server.session() as session:
+        zone = create_schedule_zone(session, "Doppelter Reset")
+        zone.pi_enabled = True
+        at = now - timedelta(hours=2)
+        for moment, action in (
+            (at - timedelta(minutes=5), INTEGRATOR_CONTINUE),
+            (at, INTEGRATOR_RESET),
+            (at, INTEGRATOR_CONTINUE),
+            (at, INTEGRATOR_RESET),
+            (at + timedelta(minutes=5), INTEGRATOR_CONTINUE),
+        ):
+            session.add(
+                ShadowDecision(
+                    decided_at=moment,
+                    zone_id=zone.id,
+                    temperature_c=Decimal("20.0"),
+                    setpoint_c=Decimal("21.0"),
+                    setpoint_reason="Zeitplan",
+                    would_heat=False,
+                    outcome_code="aus",
+                    reason="Test.",
+                    pi_integral_after=Decimal("0.2"),
+                    pi_integrator_action=action,
+                    pi_reset_reason=RESET_REASON_NO_HEATING
+                    if action == INTEGRATOR_RESET
+                    else None,
+                )
+            )
+        session.commit()
+        zone_id = zone.id
+
+    admin_page.set_viewport_size({"width": 1280, "height": 900})
+    admin_page.goto(f"/app/raeume/{zone_id}")
+    history = _history_card(admin_page)
+
+    expect(history.get_by_test_id("pi-reset-mark")).to_have_count(2)
+    mark = history.get_by_test_id("pi-reset-mark").first
+    mark.scroll_into_view_if_needed()
+    box = mark.bounding_box()
+    assert box is not None
+    admin_page.mouse.move(box["x"] + box["width"] / 2, box["y"] - 40)
+    expect(history.get_by_test_id("tooltip-reset")).to_have_count(2)
+    assert errors == []
+
+
 def test_tapping_beside_a_reset_mark_on_a_phone_names_the_reason(
     browser: Browser, live_server: LiveServer, zones: dict[str, int]
 ) -> None:

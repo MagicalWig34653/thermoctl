@@ -463,6 +463,39 @@ def test_room_and_history_date_a_run_of_reset_rows_the_same(
     assert later["pi_resets"] == []
 
 
+@pytest.mark.parametrize(
+    ("stored", "shown"),
+    [
+        # Gerätenamen und andere Begründungen bleiben, wie sie sind.
+        ("Tastgrad 2: Notbetrieb-Übergabe.", "Tastgrad 2: Notbetrieb-Übergabe."),
+        ("Kennlinie: Tastgrad 40 % laut Profil.", "Kennlinie: Tastgrad 40 % laut Profil."),
+        # Auf 255 Zeichen abgeschnitten, mitten im Wort: kein Rest bleibt stehen.
+        ("PI-Regelung: Abweichung 0,50 K, Tastgr", "PI-Regelung: Abweichung 0,50 K"),
+        # Ältere Fassungen im aufbewahrten Protokoll.
+        (
+            "PI-Regelung: Fehler 0.5000K, Tastgrad 0.5500, pi_fenster -> Heizen.",
+            "PI-Regelung: Fehler 0.5000K, pi_fenster -> Heizen.",
+        ),
+        (
+            "PI-Regelung: Fehler -0.5K, Tastgrad 0E-7, pi_fenster -> Aus.",
+            "PI-Regelung: Fehler -0.5K, pi_fenster -> Aus.",
+        ),
+        (
+            "Sollwert nicht erreicht. PI-Regelung: Abweichung -0,50 K, Tastgrad 0,0 %, x -> Aus.",
+            "Sollwert nicht erreicht. PI-Regelung: Abweichung -0,50 K, x -> Aus.",
+        ),
+    ],
+)
+def test_only_the_duty_of_a_pi_reason_is_removed(stored: str, shown: str) -> None:
+    tenant = Principal(user_id=1, token_id=None, grants=frozenset(),
+                       ui_profile=WebUiProfile.TENANT)
+    admin = Principal(user_id=1, token_id=None, grants=frozenset(),
+                      ui_profile=WebUiProfile.ADMIN)
+
+    assert pi_view.reason_for(tenant, stored) == shown
+    assert pi_view.reason_for(admin, stored) == stored
+
+
 def test_rows_with_the_same_timestamp_are_ordered_like_the_history(
     client_als: Als, session: Session
 ) -> None:
