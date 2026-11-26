@@ -367,7 +367,7 @@ def shadow_decisions(
             "setpoint_reason": row.setpoint_reason,
             "would_heat": row.would_heat,
             "outcome": row.outcome_code,
-            "reason": row.reason,
+            "reason": pi_view.reason_for(principal, row.reason),
             "requested_controller": row.requested_controller,
             "effective_controller": row.effective_controller,
             # PI-Zahlen als Anteile von 0 bis 1 (None ohne PI-Rechnung in diesem Zyklus
@@ -394,7 +394,7 @@ def _moment_utc(value: datetime | None) -> str | None:
     return None if value is None else value.replace(tzinfo=UTC).isoformat()
 
 
-def _command_entry(entry: CommandLogEntry) -> dict[str, object]:
+def _command_entry(principal: Principal, entry: CommandLogEntry) -> dict[str, object]:
     """Ein Eintrag des Schaltprotokolls in der Form, die `device_commands` und
     `temperature_history` gemeinsam ausgeben."""
     return {
@@ -406,7 +406,7 @@ def _command_entry(entry: CommandLogEntry) -> dict[str, object]:
         "payload": entry.payload,
         "outcome": entry.outcome,
         "error": entry.error,
-        "reason": entry.reason,
+        "reason": pi_view.reason_for(principal, entry.reason),
         "entry_kind": entry.entry_kind,
         "simulated": entry.simulated,
     }
@@ -437,7 +437,7 @@ def device_commands(
         outcome=outcome,
         limit=limit,
     )
-    return [_command_entry(entry) for entry in entries]
+    return [_command_entry(principal, entry) for entry in entries]
 
 
 SWITCHING_LOG_NOTE = "Das Schaltprotokoll braucht das Recht audit.read; dieses Token hat es nicht."
@@ -496,7 +496,7 @@ def temperature_history(
             limit=log_limit,
             zone_ids=None if has_permission(principal, "audit.read") else [zone.id],
         )
-        switching_log = [_command_entry(entry) for entry in entries]
+        switching_log = [_command_entry(principal, entry) for entry in entries]
         note = None
     return {
         "zone": zone.name,

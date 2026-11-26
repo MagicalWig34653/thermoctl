@@ -811,7 +811,7 @@ def _cluster(session: Session, row: Any) -> ClusterOut:
 
 
 def _operation_rooms(
-    session: Session, zones: list[Zone], now: datetime, row: Any, *, pi_numbers: bool
+    session: Session, zones: list[Zone], now: datetime, row: Any, principal: Principal
 ) -> list[OperationRoomOut]:
     states = {
         zone_id: state
@@ -822,6 +822,8 @@ def _operation_rooms(
         )
     }
     decisions = latest_decisions_by_zone(session, [zone.id for zone in zones])
+
+    pi_numbers = pi_view.visible_to(principal)
 
     def plant(value: Decimal | None) -> str | None:
         """PI-Zahlen sind Anlagentechnik (`pi_view.visible_to`)."""
@@ -846,7 +848,7 @@ def _operation_rooms(
                         would_heat=decision.would_heat,
                         previous_would_heat=decision.previous_would_heat,
                         outcome_code=decision.outcome_code,
-                        reason=decision.reason,
+                        reason=pi_view.reason_for(principal, decision.reason),
                         temperature_c=_dec(decision.temperature_c),
                         setpoint_c=_dec(decision.setpoint_c),
                         setpoint_reason=decision.setpoint_reason,
@@ -933,9 +935,7 @@ def show_operation(request: Request, principal: Prin, session: Sess) -> Operatio
         actuation=_operation_actuation(request, session, row),
         cluster=_cluster(session, row),
         may_arm=has_permission(principal, "control.arm"),
-        rooms=_operation_rooms(
-            session, zones, utcnow(), row, pi_numbers=pi_view.visible_to(principal)
-        ),
+        rooms=_operation_rooms(session, zones, utcnow(), row, principal),
     )
 
 

@@ -264,6 +264,47 @@ def test_without_any_temperature_the_integral_and_its_reset_are_still_drawn(
     expect(history.get_by_test_id("temp-line")).to_have_count(0)
 
 
+def test_the_reset_reason_also_shows_when_the_pointer_rests_on_a_gap_beside_it(
+    admin_page: Page, live_server: LiveServer, zones: dict[str, int]
+) -> None:
+    """Reset, danach keine Zeilen mehr: knapp daneben liegt ein leeres Fach."""
+    now = datetime.now(UTC).replace(tzinfo=None, second=0, microsecond=0)
+    with live_server.session() as session:
+        zone = create_schedule_zone(session, "Reset vor Lücke")
+        zone.pi_enabled = True
+        for minute in range(600, 299, -1):
+            reset = minute == 300
+            session.add(
+                ShadowDecision(
+                    decided_at=now - timedelta(minutes=minute),
+                    zone_id=zone.id,
+                    temperature_c=Decimal("20.0"),
+                    setpoint_c=Decimal("21.0"),
+                    setpoint_reason="Zeitplan",
+                    would_heat=False,
+                    outcome_code="aus",
+                    reason="Test.",
+                    pi_integral_after=Decimal(0) if reset else Decimal("0.5"),
+                    pi_integrator_action=INTEGRATOR_RESET if reset else INTEGRATOR_CONTINUE,
+                    pi_reset_reason=RESET_REASON_NO_HEATING if reset else None,
+                )
+            )
+        session.commit()
+        zone_id = zone.id
+
+    admin_page.set_viewport_size({"width": 1280, "height": 900})
+    admin_page.goto(f"/app/raeume/{zone_id}")
+    history = _history_card(admin_page)
+    mark = history.get_by_test_id("pi-reset-mark")
+    mark.scroll_into_view_if_needed()
+    box = mark.bounding_box()
+    assert box is not None
+    admin_page.mouse.move(box["x"] + box["width"] / 2 + 4, box["y"] - 40)
+
+    expect(history.get_by_test_id("tooltip")).to_contain_text("Messlücke")
+    expect(history.get_by_test_id("tooltip-reset")).to_contain_text(REASON)
+
+
 def test_tapping_beside_a_reset_mark_on_a_phone_names_the_reason(
     browser: Browser, live_server: LiveServer, zones: dict[str, int]
 ) -> None:

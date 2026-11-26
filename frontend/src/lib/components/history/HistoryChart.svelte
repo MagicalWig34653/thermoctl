@@ -37,6 +37,7 @@
     viewRange,
     type Point,
     type SeriesFlags,
+    clampTime,
   } from '$lib/history/series';
   import { formatMoment, temperatureScale, temperatureTickLabel, timeTicks } from '$lib/history/scales';
   import { tooltipPlacement } from '$lib/history/tooltip';
@@ -268,7 +269,8 @@
   const marks = $derived(piShown ? resetMarks(history?.pi_resets ?? null, { start: view.from, end: view.to }) : []);
 
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  const piPath = (idx: number[]) => idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xOf(points[i].t))},${r1(yPi(points[i].pi as number))}`).join('');
+  const xPi = (t: number) => xOf(clampTime(t, { start: view.from, end: view.to }));
+  const piPath = (idx: number[]) => idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xPi(points[i].t))},${r1(yPi(points[i].pi as number))}`).join('');
 
   function linePath(idx: number[]): string {
     return idx.map((i, k) => `${k ? 'L' : 'M'}${r1(xOf(points[i].t))},${r1(yOf(points[i].temp as number))}`).join('');
@@ -788,7 +790,7 @@
                 {#if run.length > 1}
                   <path d={piPath(run)} fill="none" stroke="var(--h-pi)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" data-testid="pi-line" />
                 {:else}
-                  <circle cx={xOf(points[run[0]].t)} cy={yPi(points[run[0]].pi as number)} r="2.6" fill="var(--h-pi)" data-testid="pi-dot" />
+                  <circle cx={xPi(points[run[0]].t)} cy={yPi(points[run[0]].pi as number)} r="2.6" fill="var(--h-pi)" data-testid="pi-dot" />
                 {/if}
               {/each}
               {#each marks as m (m.t)}
@@ -859,8 +861,8 @@
                 {#if flags.solar}<tr><td>{w.short.solar}</td><td class="text-right tabular-nums">{setbackText(picked.raw)}</td></tr>{/if}
                 {#if piShown}<tr><td>{w.short.pi}</td><td class="text-right tabular-nums">{piText(picked.raw.pi_integral)}</td></tr>{/if}
               </tbody></table>
-              {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt ({formatMoment(m.t, timezone)}):</strong> {m.reason}</div>{/each}
             {/if}
+            {#each pickedResets as m (m.t)}<div class="mt-1" data-testid="tooltip-reset"><strong>I-Anteil zurückgesetzt ({formatMoment(m.t, timezone)}):</strong> {m.reason}</div>{/each}
           </div>
         {/if}
       {/if}

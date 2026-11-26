@@ -6,10 +6,12 @@ das nur nach mehr als 24 h ohne Heizanforderung; ältere Zeilen tragen auch ande
 Die Aufbewahrungsfrist des Protokolls begrenzt, wie weit zurück ein Reset bekannt ist.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import overload
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.state import ShadowDecision
@@ -34,12 +36,36 @@ def visible_to(principal: Principal) -> bool:
     return principal.ui_profile is WebUiProfile.ADMIN
 
 
+#: Der Tastgrad im Begründungstext (`shadow_run._pi_reason_text`), auch abgeschnitten.
+_DUTY_IN_TEXT = re.compile(r"Tastgrad[ \d,.-]*%?(?:, )?")
+
+
+@overload
+def reason_for(principal: Principal, reason: str) -> str: ...
+@overload
+def reason_for(principal: Principal, reason: str | None) -> str | None: ...
+def reason_for(principal: Principal, reason: str | None) -> str | None:
+    """Ein Begründungstext der Regelung, wie dieser Principal ihn lesen darf: ohne
+    Anlagensicht fehlt der Tastgrad, aus dem sich der I-Anteil errechnen lässt."""
+    if reason is None or visible_to(principal):
+        return reason
+    return _DUTY_IN_TEXT.sub("", reason)
+
+
+def _earlier(at: datetime, row_id: int) -> ColumnElement[bool]:
+    """Vor der Zeile (`decided_at`, `id`) -- dieselbe Reihenfolge wie im Verlauf."""
+    return or_(
+        ShadowDecision.decided_at < at,
+        and_(ShadowDecision.decided_at == at, ShadowDecision.id < row_id),
+    )
+
+
 def run_began_before(session: Session, zone_id: int, moment: datetime) -> bool:
     """Ist die letzte Zeile der Zone vor `moment` schon ein Reset?"""
     previous = session.execute(
         select(ShadowDecision.pi_integrator_action)
         .where(ShadowDecision.zone_id == zone_id, ShadowDecision.decided_at < moment)
-        .order_by(ShadowDecision.decided_at.desc())
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         .limit(1)
     ).first()
     return previous is not None and previous[0] == INTEGRATOR_RESET
@@ -50,27 +76,38 @@ def last_reset(session: Session, zone_id: int) -> PiReset | None:
     `ix_shadow_decision_zone_integrator_decided`). Eine ununterbrochene Folge von
     Reset-Zeilen ist ein Reset und trägt wie im Verlauf Zeit und Grund ihrer ersten
     Zeile. Rechte prüft der Adapter."""
-    resets = select(ShadowDecision.decided_at, ShadowDecision.pi_reset_reason).where(
+    resets = select(
+        ShadowDecision.decided_at, ShadowDecision.pi_reset_reason, ShadowDecision.id
+    ).where(
         ShadowDecision.zone_id == zone_id,
         ShadowDecision.pi_integrator_action == INTEGRATOR_RESET,
     )
-    newest = session.execute(resets.order_by(ShadowDecision.decided_at.desc()).limit(1)).first()
+    newest = session.execute(
+        resets.order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc()).limit(1)
+    ).first()
     if newest is None:
         return None
     boundary = session.execute(
-        select(ShadowDecision.decided_at)
+        select(ShadowDecision.decided_at, ShadowDecision.id)
         .where(
             ShadowDecision.zone_id == zone_id,
-            ShadowDecision.decided_at < newest[0],
+            _earlier(newest[0], newest[2]),
             or_(
                 ShadowDecision.pi_integrator_action.is_(None),
                 ShadowDecision.pi_integrator_action != INTEGRATOR_RESET,
             ),
         )
-        .order_by(ShadowDecision.decided_at.desc())
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         .limit(1)
-    ).scalar()
+    ).first()
     if boundary is not None:
-        resets = resets.where(ShadowDecision.decided_at > boundary)
-    first = session.execute(resets.order_by(ShadowDecision.decided_at).limit(1)).one()
+        resets = resets.where(
+            or_(
+                ShadowDecision.decided_at > boundary[0],
+                and_(ShadowDecision.decided_at == boundary[0], ShadowDecision.id > boundary[1]),
+            )
+        )
+    first = session.execute(
+        resets.order_by(ShadowDecision.decided_at, ShadowDecision.id).limit(1)
+    ).one()
     return PiReset(at=first[0], reason=first[1])

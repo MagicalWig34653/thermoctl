@@ -4,7 +4,7 @@ import { CATALOG, entryOf } from '../src/lib/dashboard/catalog.ts';
 import { makeTile, updateTile } from '../src/lib/dashboard/draft.ts';
 import { tileTitle } from '../src/lib/dashboard/tiles.ts';
 import { TILE_KINDS } from '../src/lib/dashboard/types.ts';
-import { buildPoints, DEFAULT_FLAGS, gapSpans, runs } from '../src/lib/history/series.ts';
+import { buildPoints, clampTime, DEFAULT_FLAGS, gapSpans, runs } from '../src/lib/history/series.ts';
 import { seriesList, TECHNICAL, TENANT } from '../src/lib/history/wording.ts';
 import type { Bucket } from '../src/lib/history/types.ts';
 import { controllerRows, lastResetText, resetMarks, resetsAt } from '../src/lib/rooms/pi.ts';
@@ -119,4 +119,9 @@ test('Tooltip: der Reset gilt für sein Fach und für Zeiger knapp daneben (schm
 test('I-Anteil: der Server meldet einen Bruch (Zyklen ohne Wert zwischen zwei Fächern)', () => {
   const points = build([bucket(0, '0.42'), { ...bucket(1, '0.61'), pi_break: true }, bucket(2, '0.62')]);
   assert.deepEqual(runs(points, (p) => p.pi !== null, [], (p) => p.piBreak), [[0], [1, 2]]);
+});
+
+test('I-Anteil: ein Punkt, dessen Fachmitte außerhalb des Ausschnitts liegt, bleibt am Rand sichtbar', () => {
+  const view = { start: 1000, end: 2000 };
+  assert.deepEqual([900, 1500, 2300].map((t) => clampTime(t, view)), [1000, 1500, 2000]);
 });

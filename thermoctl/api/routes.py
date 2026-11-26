@@ -59,6 +59,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain import pi_view
 from thermoctl.domain.authz import (
     Forbidden,
     principal_for_token,
@@ -692,7 +693,7 @@ def device_commands(
             payload=entry.payload,
             outcome=entry.outcome,
             error=entry.error,
-            reason=entry.reason,
+            reason=pi_view.reason_for(principal, entry.reason),
             entry_kind=entry.entry_kind,
             simulated=entry.simulated,
         )

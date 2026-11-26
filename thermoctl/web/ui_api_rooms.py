@@ -499,7 +499,7 @@ def _rooms(
                     DecisionOut(
                         would_heat=decision.would_heat,
                         outcome_code=decision.outcome_code,
-                        reason=decision.reason,
+                        reason=pi_view.reason_for(principal, decision.reason),
                         decided_at=cast("str", _iso(decision.decided_at)),
                         planned_setpoint_c=_dec(decision.scheduled_setpoint_c),
                     )

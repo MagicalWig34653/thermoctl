@@ -40,6 +40,7 @@ from thermoctl.db.models.device import (
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome, DeviceCapability, DeviceRole
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain import pi_view
 from thermoctl.domain.authz import (
     Forbidden,
     ZoneScope,
@@ -995,7 +996,7 @@ def set_button(
 # -- Schaltprotokoll (R072) --------------------------------------------------------------
 
 
-def _command(entry: CommandLogEntry) -> Json:
+def _command(principal: Principal, entry: CommandLogEntry) -> Json:
     return {
         "id": entry.id,
         "sent_at": _iso(entry.sent_at),
@@ -1007,7 +1008,7 @@ def _command(entry: CommandLogEntry) -> Json:
         "payload": entry.payload,
         "outcome": entry.outcome,
         "error": entry.error,
-        "reason": entry.reason,
+        "reason": pi_view.reason_for(principal, entry.reason),
         "simulated": entry.simulated,
     }
 
@@ -1080,7 +1081,7 @@ def show_device_commands(
         "page": number,
         "page_size": ENTRIES_PER_PAGE,
         "has_more": len(fetched) > ENTRIES_PER_PAGE,
-        "entries": [_command(entry) for entry in fetched[:ENTRIES_PER_PAGE]],
+        "entries": [_command(principal, entry) for entry in fetched[:ENTRIES_PER_PAGE]],
         "zone_names": zone_names,
         "outcomes": [{"code": code, "label": label} for code, label in outcomes],
         "outcome_labels": outcome_labels,

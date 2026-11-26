@@ -48,6 +48,11 @@ const percent = (v: string | null): number | null => {
   return n === null ? null : Math.round(n * 1_000_000) / 10_000;
 };
 
+/** Zeitpunkt auf den Ausschnitt begrenzt: Die Mitte eines angeschnittenen Fachs kann außerhalb liegen. */
+export function clampTime(t: number, view: Span): number {
+  return Math.min(Math.max(t, view.start), view.end);
+}
+
 export function parseTime(iso: string): number {
   return new Date(iso).getTime();
 }

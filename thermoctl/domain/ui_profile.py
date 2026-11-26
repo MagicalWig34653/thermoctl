@@ -27,8 +27,9 @@ wozu gehört.
 **Eine Ausnahme** (Vorgabe des Projektinhabers 2026-11-17, nach der Entscheidung oben): Die
 PI-Zahlen -- der I-Anteil und woraus er sich errechnen lässt -- sind Anlagentechnik und
 gehen nicht an Mieter-Profile (`domain.pi_view.visible_to`: Raumseite, Verlauf, Kacheln,
-Betriebsübersicht, MCP). Die Rechte werden zusätzlich geprüft; das Profil gibt auch hier
-niemandem etwas frei.
+Betriebsübersicht, MCP) -- auch nicht als Tastgrad im Begründungstext von Regelentscheidung
+und Schaltprotokoll (`pi_view.reason_for`). Die Rechte werden zusätzlich geprüft; das Profil
+gibt auch hier niemandem etwas frei.
 """
 
 from enum import Enum

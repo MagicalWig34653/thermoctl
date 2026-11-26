@@ -27,9 +27,10 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.dashboard import DashboardTile
 from thermoctl.db.models.identity import AccessGroup
+from thermoctl.db.models.sensor_failure import ActuatorDecision
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import dashboard_templates
+from thermoctl.domain import dashboard_templates, pi_view
 from thermoctl.domain.pi_control import (
     INTEGRATOR_CONTINUE,
     INTEGRATOR_HOLD,
@@ -37,8 +38,10 @@ from thermoctl.domain.pi_control import (
     RESET_REASON_NO_HEATING,
     RESET_REASON_WINDOW_OPEN,
 )
+from thermoctl.domain.principal import Principal
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.mcp import server as mcp_server
+from thermoctl.services.shadow_run import _pi_reason_text
 
 Als = Callable[[list[tuple[str, int | None]]], TestClient]
 
@@ -254,6 +257,111 @@ def test_mcp_decisions_give_pi_numbers_to_the_plant_view_only(
     assert visible == [profile is WebUiProfile.ADMIN] * len(PI_NUMBERS)
 
 
+def _pi_reason() -> str:
+    return _pi_reason_text(Decimal("0.50"), Decimal("0.55"), "pi_fenster", True)
+
+
+@pytest.mark.parametrize("profile", [WebUiProfile.ADMIN, WebUiProfile.TENANT])
+def test_the_duty_in_the_reason_text_is_for_the_plant_view_only(
+    client_als: Als, tenant_client: Als, session: Session, profile: WebUiProfile
+) -> None:
+    """Der Tastgrad im Begründungstext verrät den I-Anteil genauso wie die Zahlenfelder."""
+    create_settings(session)
+    zone = _pi_zone(session, "begruendung")
+    _row(session, zone, _now() - timedelta(minutes=1), after="0.42")
+    session.scalars(select(ShadowDecision)).one().reason = _pi_reason()
+    session.flush()
+    client = (client_als if profile is WebUiProfile.ADMIN else tenant_client)(READ)
+
+    texts = [
+        client.get("/ui-api/operation").json()["rooms"][0]["decision"]["reason"],
+        client.get("/ui-api/rooms").json()["rooms"][0]["decision"]["reason"],
+        _room(client, zone)["decision"]["reason"],
+    ]
+
+    for text in texts:
+        assert "Abweichung 0,50 K" in text and "Heizen" in text
+        assert ("55,0" in text) is (profile is WebUiProfile.ADMIN), text
+
+
+@pytest.mark.parametrize("profile", [WebUiProfile.ADMIN, WebUiProfile.TENANT])
+def test_the_command_log_and_mcp_give_the_duty_to_the_plant_view_only(
+    client_als: Als,
+    tenant_client: Als,
+    client: TestClient,
+    session: Session,
+    profile: WebUiProfile,
+) -> None:
+    create_settings(session)
+    zone = _pi_zone(session, "protokoll")
+    rights: list[tuple[str, int | None]] = [("zone.read", None), ("audit.read", None)]
+    web = (client_als if profile is WebUiProfile.ADMIN else tenant_client)(rights)
+    _row(session, zone, _now() - timedelta(minutes=1), after="0.42")
+    session.scalars(select(ShadowDecision)).one().reason = _pi_reason()
+    session.add(
+        ActuatorDecision(
+            decided_at=_now(),
+            zone_name=zone.display_name,
+            device_name="Aktor",
+            action="no_write",
+            reason_code="pi",
+            reason=_pi_reason(),
+            simulated=True,
+            profile_version=1,
+        )
+    )
+    owner = user_with_permissions(session, f"protokoll-{profile.value}", rights)
+    for group in session.scalars(select(AccessGroup)):
+        group.ui_profile = profile.value
+    _token, plaintext = issue_token(session, owner, "diagnose", rights, None)
+    session.flush()
+
+    ui = web.get("/ui-api/device-commands")
+    assert ui.status_code == 200, ui.text
+    rest = client.get(
+        "/api/v1/device-commands", headers={"Authorization": f"Bearer {plaintext}"}
+    )
+    assert rest.status_code == 200, rest.text
+    texts = {
+        "ui-api": [entry["reason"] for entry in ui.json()["entries"]],
+        "rest": [entry["reason"] for entry in rest.json()],
+        "mcp": [str(e["reason"]) for e in mcp_server.device_commands(session, plaintext)],
+        "mcp-verlauf": [
+            str(e["reason"])
+            for e in mcp_server.temperature_history(session, plaintext, zone.id)["switching_log"]
+        ],
+        "mcp-entscheidung": [
+            str(mcp_server.shadow_decisions(session, plaintext, zone.id, 1)[0]["reason"])
+        ],
+    }
+
+    for source, found in texts.items():
+        relevant = [text for text in found if "PI-Regelung" in text]
+        if source != "mcp-verlauf":
+            assert relevant, (source, found)
+        for text in relevant:
+            assert ("55,0" in text) is (profile is WebUiProfile.ADMIN), (source, text)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "PI-Regelung: Abweichung 0,50 K, Tastgrad 55,0 %, pi_fenster -> Heizen.",
+        # Auf 255 Zeichen abgeschnitten: mitten in der Zahl.
+        "PI-Regelung: Abweichung 0,50 K, Tastgrad 55,",
+        "PI-Regelung: Abweichung 0,50 K, Tastgrad 100,0 %",
+    ],
+)
+def test_the_duty_is_removed_even_from_cut_off_texts(stored: str) -> None:
+    tenant = Principal(user_id=1, token_id=None, grants=frozenset(),
+                       ui_profile=WebUiProfile.TENANT)
+
+    text = pi_view.reason_for(tenant, stored)
+
+    assert "Tastgrad" not in text and "55" not in text and "100" not in text
+    assert text.startswith("PI-Regelung: Abweichung 0,50 K")
+
+
 # -- Verlauf ------------------------------------------------------------------------------
 
 
@@ -353,6 +461,44 @@ def test_room_and_history_date_a_run_of_reset_rows_the_same(
     # Beginnt der Ausschnitt mitten in der Folge, liegt ihr Anfang außerhalb: keine Marke.
     later = _history(client, zone, start + timedelta(minutes=4), start + timedelta(hours=1))
     assert later["pi_resets"] == []
+
+
+def test_rows_with_the_same_timestamp_are_ordered_like_the_history(
+    client_als: Als, session: Session
+) -> None:
+    """Bei gleichem Zeitstempel entscheidet die Reihenfolge des Eintrags -- an beiden Stellen."""
+    create_settings(session)
+    zone = _pi_zone(session, "gleichzeitig")
+    start = _now() - timedelta(hours=1)
+    _row(session, zone, start + timedelta(minutes=1), after="0", action=INTEGRATOR_RESET,
+         reason=RESET_REASON_WINDOW_OPEN)
+    same = start + timedelta(minutes=5)
+    _row(session, zone, same, after="0.2", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, same, after="0", action=INTEGRATOR_RESET, reason=RESET_REASON_NO_HEATING)
+    client = client_als(READ)
+
+    newest = _room(client, zone)["pi"]["last_reset"]
+    history = _history(client, zone, start, start + timedelta(hours=1))["pi_resets"]
+
+    assert newest == history[-1]
+    assert newest["reason"] == RESET_REASON_NO_HEATING
+
+
+def test_a_new_reset_at_the_window_edge_survives_tied_predecessors(
+    client_als: Als, session: Session
+) -> None:
+    create_settings(session)
+    zone = _pi_zone(session, "rand")
+    start = _now() - timedelta(hours=1)
+    before = start - timedelta(minutes=1)
+    _row(session, zone, before, after="0", action=INTEGRATOR_RESET, reason=RESET_REASON_NO_HEATING)
+    _row(session, zone, before, after="0.2", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, start + timedelta(minutes=1), after="0", action=INTEGRATOR_RESET,
+         reason=RESET_REASON_NO_HEATING)
+
+    body = _history(client_als(READ), zone, start, start + timedelta(hours=1))
+
+    assert len(body["pi_resets"]) == 1
 
 
 def test_history_offers_the_series_only_where_it_means_something(
