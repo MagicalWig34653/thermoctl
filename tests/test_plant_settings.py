@@ -20,7 +20,7 @@ from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.control import (
+from thermoctl.domain.plant_settings import (
     LIMITS,
     ControlError,
     arm,
@@ -219,7 +219,7 @@ def test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema() -> 
     guard that would catch an accidental merge of `WINDOW_ALARM_LIMITS` into it.
     """
     from thermoctl.api.schemas import ControlResponse
-    from thermoctl.domain.control import WINDOW_ALARM_LIMITS
+    from thermoctl.domain.plant_settings import WINDOW_ALARM_LIMITS
 
     for field in WINDOW_ALARM_LIMITS:
         assert field not in LIMITS
@@ -234,7 +234,7 @@ def test_the_window_temp_drop_thresholds_never_reach_limits_or_the_rest_schema()
     """Same guard as `test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema`
     above, for the temperature-based window detection's own six thresholds."""
     from thermoctl.api.schemas import ControlResponse
-    from thermoctl.domain.control import WINDOW_TEMP_DROP_LIMITS
+    from thermoctl.domain.plant_settings import WINDOW_TEMP_DROP_LIMITS
 
     for field in WINDOW_TEMP_DROP_LIMITS:
         assert field not in LIMITS
@@ -248,7 +248,7 @@ def test_the_dial_override_settings_never_reach_limits_or_the_rest_schema() -> N
     the REST `PUT /control/defaults` requires every field of it -- merging the two
     dial settings in would have turned them into mandatory fields for every client."""
     from thermoctl.api.schemas import ControlResponse, WriteControl
-    from thermoctl.domain.control import TEMPORARY_SETPOINT_LIMITS
+    from thermoctl.domain.plant_settings import TEMPORARY_SETPOINT_LIMITS
 
     assert set(TEMPORARY_SETPOINT_LIMITS) == {
         "temporary_setpoint_until_next_switch",
@@ -272,7 +272,7 @@ def test_the_dial_override_settings_never_reach_limits_or_the_rest_schema() -> N
 def test_the_dial_override_settings_accept_their_bounds(
     field: str, text: str, expected: Decimal
 ) -> None:
-    from thermoctl.domain.control import (
+    from thermoctl.domain.plant_settings import (
         TEMPORARY_SETPOINT_GANZZAHLIG,
         TEMPORARY_SETPOINT_LIMITS,
     )
@@ -297,7 +297,7 @@ def test_the_dial_override_settings_accept_their_bounds(
 def test_the_dial_override_settings_refuse_values_outside_their_bounds(
     field: str, text: str
 ) -> None:
-    from thermoctl.domain.control import (
+    from thermoctl.domain.plant_settings import (
         TEMPORARY_SETPOINT_GANZZAHLIG,
         TEMPORARY_SETPOINT_LIMITS,
     )

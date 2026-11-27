@@ -225,12 +225,12 @@ def test_a_custom_plausibility_cap_is_honoured() -> None:
 def test_the_plausibility_cap_never_masks_the_highest_configurable_threshold() -> None:
     """The invariant the module docstring's derivation depends on: the cap
     must sit strictly above the highest `window_temp_drop_threshold_k` an
-    operator could ever configure (`domain.control.WINDOW_TEMP_DROP_LIMITS`),
+    operator could ever configure (`domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`),
     or a legitimately configured, maximally-conservative threshold could be
     silently defeated by the very cap meant to protect detection, not gut
     it. Imported locally to keep this module's own tests free of a dependency
-    on `domain.control` everywhere else."""
-    from thermoctl.domain.control import WINDOW_TEMP_DROP_LIMITS
+    on `domain.plant_settings` everywhere else."""
+    from thermoctl.domain.plant_settings import WINDOW_TEMP_DROP_LIMITS
 
     _minimum, maximum_threshold_k = WINDOW_TEMP_DROP_LIMITS["window_temp_drop_threshold_k"]
 

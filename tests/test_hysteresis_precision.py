@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from tests.helpers import create_settings, create_zone, source
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.control import ControlError, check_number
+from thermoctl.domain.plant_settings import ControlError, check_number
 from thermoctl.domain.sensor_failure_policy import (
     CurvePoint,
     PolicyError,

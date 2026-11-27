@@ -46,8 +46,8 @@ from thermoctl.domain.change_log import (
     ChangeNotRevertible,
     canonical,
 )
-from thermoctl.domain.control import arm
 from thermoctl.domain.modes import DomainError
+from thermoctl.domain.plant_settings import arm
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.schedule import ScheduleError

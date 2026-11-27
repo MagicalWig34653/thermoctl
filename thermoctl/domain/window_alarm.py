@@ -12,7 +12,7 @@ This module only ever answers the question "should an alarm be raised right now"
 "only the transition, with an all-clear" notice shape every other fault kind in this
 codebase already uses (see `domain.fault_notice.stuck_sensor_notice`).
 
-Deliberately **not** wired into `domain/control_loop.py::decide()`. The project
+Deliberately **not** wired into `domain/control_decision.py::decide()`. The project
 owner's own words: this is a message, not an intervention -- whatever the frost
 protection and window-open rules there decide about the actual heating stays
 entirely their own business.

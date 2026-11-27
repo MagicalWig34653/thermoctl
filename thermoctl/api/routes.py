@@ -71,16 +71,6 @@ from thermoctl.domain.authz import (
     require_scope,
     visible_zones,
 )
-from thermoctl.domain.control import (
-    LIMITS,
-    ControlError,
-    arm,
-    save_sensor_failure_backup_offset,
-    save_sensor_failure_plant_defaults,
-    save_settings,
-    save_solar_location,
-    settings,
-)
 from thermoctl.domain.device_assignment import (
     TEMPERATURE_SOURCE,
     CapabilityMissing,
@@ -92,6 +82,16 @@ from thermoctl.domain.device_assignment import (
 )
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands
 from thermoctl.domain.modes import DomainError, create_mode, update_setpoints
+from thermoctl.domain.plant_settings import (
+    LIMITS,
+    ControlError,
+    arm,
+    save_sensor_failure_backup_offset,
+    save_sensor_failure_plant_defaults,
+    save_settings,
+    save_solar_location,
+    settings,
+)
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.remote_control import boost as domain_boost
@@ -1041,7 +1041,7 @@ def control_solar_location(
 #
 # Zwei Endpunkte wie im Plan: das anlagenweite Profil samt Notsollwert, und die
 # Überschreibung/Ausgleichswerte einer einzelnen Zone. Die Domäne
-# (`domain.sensor_failure_policy`, `domain.control`, `domain.zone_settings`)
+# (`domain.sensor_failure_policy`, `domain.plant_settings`, `domain.zone_settings`)
 # validiert und schreibt; hier wird nur übersetzt, wie bei jedem anderen
 # Endpunkt dieser Datei.
 

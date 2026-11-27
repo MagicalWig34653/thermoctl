@@ -193,7 +193,7 @@ inhaltlicher Widerspruch zwischen Zeitplan und Entscheidung wurde nicht gefunden
 
 **Ein Befund, der niemand gesucht hat — die Begründungstexte sind bei „unverändert"
 systematisch irreführend.** Für den Fall „Zustand bleibt" formuliert
-`thermoctl/domain/control_loop.py` (Zeilen 247–258 und 278–288) unabhängig vom
+`thermoctl/domain/control_decision.py` (Zeilen 247–258 und 278–288) unabhängig vom
 tatsächlichen Abstand zum Sollwert immer denselben Satz:
 
 > Ist *X* °C innerhalb der Hysterese um Soll *Y* °C ± 0.10K (…) — Zustand bleibt.

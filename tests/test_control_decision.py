@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from thermoctl.domain.control_loop import (
+from thermoctl.domain.control_decision import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_FROST_OVERRIDES_WINDOW,
     REASON_CODE_FROST_SENSOR_FAILURE,

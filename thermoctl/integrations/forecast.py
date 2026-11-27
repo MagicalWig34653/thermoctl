@@ -27,7 +27,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Two days is comfortably more than any reasonable lookahead window configured in
 # `setting.solar_setback_lookahead_hours` (bounded to at most 12 hours, see
-# `domain.control.LIMITS`), while staying a single, documented Open-Meteo parameter
+# `domain.plant_settings.LIMITS`), while staying a single, documented Open-Meteo parameter
 # instead of a computed hour count that would need its own justification.
 _FORECAST_DAYS = 2
 

@@ -44,8 +44,8 @@ from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain import emergency_operation, sensor_failure_policy
 from thermoctl.domain.absence import start_absence
-from thermoctl.domain.controller import set_binding
-from thermoctl.domain.controller_channels import configure_channel
+from thermoctl.domain.wall_controller import set_binding
+from thermoctl.domain.wall_controller_channels import configure_channel
 from tools.screenshot_views import ZONE_SLUGS
 
 ZONE_NAMES = ("Wohnzimmer", "Küche", "Bad", "Schlafzimmer", "Kinderzimmer", "Büro")

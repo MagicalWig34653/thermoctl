@@ -1,6 +1,6 @@
 """Tests for the pure PI and window functions (`thermoctl.domain.pi_control`).
 
-This module is **not** wired to `control_loop.decide()` yet (a separate, later
+This module is **not** wired to `control_decision.decide()` yet (a separate, later
 build step) -- these tests only prove the pure functions themselves, grouped as
 follows:
 
@@ -484,7 +484,7 @@ class TestWindowModulateRemainder:
 
     def test_restart_with_unknown_held_duration_is_not_blocked(self) -> None:
         """held_for_s=None (freshly restarted, no history) must not be treated as
-        'zero seconds held, therefore blocked' -- mirrors control_loop.py's rule 5
+        'zero seconds held, therefore blocked' -- mirrors control_decision.py's rule 5
         convention for the same situation."""
         state = ModulatorState(
             on=False,

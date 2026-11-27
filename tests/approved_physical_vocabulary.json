@@ -497,10 +497,10 @@
     "thermoctl/domain/change_log.py": [
       "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor."
     ],
-    "thermoctl/domain/control.py": [
+    "thermoctl/domain/plant_settings.py": [
       "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
     ],
-    "thermoctl/domain/control_loop.py": [
+    "thermoctl/domain/control_decision.py": [
       ") — Heizung ist bereits aus, Zustand bleibt.",
       ") — Heizung läuft bereits, Zustand bleibt.",
       "EIN/AUS-Aktor — Fensteröffnung wirkt hier nicht abschaltend.",
@@ -512,7 +512,7 @@
       "unterschritten — es wird trotzdem geheizt.",
       "ventilschutz"
     ],
-    "thermoctl/domain/controller_channels.py": [
+    "thermoctl/domain/wall_controller_channels.py": [
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
       "actuator"
     ],

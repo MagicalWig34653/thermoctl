@@ -5,8 +5,8 @@ thermostatic valve outside the `controlled` mode (`ZoneDevice.thermostat_mode`,
 `domain/thermostat_mode.py`) -- `self_regulating` is told a setpoint and the actual
 value, `reading_only` only the actual value, both via `domain/self_regulating.py` -- and
 an ordinary switch, told on or off by the hysteresis decision in
-`domain/control_loop.py`. This module lists the second kind — the devices that still
-need `regelung.entscheiden()`'s `heating` to reach them at all before anything
+`domain/control_decision.py`. This module lists the second kind — the devices that still
+need `control_decision.decide()`'s `heating` to reach them at all before anything
 physically moves.
 
 `switch_commands()` below is deliberately narrow: only the `switch` capability.

@@ -32,11 +32,6 @@ from thermoctl.domain.authz import (
     visible_zones,
 )
 from thermoctl.domain.change_log import Actor, ChangeAlreadyEffective, ChangeLogError, ChangeView
-from thermoctl.domain.control import (
-    LIMITS,
-    ControlError,
-    settings,
-)
 from thermoctl.domain.device_commands import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -45,6 +40,11 @@ from thermoctl.domain.device_commands import (
 )
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.pi_intervention import PiInterventionError
+from thermoctl.domain.plant_settings import (
+    LIMITS,
+    ControlError,
+    settings,
+)
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.schedule import (

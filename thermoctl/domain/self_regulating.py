@@ -127,7 +127,7 @@ def handover_capable(session: Session, device: Device) -> bool:
     (`emergency_actuator_plan.REASON_NO_WRITE_KEIN_VERTRAG`) -- plan item 2's
     own "kein erfundener Property-Name". An empty `DevicePropertyValue` set is
     not itself a rejection: the same "no declared values means unrestricted"
-    reading `domain/controller_channels.py::configure_channel` already uses
+    reading `domain/wall_controller_channels.py::configure_channel` already uses
     for a fixed value on another kind of channel.
     """
     writable = _writable_properties(session, device)

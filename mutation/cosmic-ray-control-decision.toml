@@ -7,21 +7,21 @@
 # je Sitzung; deshalb hat jede der zwei Zieldateien eine eigene Konfiguration.
 # Wiederholbarer Gesamtlauf aus dem Repository-Wurzelverzeichnis:
 #
-#   .venv/bin/cosmic-ray init --force cosmic-ray-control-loop.toml /tmp/thermoctl-control-loop.sqlite
-#   .venv/bin/cr-filter-operators /tmp/thermoctl-control-loop.sqlite cosmic-ray-control-loop.toml
-#   .venv/bin/cosmic-ray exec cosmic-ray-control-loop.toml /tmp/thermoctl-control-loop.sqlite
+#   .venv/bin/cosmic-ray init --force cosmic-ray-control-decision.toml /tmp/thermoctl-control-decision.sqlite
+#   .venv/bin/cr-filter-operators /tmp/thermoctl-control-decision.sqlite cosmic-ray-control-decision.toml
+#   .venv/bin/cosmic-ray exec cosmic-ray-control-decision.toml /tmp/thermoctl-control-decision.sqlite
 #   .venv/bin/cosmic-ray init --force cosmic-ray-shadow-run.toml /tmp/thermoctl-shadow-run.sqlite
 #   .venv/bin/cr-filter-operators /tmp/thermoctl-shadow-run.sqlite cosmic-ray-shadow-run.toml
 #   .venv/bin/cosmic-ray exec cosmic-ray-shadow-run.toml /tmp/thermoctl-shadow-run.sqlite
-#   .venv/bin/cr-report /tmp/thermoctl-control-loop.sqlite
+#   .venv/bin/cr-report /tmp/thermoctl-control-decision.sqlite
 #   .venv/bin/cr-report /tmp/thermoctl-shadow-run.sqlite
 #
 # Die Sitzungsdatenbanken sind Laufartefakte und werden nicht eingecheckt.
 [cosmic-ray]
-module-path = "thermoctl/domain/control_loop.py"
+module-path = "thermoctl/domain/control_decision.py"
 timeout = 10.0
 excluded-modules = []
-test-command = ".venv/bin/python -m pytest --no-cov tests/test_control_loop.py"
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_control_decision.py"
 
 [cosmic-ray.distributor]
 name = "local"

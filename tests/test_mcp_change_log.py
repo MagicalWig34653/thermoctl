@@ -35,8 +35,8 @@ from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import Forbidden
-from thermoctl.domain.control import arm
 from thermoctl.domain.modes import DomainError
+from thermoctl.domain.plant_settings import arm
 from thermoctl.domain.sensor_failure_policy import ProfileValues, save_profile
 from thermoctl.domain.zone_settings import ParameterOutOfRange
 from thermoctl.mcp import server

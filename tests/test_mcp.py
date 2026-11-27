@@ -32,7 +32,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone
 from thermoctl.domain import change_log as change_log_domain
 from thermoctl.domain.authz import Forbidden
-from thermoctl.domain.control import arm, save_solar_location
+from thermoctl.domain.plant_settings import arm, save_solar_location
 from thermoctl.mcp import server
 
 ToolError = pytest.importorskip("mcp.server.mcpserver.exceptions").ToolError

@@ -96,6 +96,7 @@ Schleifen, Notfall-Dispatch und Meross-Abgleich in `services/` (z. B. `services/
 Umbenennen ohne Logikänderung: `control.py` → Betriebszustand/Standardwerte, `control_loop.py` → Regelentscheidung, `controller*` → Wandtaster,
 `pi_control.py` bleibt. Importe per Skript anpassen, kurze Modulübersicht in `docs/`.
 - Nutzen: klein bis mittel (Orientierung), Risiko: **klein** (rein mechanisch; Mutations-TOMLs und Docs verweisen auf Pfade). Tests: gesamte Suite. Sichtbar: nein.
+- Umgesetzt. Die aktuellen Namen und Zuständigkeiten stehen in der [Übersicht der Regelmodule](regelmodule.md).
 
 ## Später (nicht als Karte)
 

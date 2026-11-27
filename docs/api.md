@@ -183,7 +183,7 @@ Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
 Felder aus der Antwort von `GET /api/v1/control` außer `control_armed` sind Pflicht; die
 Grenzen prüft die Domäne, ein Verstoß ist `422`.
 
-Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
+Die einzelnen Felder, mit ihren Grenzen aus `domain/plant_settings.py::LIMITS`:
 
 | Feld | Bedeutung | Grenzen | Vorgabe |
 |---|---|---|---|

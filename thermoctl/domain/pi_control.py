@@ -2,7 +2,7 @@
 
 This module builds the pure PI and window functions as their own step, ahead of wiring
 them into the control loop. Nothing here is wired to
-`thermoctl.domain.control_loop.decide()` yet -- that is a separate, later task. The
+`thermoctl.domain.control_decision.decide()` yet -- that is a separate, later task. The
 existing 2.376-line state-table test therefore stays the exhaustive specification of
 the precedence chain for `pi_enabled=False`, unaffected by this module.
 
@@ -26,7 +26,7 @@ actual `ControllerState` row and decides when to call which function below:
 
 Section 3's schaltspiel calculation is why `pi_min_on_seconds` / `pi_min_off_seconds`
 are *soft* minimums here, unlike `min_on_seconds` / `min_off_seconds` in
-`control_loop.py`, which stay hard. See `window_modulate()`.
+`control_decision.py`, which stay hard. See `window_modulate()`.
 """
 
 from __future__ import annotations

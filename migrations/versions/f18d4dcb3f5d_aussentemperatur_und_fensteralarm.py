@@ -15,7 +15,7 @@ Fügt an:
   ist, fortgeschrieben in `services/ingest.py::advance_zone_state`.
 * `zone_state.window_alarm` -- das abgeleitete Ergebnis je Zone, tri-state (`NULL` heißt
   "unbekannt", nicht "kein Alarm") -- unabhängig von `sensor_status_id` und von `decide()`
-  in `domain/control_loop.py`.
+  in `domain/control_decision.py`.
 
 Revision ID: f18d4dcb3f5d
 Revises: afb9832fba99

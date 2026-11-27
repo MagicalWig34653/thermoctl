@@ -37,7 +37,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import control as control_domain
+from thermoctl.domain import plant_settings as control_domain
 from thermoctl.domain import remote_control as remote_control_domain
 from thermoctl.domain import schedule as schedule_domain
 from thermoctl.domain import zone_settings as zone_settings_domain

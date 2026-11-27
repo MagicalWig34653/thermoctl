@@ -12,7 +12,7 @@ from typing import Literal
 
 import pytest
 
-from thermoctl.domain.control_loop import (
+from thermoctl.domain.control_decision import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_FROST_OVERRIDES_WINDOW,
     REASON_CODE_FROST_SENSOR_FAILURE,
@@ -158,7 +158,7 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     # the zone must not be allowed to freeze. Falling below the frost-protection
     # setpoint despite the open window heats anyway, on the same hysteresis band as
     # everywhere else: `row.heating_now` doubles as "the exception was already
-    # engaged", exactly as in `control_loop.decide()` itself (this fixture's
+    # engaged", exactly as in `control_decision.decide()` itself (this fixture's
     # `on_off_actuators_only` axis does not exist — every row here behaves like the
     # more cautious, non-EIN/AUS zone; that exemption has its own, separate tests).
     # Befund C (review 2026-09-06): a protection-created on-state (`row.protection ==
@@ -179,14 +179,14 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
         # the ordinary setpoint -- a no-op numerically whenever `effective_setpoint`
         # already was `frost_c` (sensor_failed or mode off), since only those rows
         # can engage the exception in the first place (see the module docstring's
-        # reasoning in `control_loop.py`).
+        # reasoning in `control_decision.py`).
     # Rule 4: the finite restart delay after the window closes again.
     elif row.window == "restarting":
         return ExpectedDecision(False, REASON_CODE_OFF)
 
     # Whether rule 7 would currently win, independent of the "active" marker alone —
     # shared between rule 5's exemption below and rule 7 itself, exactly as the fix
-    # in control_loop.py shares one `protection_allowed` between both rules.
+    # in control_decision.py shares one `protection_allowed` between both rules.
     protection_allowed = (
         row.protection != "not_due"
         and row.sensor == "ok"
@@ -219,7 +219,7 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     # Rule 6: a protection-created on-state is not regular heating.  Below the lower
     # edge starts ordinary (or stale-sensor frost) heating; above the upper edge stops
     # regular heating; inside the band, and exactly on either edge, preserves regular
-    # heating — the comparisons in control_loop.py are strict (`<` and `>`), so the
+    # heating — the comparisons in control_decision.py are strict (`<` and `>`), so the
     # edge values themselves never trigger a switch. `effective_setpoint`/`measured_c`
     # are the window-open exception's frost values whenever it engaged above; the
     # comparisons themselves are otherwise unchanged.

@@ -58,7 +58,7 @@ from thermoctl.db.models.sensor_failure import (
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain import emergency_actuator_plan, emergency_cycle, emergency_operation
-from thermoctl.domain.control_loop import Decision, Situation, decide
+from thermoctl.domain.control_decision import Decision, Situation, decide
 from thermoctl.domain.pi_control import RESET_REASON_SENSOR_FAILURE
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.zone_settings import control_parameters

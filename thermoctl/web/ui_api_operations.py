@@ -17,7 +17,7 @@ Rechte wie in der früheren HTML-Oberfläche, in jedem Endpunkt neu geprüft:
 
 **Die drei Sperren bleiben getrennt**, wie auf der Betriebsseite: gespeicherte Freigabe
 (`control_armed`), MQTT-Sendefreigabe (`sending_allowed`, beim Prozessstart gebaut) und die
-Rolle im Verbund (`cluster_standby`). `PUT /operation/armed` ruft nur `domain.control.arm`
+Rolle im Verbund (`cluster_standby`). `PUT /operation/armed` ruft nur `domain.plant_settings.arm`
 und fasst `app.state.sending_allowed` nie an -- die Freigabe wirkt erst nach einem Neustart.
 
 Geheimnisse verlassen diesen Adapter nie im Klartext: Passwörter und Tokens der
@@ -47,7 +47,10 @@ from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import pi_view
 from thermoctl.domain.authz import has_permission, visible_zones
-from thermoctl.domain.control import (
+from thermoctl.domain.device_assignment import CapabilityMissing
+from thermoctl.domain.interfaces import homebridge_zone_configs, overview
+from thermoctl.domain.outdoor import outdoor_reading, set_outdoor_temperature_source
+from thermoctl.domain.plant_settings import (
     GANZZAHLIG,
     LABELS,
     LIMITS,
@@ -70,9 +73,6 @@ from thermoctl.domain.control import (
     save_window_temp_drop_settings,
     settings,
 )
-from thermoctl.domain.device_assignment import CapabilityMissing
-from thermoctl.domain.interfaces import homebridge_zone_configs, overview
-from thermoctl.domain.outdoor import outdoor_reading, set_outdoor_temperature_source
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.sensor_failure_policy import (
@@ -1056,7 +1056,7 @@ class NotificationTestOut(BaseModel):
 
 
 class DefaultsIn(BaseModel):
-    """Alle Felder aus `domain.control.LIMITS` plus Zeitzone; was fehlt, meldet die Domäne
+    """Alle Felder aus `domain.plant_settings.LIMITS` plus Zeitzone; was fehlt, meldet die Domäne
     ("Bitte einen Wert angeben") -- hier wird nichts aufgefüllt. Die Felder aus
     `TEMPORARY_SETPOINT_LIMITS` dürfen dazukommen, müssen es aber nicht."""
 
@@ -1133,7 +1133,7 @@ def _settings_out(session: Session, principal: Principal) -> SettingsOut:
         defaults=[
             *_number_fields(row, LIMITS, LABELS, GANZZAHLIG),
             # Travel with the defaults, so the Regelvorgaben page shows and saves them
-            # without a page of its own (`domain.control.TEMPORARY_SETPOINT_LIMITS`).
+            # without a page of its own (`domain.plant_settings.TEMPORARY_SETPOINT_LIMITS`).
             *_number_fields(
                 row, TEMPORARY_SETPOINT_LIMITS, TEMPORARY_SETPOINT_LABELS,
                 TEMPORARY_SETPOINT_GANZZAHLIG,
@@ -1223,7 +1223,7 @@ def show_settings(principal: Prin, session: Sess) -> SettingsOut:
 
 @router.put("/settings/defaults")
 def save_defaults(body: DefaultsIn, principal: Prin, session: Sess) -> SettingsOut:
-    """Regelvorgaben und Zeitzone (`domain.control.save_settings`)."""
+    """Regelvorgaben und Zeitzone (`domain.plant_settings.save_settings`)."""
     _need(principal, "setting.manage")
     _settings_or_error(session)
     values = _known_fields(body.values, {**LIMITS, **TEMPORARY_SETPOINT_LIMITS})
@@ -1242,7 +1242,7 @@ def save_defaults(body: DefaultsIn, principal: Prin, session: Sess) -> SettingsO
 
 @router.put("/settings/solar-location")
 def save_solar(body: SolarLocationIn, principal: Prin, session: Sess) -> SettingsOut:
-    """Sonnenabsenkung ein/aus und Standort (`domain.control.save_solar_location`).
+    """Sonnenabsenkung ein/aus und Standort (`domain.plant_settings.save_solar_location`).
 
     Getrennt von den Regelvorgaben (wie REST): ein abgelehnter Standort lässt die
     Regelvorgaben nicht halb geschrieben zurück, weil sie gar nicht im selben Aufruf stehen.
@@ -1296,7 +1296,8 @@ def save_sensor_failure(
     body: SensorFailureDefaultsIn, principal: Prin, session: Sess
 ) -> SettingsOut:
     """Notbetrieb der Anlage: Profil, Kurve, Rückkehr und Notsollwert als **eine** Einheit
-    (`domain.control.save_sensor_failure_plant_defaults`, prüft alles vor dem ersten Schreiben)."""
+    (`domain.plant_settings.save_sensor_failure_plant_defaults`,
+    prüft alles vor dem ersten Schreiben)."""
     _need(principal, "setting.manage")
     _settings_or_error(session)
     current = effective_default_profile(session)

@@ -3,7 +3,7 @@
 # cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
 # perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher prüfen,
 # dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
-# Zweite Hälfte des in cosmic-ray-control-loop.toml dokumentierten Gesamtlaufs.
+# Zweite Hälfte des in cosmic-ray-control-decision.toml dokumentierten Gesamtlaufs.
 [cosmic-ray]
 module-path = "thermoctl/services/shadow_run.py"
 timeout = 10.0

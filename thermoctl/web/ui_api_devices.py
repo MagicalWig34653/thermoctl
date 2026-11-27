@@ -48,8 +48,6 @@ from thermoctl.domain.authz import (
     require_scope,
     visible_zones,
 )
-from thermoctl.domain.controller import ControllerError, controller_zones, set_binding
-from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.data_flow import build_data_flow
 from thermoctl.domain.data_flow_mermaid import render_mermaid
 from thermoctl.domain.device_assignment import (
@@ -86,6 +84,8 @@ from thermoctl.domain.principal import Principal
 from thermoctl.domain.solar_setback_log import setback_zone_names
 from thermoctl.domain.thermostat_mode import MODE_DESCRIPTIONS, MODE_LABELS, MODES
 from thermoctl.domain.time import local_day_start_utc
+from thermoctl.domain.wall_controller import ControllerError, controller_zones, set_binding
+from thermoctl.domain.wall_controller_channels import ControllerChannelError, configure_channel
 from thermoctl.web.shared.controllers import (
     controllers_context,
     managed_device,

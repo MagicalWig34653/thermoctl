@@ -21,8 +21,8 @@ from thermoctl.config import get_settings
 from thermoctl.db.models.device import DeviceProperty, DevicePropertyValue, ZoneDevice
 from thermoctl.db.models.lookup import CHANNEL_KINDS, ChannelKind
 from thermoctl.db.models.zone import ZoneSetpoint
-from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.device_classes import properties_from_exposes
+from thermoctl.domain.wall_controller_channels import ControllerChannelError, configure_channel
 from thermoctl.services.publishing import PublicationState, _send_controller_channels
 
 MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
@@ -325,8 +325,8 @@ def test_a_setpoint_turned_on_the_device_becomes_the_setpoint_of_the_zone(
     from tests.helpers import create_mode, create_settings, source
     from thermoctl.db.models.schedule import SchedulePoint
     from thermoctl.db.models.zone import ZoneSetpoint
-    from thermoctl.domain.controller_channels import apply_read_channels
     from thermoctl.domain.schedule import resolved_setpoint
+    from thermoctl.domain.wall_controller_channels import apply_read_channels
 
     create_settings(session).timezone = "UTC"
     source(session, "system")
@@ -347,7 +347,7 @@ def test_a_setpoint_turned_on_the_device_becomes_the_setpoint_of_the_zone(
 
 def test_a_mode_turned_on_the_device_becomes_the_operating_mode(session: Session) -> None:
     from tests.helpers import create_settings, operating_mode, source
-    from thermoctl.domain.controller_channels import apply_read_channels
+    from thermoctl.domain.wall_controller_channels import apply_read_channels
 
     create_settings(session)
     source(session, "system")
@@ -373,8 +373,8 @@ def test_a_value_the_domain_rejects_is_logged_and_changes_nothing(
 
     from tests.helpers import create_settings, source
     from thermoctl.db.models.zone import ZoneSetpoint
-    from thermoctl.domain.controller_channels import apply_read_channels
     from thermoctl.domain.schedule import resolved_setpoint
+    from thermoctl.domain.wall_controller_channels import apply_read_channels
 
     settings = create_settings(session)
     source(session, "system")
@@ -399,7 +399,7 @@ def test_a_value_the_domain_rejects_is_logged_and_changes_nothing(
 def test_a_property_that_is_not_in_the_message_is_left_alone(session: Session) -> None:
     """The counter-check: a device sends more than the one value a channel watches."""
     from tests.helpers import create_settings, operating_mode, source
-    from thermoctl.domain.controller_channels import apply_read_channels
+    from thermoctl.domain.wall_controller_channels import apply_read_channels
 
     create_settings(session)
     source(session, "system")

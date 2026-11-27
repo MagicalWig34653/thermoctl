@@ -53,7 +53,6 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.device_assignment import (
     REQUIRED_CAPABILITY,
     TEMPERATURE_SOURCE,
@@ -68,6 +67,7 @@ from thermoctl.domain.thermostat_mode import (
     writes_anything,
     writes_setpoint,
 )
+from thermoctl.domain.wall_controller_channels import may_be_written
 
 Direction = Literal["out", "in"]
 NodeKind = Literal["device", "zone"]

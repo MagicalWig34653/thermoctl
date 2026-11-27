@@ -15,8 +15,8 @@ from thermoctl.db.models.device import (
 from thermoctl.db.models.lookup import ChannelKind, ControllerCommand, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import require, visible_zones
-from thermoctl.domain.controller import seen_actions
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.wall_controller import seen_actions
 
 
 def zones_with_permission(session: Session, principal: Principal, permission: str) -> list[Zone]:

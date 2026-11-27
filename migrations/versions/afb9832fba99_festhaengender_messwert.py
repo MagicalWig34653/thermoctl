@@ -12,7 +12,7 @@ Fügt die Erkennung aus `domain/fault.py::stuck_reading` an:
   echten Sensorausfällen.
 * `zone_state.sensor_stuck` -- das abgeleitete Ergebnis je Zone
   (`services/ingest.py::advance_zone_state`), unabhängig von `sensor_status_id` und
-  von `decide()` in `domain/control_loop.py` ungelesen.
+  von `decide()` in `domain/control_decision.py` ungelesen.
 
 Revision ID: afb9832fba99
 Revises: bb4a0ff63b2d

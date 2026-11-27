@@ -1,13 +1,13 @@
 """Solar setback: correcting the setpoint downward when sunshine is expected soon.
 
 Pure domain logic (CLAUDE.md principle 6, and the same discipline as
-`control_loop.decide()`): everything here is a plain function over values already
+`control_decision.decide()`): everything here is a plain function over values already
 handed in. No HTTP call, no database read, and no clock happen in this module -- the
 forecast is fetched once by `thermoctl.integrations.forecast` and handed in as a
 value, exactly like the resolved setpoint and the control parameters already are for
-`control_loop.decide()`.
+`control_decision.decide()`.
 
-This is deliberately **not** a new rule inside `control_loop.decide()`. It is a
+This is deliberately **not** a new rule inside `control_decision.decide()`. It is a
 correction applied to the setpoint *before* the situation is built, so the existing
 precedence (frost protection, window-open, minimum switch duration, hysteresis) is
 completely unaffected -- a setback that already respects the frost-protection floor

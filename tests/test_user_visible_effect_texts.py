@@ -481,7 +481,7 @@ def test_effect_text_guard_covers_every_user_visible_source_category() -> None:
     assert "docs/mcp.md" in sources
     assert "thermoctl/api/routes.py" in sources
     assert "thermoctl/mcp/server.py" in sources
-    assert "thermoctl/domain/control_loop.py" in sources
+    assert "thermoctl/domain/control_decision.py" in sources
     assert "thermoctl/domain/interfaces.py" in sources
     assert "thermoctl/integrations/mqtt/publication.py" in sources
     assert "thermoctl/integrations/actuators.py" in sources

@@ -1967,7 +1967,7 @@ async def test_the_shadow_loop_reports_a_newly_stuck_reading(
     the configured `stuck_reading_hours`, and its most recent reading is fresh
     enough that `sensor_status` still reads `ok` -- exactly the case the project
     owner's decision governs: reported, but `decide()` is never touched by it (that
-    guarantee is proven separately, in `test_control_loop_state_table.py`, which
+    guarantee is proven separately, in `test_control_decision_state_table.py`, which
     never gained a `sensor_stuck` parameter at all).
     """
     engine, fabrik = _own_database(tmp_path, "schleife-festhaengend")

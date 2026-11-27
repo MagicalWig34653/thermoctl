@@ -1,4 +1,4 @@
-"""Audited wrappers in `domain.control` for Auftrag 8a: plant-wide Notbetrieb
+"""Audited wrappers in `domain.plant_settings` for Auftrag 8a: plant-wide Notbetrieb
 profile/defaults and a thermostat assignment's backup offset.
 
 `sensor_failure_policy.py` itself stays pure (no `user_id`, no audit -- it is
@@ -17,7 +17,7 @@ from tests.helpers import create_device, create_settings, create_zone, source, u
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.operations import AuditEvent
-from thermoctl.domain.control import (
+from thermoctl.domain.plant_settings import (
     save_sensor_failure_backup_offset,
     save_sensor_failure_defaults,
     save_sensor_failure_profile,

@@ -19,7 +19,7 @@ from pathlib import Path
 from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.config import Settings
-from thermoctl.domain.control import LIMITS
+from thermoctl.domain.plant_settings import LIMITS
 from thermoctl.mcp import server as mcp_server
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -248,6 +248,7 @@ LIVING_DOCS = [
     "docs/homebridge.md",
     "docs/mcp.md",
     "docs/mqtt.md",
+    "docs/regelmodule.md",
     "docs/roadmap.md",
     "docs/self-hosting.md",
     "docs/sicherheitsdurchsicht.md",

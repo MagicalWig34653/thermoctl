@@ -1,6 +1,6 @@
 """Tests for the pure solar-setback correction (`thermoctl.domain.solar_setback`).
 
-Mirrors the discipline of `test_control_loop.py`: no clock, no database, no network
+Mirrors the discipline of `test_control_decision.py`: no clock, no database, no network
 -- everything the functions need arrives as a plain value. The five cases the task
 explicitly calls out are each their own test: no forecast means no setback, a source
 failure must not disturb control, the frost-protection floor is never crossed, a zone

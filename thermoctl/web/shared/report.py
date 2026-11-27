@@ -7,8 +7,8 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.control import settings as control_settings
 from thermoctl.domain.fault_notice import notice_enabled
+from thermoctl.domain.plant_settings import settings as control_settings
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.problem_report import build_report
 from thermoctl.integrations import notification

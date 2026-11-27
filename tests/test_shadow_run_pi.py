@@ -5,8 +5,8 @@ The next two build steps after `thermoctl/domain/pi_control.py` itself:
 functions from `domain/pi_control.py`, and -- once a zone is enabled for PI,
 eligible, and none of the seven precedence rules override it -- the PI
 candidate becomes `ShadowDecision.would_heat`, the same field
-`services/publishing.py` reads back out unchanged. `domain.control_loop.decide()`
-itself is never touched; `tests/test_control_loop_state_table.py` stays the
+`services/publishing.py` reads back out unchanged. `domain.control_decision.decide()`
+itself is never touched; `tests/test_control_decision_state_table.py` stays the
 exhaustive proof of that for `pi_enabled=False`.
 
 There is still no operating path that can set `zone.pi_enabled` (that is a
@@ -32,15 +32,15 @@ from tests.helpers import (
     role,
     sensor_status_of,
 )
-from tests.test_control_loop import _lage, _parameter
+from tests.test_control_decision import _lage, _parameter
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
-from thermoctl.domain import control_loop
-from thermoctl.domain.control_loop import (
+from thermoctl.domain import control_decision
+from thermoctl.domain.control_decision import (
     REASON_CODE_HEATING,
     REASON_CODE_OFF,
     REASON_CODE_WINDOW_OPEN,
@@ -193,16 +193,16 @@ class TestPiGateReasonClassifiesEveryReasonCode:
     "no precedence rule applies, PI decides". That is the right answer for the
     codes this function already knows about (see the table below) -- but it is the
     wrong direction for a code nobody has looked at yet: a code added to
-    `control_loop.py` in some later change and never taught to `_pi_gate_reason()`
+    `control_decision.py` in some later change and never taught to `_pi_gate_reason()`
     would silently let PI decide in a situation nobody has actually reasoned about.
 
     This test does not call `_pi_gate_reason()` and trust its `None` answer as
     proof of anything -- an unclassified code produces exactly the same `None` a
     deliberately-permitted one does, so that would prove nothing. Instead it
     verifies, once, that *this file's own* classification below accounts for every
-    single `REASON_CODE_*` constant `control_loop.py` currently defines, then
+    single `REASON_CODE_*` constant `control_decision.py` currently defines, then
     exercises `_pi_gate_reason()` against each of those to check the mapping still
-    holds. Add a new code to `control_loop.py` without touching either dict here,
+    holds. Add a new code to `control_decision.py` without touching either dict here,
     and the completeness check below fails first -- forcing a conscious decision
     ("does this block PI or not, and why") instead of inheriting one silently.
     """
@@ -214,16 +214,16 @@ class TestPiGateReasonClassifiesEveryReasonCode:
     # share it) and is disambiguated by the caller-computed `resume_delay_active`
     # flag, exercised separately in `TestPrecedenceRulesBeatPi`.
     _BLOCKING = {
-        control_loop.REASON_CODE_WINDOW_OPEN: RESET_REASON_WINDOW_OPEN,
-        control_loop.REASON_CODE_NO_SOURCE: RESET_REASON_SENSOR_FAILURE,
-        control_loop.REASON_CODE_FROST_SENSOR_FAILURE: RESET_REASON_SENSOR_FAILURE,
-        control_loop.REASON_CODE_VALVE_PROTECTION: RESET_REASON_VALVE_PROTECTION,
+        control_decision.REASON_CODE_WINDOW_OPEN: RESET_REASON_WINDOW_OPEN,
+        control_decision.REASON_CODE_NO_SOURCE: RESET_REASON_SENSOR_FAILURE,
+        control_decision.REASON_CODE_FROST_SENSOR_FAILURE: RESET_REASON_SENSOR_FAILURE,
+        control_decision.REASON_CODE_VALVE_PROTECTION: RESET_REASON_VALVE_PROTECTION,
         # Added 2026-09-06 alongside rule 3's frost-overrides-window exception: this
         # code is unique to that exception actually engaging while it governs (an
         # EIN/AUS-only zone never produces it, since rule 3 never applies to one) --
         # so it is covered the same way the ordinary window-open "off" is, via
         # `window_governs`, not via its own separate branch in `_pi_gate_reason`.
-        control_loop.REASON_CODE_FROST_OVERRIDES_WINDOW: RESET_REASON_WINDOW_OPEN,
+        control_decision.REASON_CODE_FROST_OVERRIDES_WINDOW: RESET_REASON_WINDOW_OPEN,
     }
 
     # Every code that must *not* block PI, with the reason each is deliberately
@@ -231,21 +231,21 @@ class TestPiGateReasonClassifiesEveryReasonCode:
     _PERMITTED = {
         # Rule 6's own "heat" answer -- exactly the territory PI is meant to
         # replace.
-        control_loop.REASON_CODE_HEATING: "PI ersetzt genau diese Entscheidung.",
+        control_decision.REASON_CODE_HEATING: "PI ersetzt genau diese Entscheidung.",
         # Ambiguous on its own (see `_BLOCKING`'s comment); the plain "stay off"
         # case it also covers is ordinary rule-6 territory.
-        control_loop.REASON_CODE_OFF: (
+        control_decision.REASON_CODE_OFF: (
             "mehrdeutig -- der Wiederanlauf-Fall wird über resume_delay_active "
             "erkannt, nicht über den Code."
         ),
         # Rule 6/7's "state holds" answer -- still ordinary territory, not one of
         # section 4's precedence rules.
-        control_loop.REASON_CODE_UNCHANGED: "gewöhnliche Hysterese-Fortschreibung.",
+        control_decision.REASON_CODE_UNCHANGED: "gewöhnliche Hysterese-Fortschreibung.",
         # The explicit, deliberate exception from the PI specification's section 2:
         # PI has its own, shorter minimum durations and its own tastgrad-vorrang
         # exception; the ordinary minimum-duration rule must not additionally hold
         # PI back.
-        control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION: (
+        control_decision.REASON_CODE_BLOCKED_MINIMUM_DURATION: (
             "PI hat eigene, kürzere Mindestdauern (Spezifikation Abschnitt 2/3)."
         ),
     }
@@ -253,14 +253,14 @@ class TestPiGateReasonClassifiesEveryReasonCode:
     def test_every_known_reason_code_is_classified(self) -> None:
         known = {
             value
-            for name, value in vars(control_loop).items()
+            for name, value in vars(control_decision).items()
             if name.startswith("REASON_CODE_") and isinstance(value, str)
         }
         classified = set(self._BLOCKING) | set(self._PERMITTED)
 
         unclassified = known - classified
         assert not unclassified, (
-            f"control_loop.py kennt Ergebniscode(s) {sorted(unclassified)}, die "
+            f"control_decision.py kennt Ergebniscode(s) {sorted(unclassified)}, die "
             "in diesem Test weder als blockierend noch als bewusst erlaubt "
             "eingeordnet sind. _pi_gate_reason() ist erlaubend per Vorgabe -- ein "
             "unklassifizierter Code lässt PI stillschweigend entscheiden. Ordne "
@@ -269,7 +269,7 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         stale = classified - known
         assert not stale, (
             f"Klassifizierte Code(s) {sorted(stale)} existieren nicht mehr in "
-            "control_loop.py -- die Klassifikation hier ist veraltet."
+            "control_decision.py -- die Klassifikation hier ist veraltet."
         )
 
     def test_blocking_codes_gate_pi_on_their_own(self) -> None:
@@ -295,12 +295,12 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         # docstring). `TestPrecedenceRulesBeatPi` exercises that masking scenario
         # end to end; this test only proves the mapping in isolation.
         window_governed_codes = (
-            control_loop.REASON_CODE_WINDOW_OPEN,
-            control_loop.REASON_CODE_FROST_OVERRIDES_WINDOW,
+            control_decision.REASON_CODE_WINDOW_OPEN,
+            control_decision.REASON_CODE_FROST_OVERRIDES_WINDOW,
         )
         sensor_failure_codes = (
-            control_loop.REASON_CODE_NO_SOURCE,
-            control_loop.REASON_CODE_FROST_SENSOR_FAILURE,
+            control_decision.REASON_CODE_NO_SOURCE,
+            control_decision.REASON_CODE_FROST_SENSOR_FAILURE,
         )
         for code, expected_reason in self._BLOCKING.items():
             assert (
@@ -332,7 +332,7 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         on its own is one of `_PERMITTED`'s codes."""
         assert (
             shadow_run._pi_gate_reason(
-                control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION,
+                control_decision.REASON_CODE_BLOCKED_MINIMUM_DURATION,
                 sensor_failed=False,
                 window_governs=True,
                 resume_delay_active=False,
@@ -347,7 +347,7 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         (`REASON_CODE_BLOCKED_MINIMUM_DURATION` masking a stale reading)."""
         assert (
             shadow_run._pi_gate_reason(
-                control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION,
+                control_decision.REASON_CODE_BLOCKED_MINIMUM_DURATION,
                 sensor_failed=True,
                 window_governs=False,
                 resume_delay_active=False,
@@ -949,7 +949,7 @@ class TestPrecedenceRulesBeatPi:
                 # `gesperrt_mindestdauer` here (held_for_s < 300s), not the
                 # window-frost code -- proving `pi_reset_reason` above does not
                 # merely coincide with an unmasked `decide()` answer.
-                assert row.outcome_code == control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION
+                assert row.outcome_code == control_decision.REASON_CODE_BLOCKED_MINIMUM_DURATION
             now += timedelta(seconds=60)
 
     def test_a_valve_protection_run_gates_pi_for_its_whole_duration_and_keeps_the_integral(
@@ -1395,7 +1395,7 @@ class TestNonBlockedReasonCodesKeepDecideOwnReasoning:
         row = _row_for(shadow_run.cycle(session, NOW), zone)
 
         assert row.effective_controller == "pi"
-        assert row.outcome_code == control_loop.REASON_CODE_HEATING  # not rewritten
+        assert row.outcome_code == control_decision.REASON_CODE_HEATING  # not rewritten
         # decide()'s own sentence ("Ist ... °C unter Soll ...") must still be the
         # base, with PI's own reasoning appended -- not replaced outright.
         assert "Ist" in row.reason
@@ -1440,7 +1440,7 @@ class TestNonBlockedReasonCodesKeepDecideOwnReasoning:
         row = _row_for(shadow_run.cycle(session, now), zone)
 
         assert row.effective_controller == "pi"
-        assert row.outcome_code == control_loop.REASON_CODE_OFF  # not rewritten
+        assert row.outcome_code == control_decision.REASON_CODE_OFF  # not rewritten
         assert "Ist" in row.reason
         assert "PI-Regelung" in row.reason
 
@@ -1630,7 +1630,7 @@ class TestControllerTransitionsMidHold:
         # deadline (t=390s) -- a silently-restarted one would still be blocked
         # here (30s short of t=420s), the exact bug this test was meant to catch.
         assert at_deadline.would_heat is False
-        assert at_deadline.outcome_code == control_loop.REASON_CODE_OFF
+        assert at_deadline.outcome_code == control_decision.REASON_CODE_OFF
         assert fallen_back.would_heat is True  # held, not switched off early
 
     def test_enabling_pi_mid_hold_waits_for_the_next_boundary_first(

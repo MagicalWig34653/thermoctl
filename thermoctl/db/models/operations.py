@@ -30,7 +30,7 @@ class Setting(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="genau_eine_zeile"),
         # Wertemengen der Sollwertrad-Einstellungen (unten); die Grenzen stehen in
-        # `domain.control.TEMPORARY_SETPOINT_LIMITS` und werden dort geprüft -- die
+        # `domain.plant_settings.TEMPORARY_SETPOINT_LIMITS` und werden dort geprüft -- die
         # Datenbank hält sie nur ein zweites Mal, falls jemand an der Domäne vorbeischreibt.
         CheckConstraint(
             "temporary_setpoint_until_next_switch IN (0, 1)",
@@ -100,7 +100,7 @@ class Setting(Base):
         Integer, default=365, server_default=text("365"), nullable=False
     )
     # Schaltprotokoll (`device_command`): upper bounds for age and (estimated) size,
-    # enforced by `services/retention.py`. Bounds in `domain.control.LIMITS`.
+    # enforced by `services/retention.py`. Bounds in `domain.plant_settings.LIMITS`.
     command_log_retention_days: Mapped[int] = mapped_column(
         Integer, default=1095, server_default=text("1095"), nullable=False
     )
@@ -125,7 +125,7 @@ class Setting(Base):
     # DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS` as the number the relay-wear
     # statistic compares against. Still an explicitly replaceable assumption, not a
     # measurement -- see the reasoning next to that constant and the bounds in
-    # `domain.control.LIMITS`.
+    # `domain.plant_settings.LIMITS`.
     assumed_relay_lifetime_operations: Mapped[int] = mapped_column(
         Integer, default=500_000, server_default=text("500000"), nullable=False
     )
@@ -137,7 +137,7 @@ class Setting(Base):
     # Wahrheitswerts, weil die Regelvorgaben-Seite nur Zahlenfelder kennt. Die Minuten
     # sind zugleich die Ersatzfrist, wenn es keine nächste Schaltung gibt (Zone ohne
     # Zeitplan) -- die Übersteuerung ist nie unbefristet. Grenzen:
-    # `domain.control.TEMPORARY_SETPOINT_LIMITS`.
+    # `domain.plant_settings.TEMPORARY_SETPOINT_LIMITS`.
     temporary_setpoint_until_next_switch: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1"), nullable=False
     )
@@ -216,7 +216,7 @@ class Setting(Base):
     # ("Stoßlüften") is commonly recommended for five to ten minutes; thirty is
     # comfortably longer than any ordinary airing while still catching a forgotten
     # window well within the hour, not after the room has already cooled down for
-    # half a day. Bounds in `domain.control.LIMITS` (5 to 240 minutes).
+    # half a day. Bounds in `domain.plant_settings.LIMITS` (5 to 240 minutes).
     window_alarm_open_minutes: Mapped[int] = mapped_column(
         Integer, default=30, server_default=text("30"), nullable=False
     )
@@ -228,7 +228,7 @@ class Setting(Base):
     # point of 5°C is to catch a forgotten window while there is still a wide
     # margin before the room itself could ever approach frost, not to mark the
     # outdoor temperature at which frost becomes likely. Bounds in
-    # `domain.control.WINDOW_ALARM_LIMITS` (-20 to 15 °C).
+    # `domain.plant_settings.WINDOW_ALARM_LIMITS` (-20 to 15 °C).
     window_alarm_outdoor_threshold_c: Mapped[Decimal] = mapped_column(
         Numeric(4, 1), default=Decimal("5.0"), server_default=text("5.0"), nullable=False
     )
@@ -238,7 +238,7 @@ class Setting(Base):
     # (`Zone.window_temp_drop_detection_enabled`, default off). See
     # `domain.window_temperature_drop` for the full reasoning behind these five
     # values and their explicitly documented uncertainty; bounds in
-    # `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+    # `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
     window_temp_drop_window_minutes: Mapped[int] = mapped_column(
         Integer, default=15, server_default=text("15"), nullable=False
     )

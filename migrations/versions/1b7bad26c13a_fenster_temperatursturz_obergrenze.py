@@ -17,8 +17,8 @@ wurde). Fuegt an:
   fortgeschrieben in `services/ingest.py::advance_zone_state`.
 
 Beide Schwellen bleiben wie die drei bestehenden ausserhalb von
-`domain.control.LIMITS` und damit ausserhalb von REST und MCP
-(`domain.control.WINDOW_TEMP_DROP_LIMITS`).
+`domain.plant_settings.LIMITS` und damit ausserhalb von REST und MCP
+(`domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`).
 
 Revision ID: 1b7bad26c13a
 Revises: e741133296d2

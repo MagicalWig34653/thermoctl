@@ -25,8 +25,8 @@ from tests.helpers import create_settings, create_zone, source, user_with_permis
 from tests.test_ui_api_operations import ALLES, Als, _anlage, _call, _fehler
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import control
-from thermoctl.domain.control import ControlError, check_number
+from thermoctl.domain import plant_settings
+from thermoctl.domain.plant_settings import ControlError, check_number
 from thermoctl.domain.zone_settings import (
     BY_NAME,
     PARAMETERS,
@@ -131,16 +131,16 @@ def test_zone_table_is_exactly_the_documented_one() -> None:
 def test_global_limit_is_built_from_the_zone_table_not_written_out_twice(name: str) -> None:
     """Direkt, ohne Literale: `LIMITS["default_<name>"]` *ist* der Eintrag aus `PARAMETERS`.
 
-    Ein festgeschriebenes `(30, 7200)` in `control.LIMITS` bliebe bei den Literal-Tabellen
+    Ein festgeschriebenes `(30, 7200)` in `plant_settings.LIMITS` bliebe bei den Literal-Tabellen
     oben unbemerkt, solange PARAMETERS dieselben Zahlen trägt; erst wenn jemand eine
     Grenze nur an einer Stelle ändert, fiele es auf -- und genau dann bricht dieser Test.
     """
     description = BY_NAME[name]
-    assert control.LIMITS[f"default_{name}"] == (description.minimum, description.maximum)
+    assert plant_settings.LIMITS[f"default_{name}"] == (description.minimum, description.maximum)
 
 
 def test_every_mirrored_default_is_covered_by_the_construction_test() -> None:
-    mirrored = {f for f in control.LIMITS if f.startswith("default_") and
+    mirrored = {f for f in plant_settings.LIMITS if f.startswith("default_") and
                 f.removeprefix("default_") in BY_NAME}
     assert mirrored == {f"default_{name}" for name in SHARED}
 
@@ -148,10 +148,10 @@ def test_every_mirrored_default_is_covered_by_the_construction_test() -> None:
 def test_global_limits_are_exactly_the_documented_ones() -> None:
     assert {
         name: (Decimal(lo), Decimal(hi)) for name, (lo, hi) in GLOBAL_LIMITS.items()
-    } == control.LIMITS
+    } == plant_settings.LIMITS
     # Die Reihenfolge bestimmt, welcher Fehler zuerst gemeldet wird.
-    assert list(control.LIMITS) == list(GLOBAL_LIMITS)
-    assert control.GANZZAHLIG == frozenset(GLOBAL_LIMITS) - {
+    assert list(plant_settings.LIMITS) == list(GLOBAL_LIMITS)
+    assert plant_settings.GANZZAHLIG == frozenset(GLOBAL_LIMITS) - {
         "default_hysteresis_k",
         "default_solar_setback_max_k",
     }

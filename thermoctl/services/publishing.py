@@ -60,7 +60,6 @@ from thermoctl.db.models.sensor_failure import (
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain import emergency_actuator_plan, emergency_cycle, sensor_failure_policy
-from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.emergency_operation import STAGE_NOTBETRIEB, STAGE_RUECKKEHRPRUEFUNG
 from thermoctl.domain.fault import OK
 from thermoctl.domain.fault_notice import (
@@ -77,6 +76,7 @@ from thermoctl.domain.self_regulating import (
     valve_commands,
 )
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
+from thermoctl.domain.wall_controller_channels import may_be_written
 from thermoctl.domain.zone_settings import PARAMETERS, ControlParameters, control_parameters
 from thermoctl.integrations.actuators import (
     Actuator,
@@ -1392,7 +1392,7 @@ async def _send_actuator_switches(
 ) -> int:
     """Turns every ordinary (non-self-regulating) actuator of a zone on or off.
 
-    The decision comes from `regelung.entscheiden()`, by way of the zone's latest
+    The decision comes from `control_decision.decide()`, by way of the zone's latest
     `shadow_decision` row (`_latest_decision` above) -- hysteresis, minimum
     switching duration, window-open and the valve protection run are already
     resolved into `would_heat` there; this function only carries that decision to

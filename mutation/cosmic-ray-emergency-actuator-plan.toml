@@ -25,7 +25,7 @@ name = "local"
 [cosmic-ray.distributor.local]
 max-workers = 4
 
-# Gleiche Werkzeugrauschen-Ausschlüsse wie cosmic-ray-control-loop.toml (siehe
+# Gleiche Werkzeugrauschen-Ausschlüsse wie cosmic-ray-control-decision.toml (siehe
 # cosmic-ray-stage1-assessment.md).
 [cosmic-ray.filters.operators-filter]
 exclude-operators = [

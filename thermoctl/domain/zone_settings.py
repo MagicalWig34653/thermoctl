@@ -387,7 +387,7 @@ GROUP_PI = "pi"  # PI (Beta) fields; the on-off flags are their own fields
 GROUP_FLAG = "flag"  # on-off flags, handled outside the numeric field lists
 
 # The one description of the bounds. The global defaults that have a zone counterpart
-# (`domain.control.LIMITS`, prefix `default_`) are *built from this table*, so a zone value
+# (`domain.plant_settings.LIMITS`, prefix `default_`) are *built from this table*, so a zone value
 # that the global default would not be allowed to take (a back door) cannot arise.
 # `temperature_offset_k` has no global counterpart: it corrects a miscalibrated
 # sensor, and more than ten kelvin off is no longer an offset but a broken device.
@@ -420,7 +420,7 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         group=GROUP_INHERITED,
     ),
     # Unlike `temperature_offset_k`, this one has a global counterpart:
-    # `setting.default_solar_setback_max_k`, whose bound `domain.control.LIMITS` takes
+    # `setting.default_solar_setback_max_k`, whose bound `domain.plant_settings.LIMITS` takes
     # from this entry.
     ParameterDescription(
         "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
@@ -509,7 +509,7 @@ def check_parameter_value(description: ParameterDescription, value: Decimal) -> 
     """The one check of a value against its description -- raises `ParameterOutOfRange`.
 
     Used by the zone parameters (single and bulk save, PI) and by the global defaults
-    that mirror a zone parameter (`domain.control.check_number`), so a bound and its
+    that mirror a zone parameter (`domain.plant_settings.check_number`), so a bound and its
     message exist exactly once. Order: range first, then the step where it is binding.
     """
     if not value.is_finite() or not description.minimum <= value <= description.maximum:

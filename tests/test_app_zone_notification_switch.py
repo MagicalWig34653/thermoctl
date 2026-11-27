@@ -33,8 +33,8 @@ from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.sensor_failure import SensorFailureEpisode
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.control import arm
 from thermoctl.domain.fault_notice import FaultNotice
+from thermoctl.domain.plant_settings import arm
 from thermoctl.services.publishing import PublicationState, cycle
 
 

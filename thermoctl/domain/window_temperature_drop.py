@@ -112,7 +112,7 @@ already swings by more than the threshold. None of that is distinguishable from 
 actually opened window using temperature alone -- there is no second signal here to
 cross-check against, unlike a real contact. That is exactly why the default is
 **off** per zone (`Zone.window_temp_drop_detection_enabled`) and why the frost-
-protection exception in `domain.control_loop.decide()` applies to a temperature-
+protection exception in `domain.control_decision.decide()` applies to a temperature-
 inferred window exactly as it does to a real one: a false trigger costs comfort
 (heat withheld while the guess holds), never a frozen pipe.
 
@@ -149,7 +149,7 @@ here stops that fresh reading from crossing the threshold again the moment the
 hold lapses -- and again after the next one -- for as long as the room keeps
 losing heat, which is not bounded by anything discussed so far: the detection can
 keep re-triggering itself, indefinitely, off the very cooling it is causing.
-Nothing freezes (the frost exception in `domain.control_loop.decide()` still
+Nothing freezes (the frost exception in `domain.control_decision.decide()` still
 applies to a temperature-inferred window exactly as to a real one), but the zone
 can stay switched off the entire winter with nobody able to see why from the
 temperature curve alone, since every individual hold still looks like a
@@ -220,7 +220,7 @@ genuinely separate episodes together) or tracking total suspected time across
 unrelated episodes forever (which no longer describes "one streak" at all).
 Sixty minutes of silence and ninety of cap, like the threshold and the hold
 above, are reasoned choices rather than measured ones, and every figure here is
-adjustable with bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+adjustable with bounds in `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 
 **Third cross-review round: this gap was prose, not a test.** A reviewer
 replayed it with realistic five-minute polling: trigger, a full hold, a
@@ -245,7 +245,7 @@ from decimal import Decimal
 # How far back the drop is measured. Long enough that a handful of Zigbee reporting
 # gaps do not starve the window of samples; short enough that "steep" still means
 # something -- a drop spread across an hour is not what opening a window looks like.
-# Bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# Bounds in `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_WINDOW_MINUTES = 15
 
 # The Kelvin drop across that window that counts as "steep enough to be a window,
@@ -264,7 +264,7 @@ WINDOW_TEMP_DROP_WINDOW_MINUTES = 15
 # draught. 1.5 K sits with a clear margin above the former and comfortably inside
 # the latter -- but "typically" is not "always", which is exactly why the feature
 # defaults to **off** and the switch lives with the operator, not with this
-# default. Bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# default. Bounds in `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_THRESHOLD_K = Decimal("1.5")
 
 # Third cross-review round: a hard ceiling on how large a *computed* drop is
@@ -272,7 +272,7 @@ WINDOW_TEMP_DROP_THRESHOLD_K = Decimal("1.5")
 # below) produced it -- closes the class of "N simultaneous outliers" rather
 # than chasing it one outlier at a time. See the module docstring's "two
 # simultaneous outliers" section for the full derivation. Anchored to a value
-# this codebase already committed to: `domain.control.WINDOW_TEMP_DROP_LIMITS`
+# this codebase already committed to: `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`
 # bounds the operator's own configurable threshold at 5.0 K, already
 # documented there as beyond what an ordinary same-window event could
 # plausibly show. 6.0 K sits one Kelvin above that entire configurable range
@@ -289,7 +289,7 @@ WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K = Decimal("6.0")
 # reason: long enough that an ordinary, deliberate airing does not lapse and
 # silently resume heating against an actually open window mid-airing; short enough
 # that a false trigger does not withhold heat for the rest of the day. Bounds in
-# `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_HOLD_MINUTES = 30
 
 # How long a gap between two detected cycles is still tolerated as "the same
@@ -300,7 +300,7 @@ WINDOW_TEMP_DROP_HOLD_MINUTES = 30
 # grant a second, independent grace period of its own. Ten minutes comfortably
 # covers a handful of consecutive missed cycles at any realistic control-cycle
 # length while still being unmistakably shorter than the hold. Bounds in
-# `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES = 10
 
 # The hard cap on one cumulative streak of suspicion -- see the module
@@ -309,7 +309,7 @@ WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES = 10
 # airing (open well past the usual few minutes of "Stoßlüften", but still one
 # continuous episode) is not cut short by it; short enough that a feedback loop
 # of the detection re-triggering off its own withheld heat cannot own the zone
-# for hours unnoticed. Bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# for hours unnoticed. Bounds in `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES = 90
 
 # How long detection stands down once the cap above is reached, before it may
@@ -319,7 +319,7 @@ WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES = 90
 # once it is no longer being switched off by detection itself; short enough that
 # a zone genuinely affected by a lingering false trigger is re-evaluated well
 # within the same day rather than needing a manual restart. Bounds in
-# `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+# `domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_SILENCE_MINUTES = 60
 
 

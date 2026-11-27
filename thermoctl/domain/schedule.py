@@ -1567,7 +1567,7 @@ def resolved_setpoint(
     starts while it is already running; then the plant-wide vacation setback; then
     the schedule; and last of all frost protection.
 
-    The existing precedence chain in `control_loop.decide()` is untouched by this:
+    The existing precedence chain in `control_decision.decide()` is untouched by this:
     vacation only changes which temperature `resolved_setpoint()` hands to it. A
     zone whose operating mode is 'off' returns above, before the vacation check is
     even reached, and therefore stays off during a vacation exactly as it does

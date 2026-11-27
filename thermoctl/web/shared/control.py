@@ -19,7 +19,7 @@ from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 # Readable text for `shadow_decision.controller_fallback_reason` (specification
 # section 6: "einschließlich Rückfallgrund" has to be legible on the operating
 # page, not just as a code). Kept here, not in the domain: this is a display-only
-# translation, the same reasoning as `domain.control.LABELS`.
+# translation, the same reasoning as `domain.plant_settings.LABELS`.
 PI_FALLBACK_LABELS: dict[str, str] = {
     PI_FALLBACK_INELIGIBLE: "Die Zone erfüllt die PI-Voraussetzungen nicht (mehr).",
     RESET_REASON_WINDOW_OPEN: "Ein Fenster ist offen.",

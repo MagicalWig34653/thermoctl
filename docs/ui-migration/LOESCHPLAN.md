@@ -84,10 +84,10 @@ Folge: `base_admin.html`/`base_tenant.html` laden Seiten-Skripte; nach dem Lösc
 | `tests/test_assets.py` | 4 | 1 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_audit_views.py` | 12 | 12 | alle Tests übersprungen -> Datei löschbar |
 | `tests/test_changes_views.py` | 12 | 11 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
-| `tests/test_control.py` | 48 | 13 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
+| `tests/test_plant_settings.py` | 48 | 13 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_control_solar.py` | 6 | 1 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_control_views.py` | 6 | 5 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
-| `tests/test_controller_channels.py` | 38 | 9 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
+| `tests/test_wall_controller_channels.py` | 38 | 9 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_daily_views.py` | 47 | 21 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_daily_views_backup_offset.py` | 5 | 2 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
 | `tests/test_daily_views_solar.py` | 9 | 2 | Rest läuft gegen Alt-Routen/Helfer (POST, Domäne): beim Löschen der Routen mitprüfen |
@@ -148,10 +148,10 @@ Jede Zeile: Alttest -> was keine neue Prüfung hat. Rechte-, Sichtbarkeits- und 
 | `test_changes_views` | date_and_reverted_filters | Tagesgrenze im Adapter nicht geprueft (nur from 2999/to 2000/weit), hide_reverted nur ohne zurueckgenommenen Eintrag (ids(hide_reverted)==ids() trivial); Domaene deckt include_reverted (test_change_log.py::test_list_changes_can_hide_reverted_entries) und from_at/to_at. Typ: Test |
 | `test_control_views` | the_arming_notes_name_both_command_paths_behind_the_second_latch | Neue Oberflaeche nennt nur "MQTT-Sendefreigabe"/"MQTT-Riegel" (ArmPanel.svelte Z.62/82, glossary.ts "sending", rooms/logic.ts Z.155); dass der Riegel auch Meross-Befehle sperrt, steht nirgends, kein Test. Typ: Funktion |
 | `test_control_views` | the_operating_page_shows_notbetrieb_detail_and_comparison | Stufe/Aktoren/Vergleich: test_operation_shows_emergency_actuators_and_comparisons (Ansicht gemockt) + test_emergency_state.py (Domaene, "nicht versucht", Offset-Vorschlag). Nicht geprueft: outdoor_status_text ("keine Außenquelle eingerichtet") im JSON (Uebersetzung nur test_emergency_display.py) und Durchlauf mit echten DB-Zeilen. Typ: Test |
-| `test_controller_channels` | a_fixed_number_with_more_than_one_decimal_survives_an_unchanged_resubmit | Kein Test, dass fixed_number mit bis zu 4 Nachkommastellen (z.B. 3,125) unverrundet ausgeliefert (_num, ui_api_devices.py Z.843) und beim erneuten Senden unveraendert gespeichert wird; test_channel_writes_and_validates nutzt nur "21,5". Typ: Test |
-| `test_controller_channels` | a_saved_write_channel_shows_every_field_after_reload | Nach Speichern wird nur direction/zone_id bzw. DB fixed_number geprueft; Ausgabe von kind, source_device_id, fixed_text, fixed_number im GET /controllers (ui_api_devices.py Z.838-843) je Art (fixed/sensor/zone) nicht geprueft. Typ: Test |
-| `test_controller_channels` | resubmitting_the_rendered_form_unchanged_keeps_the_configuration | Kein Round-Trip GET -> unveraendert POST, der die Konfiguration (z.B. Leseart operating_mode + Zone) erhaelt; Kind operating_mode in ui-api ungetestet. Typ: Test |
-| `test_controller_channels` | the_controllers_page_with_no_visible_zone_shows_nothing | Fall "anlagenweites device.read, aber keine Zone vorhanden" -> leere Antwort statt aller Geraete nicht geprueft (Guards shared/controllers.py Z.26/51, Funktion vorhanden). Fremde Namen bei zonenweitem Recht: test_a_room_a_reader_finds_no_device_of_room_b_anywhere. Typ: Test |
+| `test_wall_controller_channels` | a_fixed_number_with_more_than_one_decimal_survives_an_unchanged_resubmit | Kein Test, dass fixed_number mit bis zu 4 Nachkommastellen (z.B. 3,125) unverrundet ausgeliefert (_num, ui_api_devices.py Z.843) und beim erneuten Senden unveraendert gespeichert wird; test_channel_writes_and_validates nutzt nur "21,5". Typ: Test |
+| `test_wall_controller_channels` | a_saved_write_channel_shows_every_field_after_reload | Nach Speichern wird nur direction/zone_id bzw. DB fixed_number geprueft; Ausgabe von kind, source_device_id, fixed_text, fixed_number im GET /controllers (ui_api_devices.py Z.838-843) je Art (fixed/sensor/zone) nicht geprueft. Typ: Test |
+| `test_wall_controller_channels` | resubmitting_the_rendered_form_unchanged_keeps_the_configuration | Kein Round-Trip GET -> unveraendert POST, der die Konfiguration (z.B. Leseart operating_mode + Zone) erhaelt; Kind operating_mode in ui-api ungetestet. Typ: Test |
+| `test_wall_controller_channels` | the_controllers_page_with_no_visible_zone_shows_nothing | Fall "anlagenweites device.read, aber keine Zone vorhanden" -> leere Antwort statt aller Geraete nicht geprueft (Guards shared/controllers.py Z.26/51, Funktion vorhanden). Fremde Namen bei zonenweitem Recht: test_a_room_a_reader_finds_no_device_of_room_b_anywhere. Typ: Test |
 | `test_daily_views` | the_start_page_uses_local_day_and_time_for_its_schedule_track | Lokaler Wochentag/Zeitzone nahe Mitternacht (UTC So 23:30 = Berlin Mo 00:30) für `day_track` und `now_fraction` ungeprüft; test_ui_api_rooms prüft nur Summe 1440 und Modusnamen. Typ: Test (zone_status.py:210 existiert) |
 | `test_daily_views` | the_parameter_page_shows_the_pi_warning_with_the_switching_table_and_relay_wear_link | Modellrechnungstabelle (262.800/52.560 je Jahr), Hinweis Kessel/Verdichter, Link Relaisverschleiß, Verhältnis 0,53 fehlen in RoomTechnik.svelte (nur Bestätigungs-Checkbox). Typ: Funktion |
 | `test_daily_views` | the_pi_warning_ratio_follows_a_changed_assumption | Verhältnis ungünstigster Fall / angenommene Lebensdauer wird nirgends berechnet; /ui-api liefert nur assumed_relay_lifetime_operations. Typ: Funktion |
@@ -376,7 +376,7 @@ Nicht als Blocker gewertet (begründet anders): Ziehen von Gerätekarten (`assig
 
 
 
-### tests/test_control.py (13)
+### tests/test_plant_settings.py (13)
 
 
 
@@ -444,7 +444,7 @@ Nicht als Blocker gewertet (begründet anders): Ziehen von Gerätekarten (`assig
 
 
 
-### tests/test_controller_channels.py (9)
+### tests/test_wall_controller_channels.py (9)
 
 
 
@@ -596,7 +596,7 @@ Kurzformen: UA = tests/test_ui_api_*.py, Dom = Domänentest. Testnamen ohne Prä
 
 | zugeordnete_karten_tragen_ihre_kennung | ENTFÄLLT | Nur data-Attribute der Drag-Karten; JSON trägt assignment `id` (ui_api_devices._zone_devices), von detach_removes_the_assignment_only_of_this_zone genutzt |
 
-| the_page_shows_the_buttons_that_actually_arrived | ERSETZT | Dom test_controller.py::seen_actions_come_from_what_actually_arrived plus test_ui_api_devices.py::zone_devices_read_model (controllers, commands); Durchreichung `last_seen` im Zonenmodell nur mit None geprüft |
+| the_page_shows_the_buttons_that_actually_arrived | ERSETZT | Dom test_wall_controller.py::seen_actions_come_from_what_actually_arrived plus test_ui_api_devices.py::zone_devices_read_model (controllers, commands); Durchreichung `last_seen` im Zonenmodell nur mit None geprüft |
 
 | a_thermostat_can_be_dragged_onto_the_actuator_slot | ERSETZT | test_ui_api_devices.py::zone_devices_read_model (required_capabilities actuator = switch, thermostat) und Dom test_device_assignment.py::a_thermostat_can_be_assigned_as_an_actuator |
 

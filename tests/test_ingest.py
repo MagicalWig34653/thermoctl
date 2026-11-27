@@ -587,7 +587,7 @@ def test_window_open_since_clears_when_the_window_closes(session: Session) -> No
 
 # Small, easy-to-reason-about values instead of the production defaults -- the
 # defaults themselves are covered by `tests/test_window_temperature_drop.py` and
-# `tests/test_control.py`; these tests are about the wiring in `services/ingest.py`.
+# `tests/test_plant_settings.py`; these tests are about the wiring in `services/ingest.py`.
 _DROP_WINDOW_MINUTES = 10
 _DROP_THRESHOLD_K = Decimal("1.0")
 _DROP_HOLD_MINUTES = 20

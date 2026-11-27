@@ -2,7 +2,7 @@
 
 Dry run (section 1 of the specification): this module switches nothing and publishes
 nothing. It reads `zone_state` (already advanced by `ingest.zonenzustand_fortschreiben`),
-calls `regelung.entscheiden()`, and writes the result as a `shadow_decision` row. These
+calls `control_decision.decide()`, and writes the result as a `shadow_decision` row. These
 exact rows later become the basis for comparison against the old system (subproject 4).
 """
 
@@ -38,7 +38,7 @@ from thermoctl.domain import (
     sensor_failure_policy,
 )
 from thermoctl.domain import outdoor as outdoor_domain
-from thermoctl.domain.control_loop import (
+from thermoctl.domain.control_decision import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_HEATING,
     REASON_CODE_OFF,
@@ -386,7 +386,7 @@ def _with_solar_setback(
     the amount back out of free text.
 
     Correction happens **here**, before `Situation` is built -- not inside
-    `regelung.entscheiden()`, which stays exactly as unaware of solar setback as it
+    `control_decision.decide()`, which stays exactly as unaware of solar setback as it
     was before this feature existed (see `domain.solar_setback` for why). `forecast`
     being `None` (feature off, no location configured, or the source unreachable --
     `integrations.forecast.ForecastCache` already collapses all three to the same
@@ -1054,7 +1054,7 @@ def _apply_emergency_actuators(
 # `pi_enabled=False` (every zone until someone flips the latch directly in the
 # database; there is deliberately no operating path for it yet, see
 # `tests/test_pi_schema.py`). PI replaces only what section 6, rule 6 of
-# `control_loop.decide()` would otherwise decide -- rules 1, 3, 4 and 7 keep
+# `control_decision.decide()` would otherwise decide -- rules 1, 3, 4 and 7 keep
 # exactly the precedence they already have, because their conditions are read
 # from `Situation`/`decision.reason_code` here, never recomputed. Rule 3's own
 # frost-overrides-window exception (2026-09-06) does not change this: it still
@@ -1987,7 +1987,7 @@ def _advance_valve_protection(
     the marker is gone by the next cycle, and the protection on-state is then read as
     regular heating from there on. That is a known defect of the control rules, not
     of this bookkeeping -- found and fixed 2026-09-02 in
-    `thermoctl.domain.control_loop.decide()`, which now exempts a held on-state from
+    `thermoctl.domain.control_decision.decide()`, which now exempts a held on-state from
     `min_on_seconds` whenever it traces back to a protection run.
     """
     interval = timedelta(days=zone.valve_protection_interval_days)

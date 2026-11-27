@@ -57,7 +57,7 @@ from thermoctl.db.models.sensor_failure import (
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import emergency_actuator_plan, emergency_operation
-from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
+from thermoctl.domain.wall_controller_channels import ControllerChannelError, configure_channel
 from thermoctl.services import publishing, shadow_run
 from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.publishing import PublicationState

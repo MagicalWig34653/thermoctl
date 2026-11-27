@@ -21,8 +21,6 @@ from thermoctl.db.models.measurement import DeviceHealth, Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.controller import execute_action
-from thermoctl.domain.controller_channels import apply_read_channels
 from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
@@ -32,6 +30,8 @@ from thermoctl.domain.measurement_clock import not_in_future
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.room_temperature import RoomTemperature, SensorInput, room_temperature
+from thermoctl.domain.wall_controller import execute_action
+from thermoctl.domain.wall_controller_channels import apply_read_channels
 from thermoctl.domain.window_alarm import window_alarm_state
 from thermoctl.domain.window_temperature_drop import (
     temperature_detection_cap_exceeded,

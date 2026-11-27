@@ -380,7 +380,7 @@ def test_active_profile_edit_and_default_change_are_checked_before_mutation(sess
 
 
 def test_minimum_and_interval_changes_revalidate_active_profiles(session, policy):
-    from thermoctl.domain.control import LIMITS, ControlError, save_settings
+    from thermoctl.domain.plant_settings import LIMITS, ControlError, save_settings
     from thermoctl.domain.zone_settings import ParameterOutOfRange, save_control_parameters
 
     _, settings, zone = policy

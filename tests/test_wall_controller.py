@@ -27,14 +27,14 @@ from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import ZoneSetpoint
-from thermoctl.domain.controller import (
+from thermoctl.domain.schedule import resolved_setpoint
+from thermoctl.domain.wall_controller import (
     DEFAULT_STEP_K,
     ControllerError,
     execute_action,
     seen_actions,
     set_binding,
 )
-from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.services.ingest import process_message
 
 MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)

@@ -970,7 +970,7 @@ def test_channel_writes_and_validates(client_als: Als, world: World, session: Se
 
 
 def test_channel_text_names_a_fixed_text_value(session: Session) -> None:
-    from thermoctl.domain.controller_channels import _channel_text
+    from thermoctl.domain.wall_controller_channels import _channel_text
 
     kind = ChannelKind(code="fixed", label="Fester Wert")
     session.add(kind)

@@ -15,8 +15,8 @@ Simulation ueber 20 Laeufe und 420 Minuten kein einziges Mal. Fuegt an:
 * `zone_state.window_temp_drop_last_detected_at` -- wann die Straehne zuletzt
   tatsaechlich erkannt wurde, die Grundlage fuer die Toleranzpruefung.
 
-Bleibt wie die vier bestehenden Schwellen ausserhalb von `domain.control.LIMITS`
-und damit ausserhalb von REST und MCP (`domain.control.WINDOW_TEMP_DROP_LIMITS`).
+Bleibt wie die vier bestehenden Schwellen ausserhalb von `domain.plant_settings.LIMITS`
+und damit ausserhalb von REST und MCP (`domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`).
 
 Revision ID: 43aa18ba1c12
 Revises: 1b7bad26c13a

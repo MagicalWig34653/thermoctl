@@ -8,8 +8,8 @@ Fügt an:
 * `setting.window_temp_drop_window_minutes` (Vorgabe 15), `.window_temp_drop_threshold_k`
   (Vorgabe 1.5) und `.window_temp_drop_hold_minutes` (Vorgabe 30) -- die drei
   anlagenweiten Schwellen dieser Erkennung, kein Wert je Zone. Bewusst nicht in
-  `domain.control.LIMITS`: bleiben wie die Fenster-Alarm-Schwellen außerhalb von REST
-  und MCP (`domain.control.WINDOW_TEMP_DROP_LIMITS`).
+  `domain.plant_settings.LIMITS`: bleiben wie die Fenster-Alarm-Schwellen außerhalb von REST
+  und MCP (`domain.plant_settings.WINDOW_TEMP_DROP_LIMITS`).
 * `zone_state.window_open_by_temperature` (Vorgabe aus) -- ob das aktuelle
   `window_open = true` aus dieser Vermutung stammt statt aus einem echten Kontakt,
   fortgeschrieben in `services/ingest.py::advance_zone_state`. Hält die beiden Quellen

@@ -1,7 +1,7 @@
 """Wiring ordinary (non-self-regulating) actuators to the control decision.
 
 `_send_actuator_switches` in `services/publishing.py` is the one place an on/off
-decision (`domain/control_loop.py::decide`, logged as `shadow_decision`) reaches a
+decision (`domain/control_decision.py::decide`, logged as `shadow_decision`) reaches a
 real switching device. Everything here runs with `setting.control_armed` false unless
 a test explicitly arms it — CLAUDE.md forbids arming anything in this suite.
 """
@@ -29,8 +29,8 @@ from thermoctl.db.models.lookup import CommandOutcome, DeviceCapability
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.control import arm
 from thermoctl.domain.fault_notice import NOTICE_KIND_COMMAND_FAILURE, FaultNotice
+from thermoctl.domain.plant_settings import arm
 from thermoctl.domain.switch_commands import (
     SwitchCommand,
     ThermostatCommand,
@@ -933,7 +933,7 @@ async def test_a_device_that_does_not_confirm_leaves_the_session_alone(
 
 @pytest.mark.anyio
 async def test_the_minimum_switching_duration_still_applies(session: Session) -> None:
-    """The hysteresis and minimum switching duration live in `domain/control_loop.py`
+    """The hysteresis and minimum switching duration live in `domain/control_decision.py`
     and are not touched by this wiring -- they are already baked into `would_heat`
     by the time `shadow_run.cycle()` writes it. This locks down that the actuator
     wiring sends exactly what the decision says, blocked run included, rather than

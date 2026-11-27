@@ -24,7 +24,7 @@ name = "local"
 [cosmic-ray.distributor.local]
 max-workers = 4
 
-# Same tool-noise exclusion as cosmic-ray-control-loop.toml (see
+# Same tool-noise exclusion as cosmic-ray-control-decision.toml (see
 # cosmic-ray-stage1-assessment.md): cross-type replacements that are not plausible
 # Python mutants on Decimal/typed comparisons.
 [cosmic-ray.filters.operators-filter]

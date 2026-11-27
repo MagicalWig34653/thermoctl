@@ -23,12 +23,12 @@ from tests.helpers import (
 )
 from thermoctl.db.models.lookup import CommandOutcome
 from thermoctl.db.models.state import DeviceCommand
-from thermoctl.domain.control import arm
 from thermoctl.domain.fault_notice import (
     NOTICE_KIND_SENSOR_FAULT,
     NOTICE_KIND_WINDOW_ALARM,
     FaultNotice,
 )
+from thermoctl.domain.plant_settings import arm
 from thermoctl.integrations.mqtt.publication import armed_discovery, outdoor_discovery
 from thermoctl.services.publishing import (
     PublicationState,

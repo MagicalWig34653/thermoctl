@@ -42,7 +42,7 @@ class ZoneState(Base):
     temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     measured_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sensor_status_id: Mapped[int] = mapped_column(ForeignKey("sensor_status.id"), nullable=False)
-    # Independent of `sensor_status_id` above -- `decide()` in `domain/control_loop.py`
+    # Independent of `sensor_status_id` above -- `decide()` in `domain/control_decision.py`
     # never reads this column, and never will: the project owner's explicit decision
     # is "melden, aber weiterregeln". Only ever computed while `sensor_status_id`
     # reads `ok` (`services/ingest.py::advance_zone_state`) -- a zone without a
@@ -57,7 +57,7 @@ class ZoneState(Base):
     # window). `services/ingest.py::advance_zone_state` sets it the moment
     # `window_open` first becomes `True` and clears it the moment `window_open`
     # stops being `True`. This is the clock `domain.window_alarm` reads; nothing
-    # in `domain/control_loop.py` reads it.
+    # in `domain/control_decision.py` reads it.
     window_open_since: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
     )
@@ -65,7 +65,7 @@ class ZoneState(Base):
     # not trustworthy -- no source configured, or stale) and must never be read as
     # either "alarm" or "all clear". See `domain.window_alarm.window_alarm_state`
     # and `domain.fault_notice.window_alarm_notice`. Independent of
-    # `sensor_status_id` and `decide()` in `domain/control_loop.py`, the same
+    # `sensor_status_id` and `decide()` in `domain/control_decision.py`, the same
     # "melden, aber nicht regeln" shape `sensor_stuck` above already has.
     window_alarm: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Whether the current `window_open` (when `True`) came from the temperature-

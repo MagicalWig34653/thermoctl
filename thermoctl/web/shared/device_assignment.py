@@ -10,10 +10,10 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.controller import seen_actions
 from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY
 from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.thermostat_mode import MODE_DESCRIPTIONS, MODE_LABELS, MODES
+from thermoctl.domain.wall_controller import seen_actions
 
 
 def assignment_context(session: Session, zone: Zone, **extra: object) -> dict[str, object]:

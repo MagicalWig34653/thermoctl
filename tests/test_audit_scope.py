@@ -51,8 +51,8 @@ from thermoctl.domain.authz import (
     require_scope,
 )
 from thermoctl.domain.change_log import Actor
-from thermoctl.domain.control import arm as control_arm
 from thermoctl.domain.device_commands import list_commands
+from thermoctl.domain.plant_settings import arm as control_arm
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.solar_setback_log import setback_transitions, setback_zone_names
 from thermoctl.mcp import server

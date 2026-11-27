@@ -2,7 +2,7 @@
 
 Pure in the sense of CLAUDE.md and section 3 of the specification: no database, no
 network, no clock. Everything the decision needs sits in `Lage`. That is exactly why it
-is exhaustively testable (`tests/test_regelung.py`), and exactly why sub-project 4 can
+is exhaustively testable (`tests/test_control_decision.py`), and exactly why sub-project 4 can
 arm it unchanged.
 
 This module only decides; `services/publishing.py` records the result and, once both
