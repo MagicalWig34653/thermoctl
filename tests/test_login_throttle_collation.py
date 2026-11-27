@@ -10,6 +10,7 @@ Das Orakel bleibt dabei zu: Der Schlüssel hängt nur vom getippten Namen und vo
 nie davon, ob es das Konto gibt.
 """
 
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
@@ -131,8 +132,7 @@ def test_the_key_holds_for_other_collations_of_the_column(
     client: Any, session: Session, user: User, monkeypatch: pytest.MonkeyPatch, collation: str
 ) -> None:
     """Auch wenn die Spalte anders vergleicht als der Standard: Was diese Kollation für `lino`
-    hält, hat dessen Schlüssel. Akzentsensitive Kollationen gewichten in mehreren Ebenen; das
-    Auffüll-Leerzeichen steht dort mitten im Gewicht und lässt sich nicht hinten abschneiden."""
+    hält, hat dessen Schlüssel -- über die ganze Anmeldung eines Versuchs gerechnet."""
     _needs_mariadb(session)
     monkeypatch.setattr(
         login, "_username_collation", lambda current: ("utf8mb4", collation)
@@ -198,6 +198,16 @@ def test_the_key_can_be_computed_under_every_collation_of_the_server(
     assert split == {}
 
 
+def test_long_names_with_expanding_characters_still_share_the_counter(
+    session: Session, user: User
+) -> None:
+    """U+FDFA wiegt wie viele Zeichen: Auch ein langer Name daraus hat mit und ohne Anhang, den
+    die Datenbank übergeht, denselben Schlüssel."""
+    long_name = "\ufdfa" * 60
+    assert login.throttle_key(session, long_name) == login.throttle_key(session, long_name + " ")
+    assert login.throttle_key(session, long_name) != login.throttle_key(session, "lino")
+
+
 class _Result:
     def __init__(self, row: tuple[Any, ...] | None) -> None:
         self.row = row
@@ -205,9 +215,9 @@ class _Result:
     def one_or_none(self) -> tuple[Any, ...] | None:
         return self.row
 
-    def one(self) -> tuple[Any, ...]:
+    def scalar_one(self) -> Any:
         assert self.row is not None
-        return self.row
+        return self.row[0]
 
 
 class _FakeSession:
@@ -217,6 +227,7 @@ class _FakeSession:
     def __init__(self, dialect: str, *rows: tuple[Any, ...] | None) -> None:
         self.rows = list(rows)
         self.statements: list[str] = []
+        self.parameters: list[dict[str, Any]] = []
         self.bind = SimpleNamespace(
             dialect=SimpleNamespace(name=dialect),
             engine=SimpleNamespace(url=make_url(f"mysql+pymysql://probe@localhost/{uuid4().hex}")),
@@ -227,6 +238,7 @@ class _FakeSession:
 
     def execute(self, statement: Any, parameters: dict[str, Any]) -> _Result:
         self.statements.append(str(statement))
+        self.parameters.append(parameters)
         return _Result(self.rows.pop(0))
 
 
@@ -240,20 +252,18 @@ def test_a_byte_comparing_database_gets_the_python_fold() -> None:
     assert fake.statements == []  # keine Abfrage nötig
 
 
-def test_the_weight_drops_the_padding_blanks_at_the_end() -> None:
-    fake = _FakeSession(
-        "mariadb", ("utf8mb4", "utf8mb4_uca1400_ai_ci"), ("21B0216702090209", "0209")
-    )
-    assert _key(fake, "li  ") == "kollation:21B02167"
-    assert "COLLATE utf8mb4_uca1400_ai_ci" in fake.statements[1]
+def test_the_database_weighs_and_pads_the_typed_name() -> None:
+    fake = _FakeSession("mariadb", ("utf8mb4", "utf8mb4_uca1400_as_ci"), ("21B0",))
+    assert _key(fake, "li ") == f"kollation:{sha256(b'21B0').hexdigest()}"
+    assert "COLLATE utf8mb4_uca1400_as_ci AS CHAR(512)" in fake.statements[1]
+    assert fake.parameters[1] == {"name": "li "}  # ungekürzt: das Auffüllen macht die Datenbank
 
 
 def test_the_collation_is_read_once_per_database() -> None:
     fake = _FakeSession(
-        "mariadb", ("utf8mb4", "utf8mb4_uca1400_ai_ci"), ("21B0", "0209"), ("21B1", "0209")
+        "mariadb", ("utf8mb4", "utf8mb4_uca1400_ai_ci"), ("21B0",), ("21B1",)
     )
-    assert _key(fake, "a") == "kollation:21B0"
-    assert _key(fake, "b") == "kollation:21B1"
+    assert _key(fake, "a") != _key(fake, "b")
     assert len(fake.statements) == 3
 
 
@@ -271,21 +281,3 @@ def test_an_unreadable_collation_falls_back_to_the_python_fold(
     fake = _FakeSession("mariadb", column)
     assert _key(fake, "Lino") == login.login_key("Lino")
     assert len(fake.statements) == 1
-
-
-@pytest.mark.parametrize(
-    ("column", "weighed_with"),
-    [
-        ("utf8mb4_uca1400_as_ci", "utf8mb4_uca1400_ai_ci"),
-        ("utf8mb4_uca1400_swedish_nopad_as_cs", "utf8mb4_uca1400_swedish_nopad_ai_ci"),
-        ("utf8mb4_0900_as_cs", "utf8mb4_0900_ai_ci"),
-        # Hier gibt es keine `_ai_ci`-Schwester: Gewichtet wird mit der Kollation selbst.
-        ("utf8mb4_general1400_as_ci", "utf8mb4_general1400_as_ci"),
-        ("utf8mb4_ja_0900_as_cs", "utf8mb4_ja_0900_as_cs"),
-        ("utf8mb4_uca1400_ai_ci", "utf8mb4_uca1400_ai_ci"),
-    ],
-)
-def test_only_a_sibling_that_exists_is_derived(column: str, weighed_with: str) -> None:
-    fake = _FakeSession("mariadb", ("utf8mb4", column), ("21B0", "0209"))
-    _key(fake, "a")
-    assert f"COLLATE {weighed_with})" in fake.statements[1]

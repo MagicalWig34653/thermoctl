@@ -1,5 +1,6 @@
 """Anmeldung: Drosselung, Pruefung, Session-Cookies -- geteilt von HTML-Login und /ui-api."""
 import asyncio
+import hashlib
 import re
 import secrets
 import unicodedata
@@ -153,13 +154,9 @@ def login_key(username: str) -> str:
 # service runs. Only a plain name goes into the SQL text below, never one with other characters.
 _USERNAME_COLLATION: dict[str, tuple[str, str] | None] = {}
 _SQL_NAME = re.compile(r"[A-Za-z0-9_]+")
-# Accent- or case-sensitive UCA collations weigh in several levels, one after the other. Only the
-# two families that always come with an `_ai_ci` sibling: MariaDB's `uca1400` and MySQL's plain
-# `utf8mb4_0900`. Others (`general1400_as_ci`, MySQL's `ja_0900_as_cs`) have none, and naming a
-# collation that does not exist would fail every login.
-_MULTI_LEVEL = re.compile(
-    r"^([a-z0-9]+_uca1400(?:_[a-z0-9]+)*?|utf8mb4_0900)_(?:as_ci|as_cs|ai_cs)$"
-)
+# Length the database pads (and, harmlessly, cuts) a name to before weighing it: generous next to
+# `MAX_USERNAME_LENGTH`, with room for characters that weigh as several.
+_WEIGHED_LENGTH = 512
 
 
 def _username_collation(session: Session) -> tuple[str, str] | None:
@@ -186,15 +183,17 @@ def _username_collation(session: Session) -> tuple[str, str] | None:
 def throttle_key(session: Session, username: str) -> str:
     """The throttle key of a login, as the database compares names -- never whether it exists.
 
-    `login_key` folds in Python what a collation usually treats as equal. MariaDB's
-    `utf8mb4_uca1400_ai_ci` ignores or equates more than that (U+034F, the tatweel U+0640,
-    `ø` = `o`, measured: well over a hundred characters below U+3000), and each such spelling
-    of an account would get a fresh counter -- the throttle of that account undone by sprinkling
-    one character into the name. So on MariaDB/MySQL the key is the collation's own weight of
-    the typed name (`WEIGHT_STRING`): two names have the same weight exactly when the database
-    takes them for the same name. Trailing blanks are dropped first, and so is the weight of a
-    blank at the end: the collation pads with blanks when it compares (PAD SPACE), the weight
-    string does not.
+    `login_key` folds in Python what a collation usually treats as equal. MariaDB's collations
+    ignore or equate more than that (U+034F, the tatweel U+0640, `ø` = `o` and many more), and
+    each such spelling of an account would get a fresh counter -- the throttle of that account
+    undone by sprinkling one character into the name. So on MariaDB/MySQL the key is a digest of
+    the collation's own weight of the typed name (`WEIGHT_STRING`).
+
+    The database also does the padding (`AS CHAR(n)`): a PAD SPACE collation compares as if both
+    names were filled up with blanks, and in a collation that weighs in several levels
+    (`..._as_ci`, `thai_520_w2`) those blanks sit in the middle of the weight, where nothing
+    done afterwards could even them out. Under a NO PAD collation this is coarser than the
+    comparison (a trailing blank shares the counter), never finer.
 
     The query reads no row of any table, so the key still depends on the typed name alone:
     existing and invented names behave the same (no oracle). Under SQLite, which compares
@@ -207,21 +206,14 @@ def throttle_key(session: Session, username: str) -> str:
     if collation is None:
         return login_key(username)
     charset, name = collation
-    # Weighed in one level only: in a multi-level weight the blank sits in the middle and cannot
-    # be cut off the end. The `_ai_ci` sibling of a collation equates everything the collation
-    # does and more, so at worst two accounts that differ in accent or case share a counter.
-    name = _MULTI_LEVEL.sub(r"\1_ai_ci", name)
-    weights = session.execute(
+    weight = session.execute(
         text(
-            f"SELECT HEX(WEIGHT_STRING(CONVERT(:name USING {charset}) COLLATE {name})), "
-            f"HEX(WEIGHT_STRING(CONVERT(' ' USING {charset}) COLLATE {name}))"
+            f"SELECT HEX(WEIGHT_STRING(CONVERT(:name USING {charset}) COLLATE {name} "
+            f"AS CHAR({_WEIGHED_LENGTH})))"
         ),
-        {"name": username.rstrip(" ")},
-    ).one()
-    weight, blank = str(weights[0]), str(weights[1])
-    while blank and weight.endswith(blank):
-        weight = weight[: -len(blank)]
-    return f"kollation:{weight}"
+        {"name": username},
+    ).scalar_one()
+    return f"kollation:{hashlib.sha256(str(weight).encode()).hexdigest()}"
 
 
 def _unchanged_since_the_check(session: Session, user: User, verified_hash: str) -> bool:

@@ -17,13 +17,12 @@ Letzte Aktualisierung: 2026-11-27. Diese Datei sagt, was **jetzt** gilt. Verlauf
   `MAX_PARALLEL_ATTEMPTS` (5) Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein
   Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel hängt nur vom **getippten
   Namen** ab, nie davon, ob es das Konto gibt -- sonst verrieten die Wartezeiten die Existenz (`login.throttle_key`). **Unter
-  MariaDB ist er das Gewicht des Namens in der Kollation der Spalte `user.username`** (`WEIGHT_STRING`, Leerzeichen am Ende
-  entfernt): Zwei Namen haben denselben Zähler, wenn die Datenbank sie für denselben Namen hält, auch bei Zeichen, die
-  `utf8mb4_uca1400_ai_ci` übergeht oder gleichsetzt (U+034F, Tatweel U+0640, `ø` = `o` und mehr). Die Abfrage liest keine Zeile.
-  Zeichensatz und Kollation werden einmal je Datenbank aus `information_schema` gelesen; bei akzent- oder
-  groß-/kleinschreibungsempfindlichen Kollationen der Familien `uca1400` und `utf8mb4_0900` (mehrstufiges Gewicht) wird mit der
-  `_ai_ci`-Schwester gewichtet -- gröber,
-  nie feiner (zwei Konten, die sich nur im Akzent unterscheiden, teilen sich dann den Zähler). Bewusste Ausnahme von „keine
+  MariaDB ist er ein Hash des Gewichts, das die Kollation der Spalte `user.username` dem Namen gibt** (`WEIGHT_STRING
+  … AS CHAR(512)`; das Auffüllen mit Leerzeichen macht die Datenbank selbst, auch in mehrstufigen Gewichten): Zwei Namen
+  haben denselben Zähler, wenn die Datenbank sie für denselben Namen hält, auch bei Zeichen, die `utf8mb4_uca1400_ai_ci`
+  übergeht oder gleichsetzt (U+034F, Tatweel U+0640, `ø` = `o` und mehr). Unter NO-PAD-Kollationen ist das gröber als der
+  Vergleich (Leerzeichen am Ende teilt den Zähler), nie feiner. Die Abfrage liest keine Zeile. Zeichensatz und Kollation
+  werden einmal je Datenbank aus `information_schema` gelesen. Bewusste Ausnahme von „keine
   datenbankspezifischen Funktionen“: nur in diesem Dialektzweig; unter SQLite (binärer Vergleich) und wenn die Kollation nicht
   lesbar ist, gilt die Faltung in Python (`login.login_key`). Geprüft mit utf8mb4 (`tests/test_login_throttle_collation.py`);
   ein Latin-1-Schema ist nicht geprüft. Ein deaktiviertes Konto kostet dieselbe
