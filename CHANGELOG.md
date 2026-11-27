@@ -21,6 +21,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **I-Anteil des PI-Reglers anzeigen (nur lesend, nur Anlagenprofil):** Karte auf der Raumseite mit letztem Reset (Zeit und Grund), eigene Reihe im Verlauf mit Achse 0–100 % und Reset-Markern, Einstellung „I-Anteil zeigen“ der Verlaufskachel und neue Kachel „Regler“. Zurücksetzen und Setzen gibt es nicht.
 - Entscheidungen ohne PI-Rechnung (Fenster, Frostschutz, Sensorausfall, Ventilschutz, Haltephase, sicherer Anlauf) protokollieren jetzt den gehaltenen bzw. zurückgesetzten Integralanteil (`pi_integral_before`/`after`). Die Regelung selbst ist unverändert.
 
+### Behoben
+
+- **Anmeldedrosselung unter MariaDB:** Der Zähler folgt jetzt der Kollation der Datenbank. Schreibweisen, die dasselbe Konto treffen (z. B. mit eingestreutem U+034F oder Tatweel), bekamen bisher je einen eigenen Zähler und umgingen so die Wartezeiten.
+
 ---
 
 ## 0.25.0 — 2026-11-20

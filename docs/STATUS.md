@@ -15,16 +15,15 @@ Letzte Aktualisierung: 2026-11-26. Diese Datei sagt, was **jetzt** gilt. Verlauf
 - **Anmeldedrosselung und Verwaltungsrechte bei Gleichzeitigkeit (unveröffentlicht, behebt Codex-Befunde 9 und 4):**
   *Anmeldung:* Ein Versuch wird **vor** der Wartezeit gezählt (`login.throttled_attempt`), nicht danach. Je Schlüssel laufen höchstens
   `MAX_PARALLEL_ATTEMPTS` (5) Prüfungen gleichzeitig, jede weitere wird sofort abgewiesen (Anmeldung: dieselbe Antwort wie ein
-  Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel ist der **getippte Name, gefaltet**
-  (`login.login_key`: Unicode-Kompatibilitätsform und Ligaturen, Akzente weg, Groß-/Kleinschreibung (`ß` = `ss`), Ziffern anderer
-  Schriften als ASCII, unsichtbare Format- und Steuerzeichen (Zeichen der Breite null, weicher Trennstrich, BOM, NUL) entfernt,
-  Randleerzeichen entfernt) und hängt nie davon ab, ob es das Konto gibt -- sonst verrieten die Wartezeiten auf MariaDB (Namen
-  ohne Rücksicht auf die Schreibweise verglichen) die Existenz. **Grenze:** Was die Kollation (`utf8mb4_uca1400_ai_ci`) sonst
-  noch ignoriert oder gleichsetzt (Kombinationszeichen wie U+034F, Tatweel U+0640, `ø`, `æ` und mehr, gemessen über 1000 Zeichen),
-  wird nicht gefaltet: Ein Name mit einem solchen eingestreuten Zeichen meldet mit richtigem Passwort an, hat aber einen eigenen
-  Zähler -- für diese Namen ist die Drosselung nur durch die Rechenzeit der Passwortprüfung begrenzt (kein Orakel, bekannte und
-  erfundene Namen verhalten sich gleich). Unter SQLite (binärer Vergleich) ohne Belang. Abhilfe offen (Karte „Anmeldedrosselung:
-  Schlüssel nach Kollation der Datenbank"). Ein deaktiviertes Konto kostet dieselbe
+  Fehlversuch, ohne Passwortprüfung; Passwortwechsel: 429 `too_many_attempts`). Der Schlüssel hängt nur vom **getippten
+  Namen** ab, nie davon, ob es das Konto gibt -- sonst verrieten die Wartezeiten die Existenz (`login.throttle_key`). **Unter
+  MariaDB ist er das Gewicht des Namens in der Kollation der Spalte `user.username`** (`WEIGHT_STRING`, Leerzeichen am Ende
+  entfernt): Zwei Namen haben denselben Zähler, wenn die Datenbank sie für denselben Namen hält, auch bei Zeichen, die
+  `utf8mb4_uca1400_ai_ci` übergeht oder gleichsetzt (U+034F, Tatweel U+0640, `ø` = `o` und mehr). Die Abfrage liest keine Zeile.
+  Zeichensatz und Kollation werden einmal je Datenbank aus `information_schema` gelesen. Bewusste Ausnahme von „keine
+  datenbankspezifischen Funktionen“: nur in diesem Dialektzweig; unter SQLite (binärer Vergleich) und wenn die Kollation nicht
+  lesbar ist, gilt die Faltung in Python (`login.login_key`). Geprüft mit utf8mb4 (`tests/test_login_throttle_collation.py`);
+  ein Latin-1-Schema ist nicht geprüft. Ein deaktiviertes Konto kostet dieselbe
   Passwortprüfung wie ein aktives (kein Zeit-Orakel). Der Nachschlag gibt seine
   Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
   Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es

@@ -1,5 +1,6 @@
 """Anmeldung: Drosselung, Pruefung, Session-Cookies -- geteilt von HTML-Login und /ui-api."""
 import asyncio
+import re
 import secrets
 import unicodedata
 from collections.abc import AsyncIterator
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from anyio import to_thread
 from fastapi import Request, Response
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import InvalidRequestError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -148,6 +149,70 @@ def login_key(username: str) -> str:
     return f"name:{''.join(folded).strip().casefold()}"
 
 
+# The collation of `user.username`, per database: read once, it does not change while the
+# service runs. Only a plain name goes into the SQL text below, never one with other characters.
+_USERNAME_COLLATION: dict[str, tuple[str, str] | None] = {}
+_SQL_NAME = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _username_collation(session: Session) -> tuple[str, str] | None:
+    """Character set and collation of the column `user.username`, as the database reports them."""
+    engine = session.get_bind().engine
+    cache_key = engine.url.render_as_string(hide_password=True)
+    if cache_key not in _USERNAME_COLLATION:
+        row = session.execute(
+            text(
+                "SELECT character_set_name, collation_name FROM information_schema.columns "
+                "WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column"
+            ),
+            {"table": User.__tablename__, "column": "username"},
+        ).one_or_none()
+        found = None
+        if row is not None and all(
+            isinstance(part, str) and _SQL_NAME.fullmatch(part) for part in row
+        ):
+            found = (row[0], row[1])
+        _USERNAME_COLLATION[cache_key] = found
+    return _USERNAME_COLLATION[cache_key]
+
+
+def throttle_key(session: Session, username: str) -> str:
+    """The throttle key of a login, as the database compares names -- never whether it exists.
+
+    `login_key` folds in Python what a collation usually treats as equal. MariaDB's
+    `utf8mb4_uca1400_ai_ci` ignores or equates more than that (U+034F, the tatweel U+0640,
+    `ø` = `o`, measured: well over a hundred characters below U+3000), and each such spelling
+    of an account would get a fresh counter -- the throttle of that account undone by sprinkling
+    one character into the name. So on MariaDB/MySQL the key is the collation's own weight of
+    the typed name (`WEIGHT_STRING`): two names have the same weight exactly when the database
+    takes them for the same name. Trailing blanks are dropped first, and so is the weight of a
+    blank at the end: the collation pads with blanks when it compares (PAD SPACE), the weight
+    string does not.
+
+    The query reads no row of any table, so the key still depends on the typed name alone:
+    existing and invented names behave the same (no oracle). Under SQLite, which compares
+    bytes, and if the collation cannot be read, the Python fold is the key -- it is coarser
+    than a binary comparison, never finer.
+    """
+    if session.get_bind().dialect.name not in ("mysql", "mariadb"):
+        return login_key(username)
+    collation = _username_collation(session)
+    if collation is None:
+        return login_key(username)
+    charset, name = collation
+    weights = session.execute(
+        text(
+            f"SELECT HEX(WEIGHT_STRING(CONVERT(:name USING {charset}) COLLATE {name})), "
+            f"HEX(WEIGHT_STRING(CONVERT(' ' USING {charset}) COLLATE {name}))"
+        ),
+        {"name": username.rstrip(" ")},
+    ).one()
+    weight, blank = str(weights[0]), str(weights[1])
+    while blank and weight.endswith(blank):
+        weight = weight[: -len(blank)]
+    return f"kollation:{weight}"
+
+
 def _unchanged_since_the_check(session: Session, user: User, verified_hash: str) -> bool:
     """Whether the account still is what the password was checked against.
 
@@ -192,7 +257,7 @@ async def attempt_login(
     except UnicodeEncodeError:
         return None
     user = session.scalar(select(User).where(User.username == username))
-    key = login_key(username)
+    key = throttle_key(session, username)
     verified_hash = user.password_hash if user is not None else ""
     # The wait below must not hold a database connection: the lookup opened a transaction,
     # and a stream of invented names would otherwise park one pooled connection per

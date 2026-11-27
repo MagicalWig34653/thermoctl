@@ -182,7 +182,7 @@ def test_a_flood_of_parallel_logins_gets_only_a_few_password_checks(
 
     assert outcomes == [None] * 20
     assert len(checks) == MAX_PARALLEL_ATTEMPTS
-    assert FEHLVERSUCHE == {"name:lino": MAX_PARALLEL_ATTEMPTS}
+    assert FEHLVERSUCHE == {login.throttle_key(session, "lino"): MAX_PARALLEL_ATTEMPTS}
     assert login._IN_FLIGHT == {}
 
 
@@ -197,7 +197,7 @@ def test_a_refused_login_looks_like_any_failed_one(
     first = client.post("/ui-api/login", json={"username": "lino", "password": RICHTIG})
     assert first.status_code == 200  # Vergleichslauf: ohne Schwall kommt sie durch
     client.cookies.clear()  # sonst greift der CSRF-Schutz für die angemeldete Sitzung
-    login._IN_FLIGHT["name:lino"] = MAX_PARALLEL_ATTEMPTS
+    login._IN_FLIGHT[login.throttle_key(session, "lino")] = MAX_PARALLEL_ATTEMPTS
     checks.clear()
 
     flooded = client.post("/ui-api/login", json={"username": "lino", "password": RICHTIG})
@@ -238,12 +238,15 @@ def test_the_wait_does_not_hold_a_database_transaction(
 
 
 def test_the_throttle_is_keyed_by_the_typed_name_whether_or_not_it_exists(
-    client: Any, user: User
+    client: Any, session: Session, user: User
 ) -> None:
     client.post("/ui-api/login", json={"username": "lino", "password": FALSCH})
     client.post("/ui-api/login", json={"username": "unbekannt", "password": FALSCH})
 
-    assert FEHLVERSUCHE == {"name:lino": 1, "name:unbekannt": 1}
+    assert FEHLVERSUCHE == {
+        login.throttle_key(session, "lino"): 1,
+        login.throttle_key(session, "unbekannt"): 1,
+    }
 
 
 @pytest.mark.parametrize(
@@ -319,4 +322,4 @@ def test_other_spellings_of_the_name_share_the_counter(
     for typed in ("lino", "LINO", "Lino ", "lInO"):
         client.post("/ui-api/login", json={"username": typed, "password": FALSCH})
 
-    assert FEHLVERSUCHE == {"name:lino": 4}
+    assert FEHLVERSUCHE == {login.throttle_key(session, "lino"): 4}
