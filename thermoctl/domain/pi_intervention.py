@@ -8,15 +8,21 @@ Grund (`manuell_reset` / `manuell_gesetzt`) ins Schaltprotokoll schreibt. Tore,
 Hysterese-Haltephase und sicherer Anlauf gelten dabei unverändert -- der Eingriff ändert nur
 den gehaltenen Wert.
 
+**Transaktion:** `request_reset`/`request_set` schreiben die bisherige (lesende) Transaktion der
+Anfrage fest und beginnen mit dem Schreiben eine neue (siehe `_request`); bei belegter Datenbank
+antworten sie mit `busy` (HTTP 409), und nichts ist geändert.
+
 Recht: `zone.manage` dieser Zone (wie jede dauerhafte Änderung an der Regelung) **und** die
 Anlagensicht (`pi_view.visible_to`): Wohnungskonten sehen und ändern den I-Anteil nie, auch nicht
 mit `zone.manage`. Lesen: `zone.read` und Anlagensicht.
 """
 
+import logging
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -24,12 +30,15 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.state import PiManualRequest, ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import pi_view
+from thermoctl.domain.administration import is_collision
 from thermoctl.domain.authz import Forbidden, require
 from thermoctl.domain.pi_control import RESET_REASON_MANUAL_RESET, RESET_REASON_MANUAL_SET
 from thermoctl.domain.principal import Principal
 
 _PLACES = Decimal("0.000001")  # die Genauigkeit der Spalten (Numeric(12, 6))
 _NOT_ACTIVE = "Für diesen Raum läuft keine PI-Regelung mit gespeichertem Zustand."
+_BUSY = "Die Datenbank ist gerade belegt; es wurde nichts geändert. Bitte erneut versuchen."
+log = logging.getLogger(__name__)
 
 
 class PiInterventionError(Exception):
@@ -121,26 +130,56 @@ def _request(
     state = session.get(ZoneState, zone.id)  # nur lesen, nie sperren oder schreiben
     if not zone.pi_enabled or state is None:
         raise PiInterventionError("pi_not_active", _NOT_ACTIVE)
-    detail = f"bisher {state.pi_integral}, neu {value}; wirkt im nächsten Regelzyklus"
-    earlier = _latest_request(session, zone.id)
-    if earlier is not None:
-        detail += f"; ersetzt die vorgemerkte Anforderung {earlier.reason}"
-    session.add(
-        PiManualRequest(zone_id=zone.id, reason=reason, integral=value, requested_at=utcnow())
-    )
-    audit.record(
-        session,
-        source=source,
-        action=action,
-        object_type="zone",
-        object_id=str(zone.id),
-        summary=summary,
-        user_id=principal.user_id,
-        token_id=principal.token_id,
-        detail=detail,
-    )
-    session.flush()
+    zone_id = zone.id
+    try:
+        # Die bisherige (nur lesende) Transaktion beenden und als Erstes schreiben: SQLite
+        # lehnt „erst lesen, dann schreiben“ sofort mit `database is locked` ab, wenn dazwischen
+        # jemand festgeschrieben hat. Als erste Anweisung wartet das INSERT auf die Sperre.
+        session.commit()
+        request = PiManualRequest(
+            zone_id=zone_id, reason=reason, integral=value, requested_at=utcnow()
+        )
+        session.add(request)
+        session.flush()
+        state = session.get(ZoneState, zone_id, populate_existing=True)
+        if state is None:  # pragma: no cover - Raum im selben Moment gelöscht
+            raise PiInterventionError("pi_not_active", _NOT_ACTIVE)
+        detail = f"bisher {state.pi_integral}, neu {value}; wirkt im nächsten Regelzyklus"
+        earlier = session.scalar(
+            select(PiManualRequest.reason)
+            .where(PiManualRequest.zone_id == zone_id, PiManualRequest.id < request.id)
+            .order_by(PiManualRequest.id.desc())
+            .limit(1)
+        )
+        if earlier is not None:
+            detail += f"; ersetzt die vorgemerkte Anforderung {earlier}"
+        audit.record(
+            session,
+            source=source,
+            action=action,
+            object_type="zone",
+            object_id=str(zone_id),
+            summary=summary,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            detail=detail,
+        )
+        session.flush()
+    except OperationalError as exc:
+        if not _database_busy(exc):
+            raise
+        session.rollback()
+        log.warning(
+            "pi.manual_request_busy",
+            extra={"event": "pi.manual_request_busy", "zone_id": zone_id, "reason": reason},
+        )
+        raise PiInterventionError("busy", _BUSY) from exc
     return _view(session, zone, state)
+
+
+def _database_busy(exc: OperationalError) -> bool:
+    """Eine Sperre oder ein Zusammenstoß mit einer anderen Transaktion -- nichts Kaputtes."""
+    return is_collision(exc) or "database is locked" in str(exc.orig)
 
 
 def request_reset(

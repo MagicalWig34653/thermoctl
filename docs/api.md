@@ -289,7 +289,8 @@ nur eine Anforderung vor (`pending`: `reason` = `manuell_reset` oder `manuell_ge
 und schreiben einen Audit-Eintrag (Quelle `api`); `integral` bleibt der bisherige Wert. Der
 **nächste Regelzyklus** übernimmt die Anforderung und schreibt Grund und Wert ins
 Schaltprotokoll. Tore und sicherer Anlauf gelten unverändert. Ein Raum ohne PI-Regler oder ohne
-gespeicherten Zustand antwortet `409`. Dieselben Werkzeuge gibt es über MCP
+gespeicherten Zustand antwortet `409`, ebenso eine gerade belegte Datenbank (nichts geändert,
+erneut versuchen). Dieselben Werkzeuge gibt es über MCP
 (`read_pi_state`, `reset_pi_integral`, `set_pi_integral`). Die CSV-Auswertung der
 Weboberfläche (`/ui-api/history.csv`) trägt in der Anlagensicht die Spalte `pi_integral`.
 

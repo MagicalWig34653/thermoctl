@@ -1025,5 +1025,5 @@ def set_room_pi_integral(
 
 
 def _pi_error(exc: pi_intervention.PiInterventionError) -> RoomApiError:
-    status = 409 if exc.code == "pi_not_active" else 422
+    status = 409 if exc.code in ("pi_not_active", "busy") else 422
     return RoomApiError(status, exc.message, exc.code, exc.field)

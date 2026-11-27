@@ -1258,7 +1258,7 @@ def _pi_state_response(
 
 
 def _pi_intervention_error(exc: pi_intervention.PiInterventionError) -> HTTPException:
-    if exc.code == "pi_not_active":
+    if exc.code in ("pi_not_active", "busy"):
         return HTTPException(status.HTTP_409_CONFLICT, exc.message)
     return _domain_error(exc.field or "value", exc.message)
 
