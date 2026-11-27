@@ -23,6 +23,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Viele gleichzeitige Anmeldungen:** Passwort- und Passkey-Anmeldung geben ihre Datenbankverbindung sofort zurück. Bisher konnten mehr gleichzeitige Anmeldungen als Pool-Verbindungen (auch mit erfundenen Namen) den ganzen Dienst samt Regelschleife bis zur Zeitgrenze des Pools anhalten; Anfragen endeten mit 500.
 - **Anmeldedrosselung unter MariaDB:** Der Zähler folgt jetzt der Kollation der Datenbank. Schreibweisen, die dasselbe Konto treffen (z. B. mit eingestreutem U+034F oder Tatweel), bekamen bisher je einen eigenen Zähler und umgingen so die Wartezeiten.
 
 ---

@@ -246,6 +246,15 @@ async def attempt_login(
     Shared by the HTML form and the JSON login of the Svelte app, so neither has its
     own copy of the throttle, the constant-time comparison or the audit entries.
     Returns the user, the session secret and its lifetime, or `None` on failure.
+
+    **No database connection is held across an `await`**, and none after the return: every
+    stretch of database work here ends in its own commit before the function yields. The
+    queries run on the event loop, so a login that kept its connection until the request is
+    cleaned up (after the response) would make the next ones wait for the pool *blocking
+    the loop* -- the very loop that would return the connections and runs the control
+    cycle. Many logins at once, each with its own name, emptied the pool that way, and
+    two logins of one account blocked each other on the locked account row.
+    The commit also means: success is only reported for a session that is stored.
     """
     if len(username) > MAX_USERNAME_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
         return None
@@ -301,6 +310,7 @@ async def attempt_login(
             session, source="web", action="login_failed", object_type="user",
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
         )
+        session.commit()
         return None
 
     assert user is not None
@@ -317,6 +327,7 @@ async def attempt_login(
         object_id=str(user.id), summary=f"Anmeldung als '{user.username}'",
         user_id=user.id,
     )
+    session.commit()
     return user, secret, lifetime_s
 
 

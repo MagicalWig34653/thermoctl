@@ -58,7 +58,11 @@ async def authentication_options(
     _passkeys_an(settings)
     # Cleanup on the side: expired challenges are worthless but do pile up.
     cleanup_old_challenges(session)
-    return JSONResponse(begin_authentication(session, settings))
+    arguments = begin_authentication(session, settings)
+    # Both sign-in routes commit before they return: the connection must not stay out
+    # until the request is cleaned up after the response -- see `login.attempt_login`.
+    session.commit()
+    return JSONResponse(arguments)
 
 
 @router.post("/passkey/authentication/verify")
@@ -85,6 +89,7 @@ async def finish_authentication(
         user = verify_authentication(session, settings, response)
     except PasskeyError:
         # The reason is already in the log; it does not go out to the caller.
+        session.commit()
         return _reject()
 
     user.last_login_at = utcnow()
@@ -94,6 +99,7 @@ async def finish_authentication(
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
+    session.commit()
     content: dict[str, str] = {"status": "signed_in", "redirect": prefixed(request, "/")}
     if return_to is not None:
         content["return_to"] = return_to

@@ -27,8 +27,15 @@ Letzte Aktualisierung: 2026-11-26. Diese Datei sagt, was **jetzt** gilt. Verlauf
   Passwortprüfung wie ein aktives (kein Zeit-Orakel). Der Nachschlag gibt seine
   Transaktion vor der Wartezeit frei. Bekannt: Wer für einen Namen 5 Anfragen offen hält, lässt die Anmeldung dieses Namens für die
   Dauer abweisen (höchstens 5 s je Runde, danach wieder möglich) -- der Preis gegen unbegrenztes Raten; eine Kontosperre gibt es
-  nicht. Offen: gleichzeitige Anmeldungen mit vielen verschiedenen Namen füllen den Datenbank-Pool (Karte „Anmeldung: Pool bei
-  vielen Namen“). Der Zähler bleibt im Prozessspeicher (siehe unten).
+  nicht. **Datenbank-Pool:** Die Anmeldung (Passwort und Passkey) hält über keinen `await` hinweg und nach der Rückkehr keine
+  Verbindung: Jeder Abschnitt committet selbst (`login.attempt_login`, `web/passkey_views.py`). Vorher blieb die Verbindung bis
+  zum Aufräumen der Anfrage nach der Antwort draußen, die nächsten Anmeldungen warteten **blockierend auf der Ereignisschleife**
+  (Regelschleife inklusive) auf den Pool -- bei mehr gleichzeitigen Anmeldungen als Pool-Verbindungen stand der Dienst bis zur
+  Zeitgrenze und antwortete mit 500; zwei gleichzeitige Anmeldungen eines Kontos blockierten sich an der gesperrten Kontozeile.
+  Geprüft: `tests/test_login_pool.py` (ganze Anwendung, Pool mit 2 Verbindungen, 20 Anfragen, beide Datenbanken). **Grenze:**
+  Dasselbe Muster haben andere `async`-Endpunkte (die Datenbankarbeit läuft auf der Schleife, der Commit erst nach der Antwort),
+  ohne Anmeldung erreichbar die Kiosk-Einlösung `GET /kiosk/{token}`, angemeldet unter anderem die Passwortänderung (hält die
+  Verbindung während der Wartezeit); dort nicht geändert und nicht gemessen. Der Zähler bleibt im Prozessspeicher (siehe unten).
   *Verwaltungsrechte:* Zwei Verwaltende, die im selben Moment je den anderen deaktivieren, umgruppieren, ein Recht entziehen oder
   eine Gruppe löschen, würden unter MariaDB beide durchkommen, wenn jede Prüfung den anderen noch sähe, und alle aussperren. Jede solche
   Änderung nimmt jetzt zuerst `administration.lock_guarded_permissions` (die beiden geschützten Rechte-Zeilen in fester Reihenfolge,
