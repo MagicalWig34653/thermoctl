@@ -480,7 +480,7 @@ def test_history_csv_has_the_same_data_and_guards_formulas(
     assert response.headers["cache-control"] == "no-store"
     rows = list(csv.reader(io.StringIO(response.text)))
     assert rows[0][:3] == ["zone", "bucket_start_utc", "rows"]
-    assert rows[0][-2:] == ["solar_setback_min_k", "solar_setback_k"]
+    assert rows[0][-3:] == ["solar_setback_min_k", "solar_setback_k", "pi_integral"]
     assert len(rows) == 1 + 5
     data = dict(zip(rows[0], rows[1], strict=True))
     assert zone.display_name.startswith("=")

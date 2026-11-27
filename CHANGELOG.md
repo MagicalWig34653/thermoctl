@@ -14,11 +14,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Beim Upgrade zu wissen
 
 - Wohnungskonten bekommen die PI-Zahlen einer Regelentscheidung auch in der Betriebsübersicht und über MCP (`shadow_decisions`) nicht mehr; die Felder sind dort `null`, und der Tastgrad fehlt auch im Begründungstext (Entscheidung und Schaltprotokoll, auch über REST). Bisher genügte das Leserecht.
+- **Migration** `e3b7c1d9a452`: zwei leere Spalten in `zone_state` für den vorgemerkten Eingriff in den I-Anteil (beim Zurückstufen entfallen sie). Keine Zeile ändert sich.
 - **Eine Migration** (`c7e2a9f4d813`): Spalte `show_pi` an den Übersichtskacheln, neue Kachelart `controller` und ein Index auf dem Schattenprotokoll (bei großem Protokoll dauert der erste Start etwas länger). Beim Zurückstufen entfallen die Regler-Kacheln, die Spalte und der Index.
 
 ### Neu
 
-- **I-Anteil des PI-Reglers anzeigen (nur lesend, nur Anlagenprofil):** Karte auf der Raumseite mit letztem Reset (Zeit und Grund), eigene Reihe im Verlauf mit Achse 0–100 % und Reset-Markern, Einstellung „I-Anteil zeigen“ der Verlaufskachel und neue Kachel „Regler“. Zurücksetzen und Setzen gibt es nicht.
+- **I-Anteil zurücksetzen und setzen (Karte A391AABC, Teil 2):** Auf der Raumseite („I zurücksetzen“, „I setzen“ in Prozent, je mit Bestätigung), über REST (`GET /zones/{id}/pi-state`, `POST …/pi-state/reset`, `PUT …/pi-state/integral`) und MCP (`read_pi_state`, `reset_pi_integral`, `set_pi_integral`). Nur Anlagensicht mit `zone.manage`; Wert 0–1 wird auf dem Server geprüft; Audit-Eintrag mit altem und neuem Wert. Wirkung erst im nächsten Regelzyklus: Schaltprotokoll-Grund `manuell_reset` / `manuell_gesetzt`; Tore und sicherer Anlauf unverändert. CSV-Auswertung: neue letzte Spalte `pi_integral` (Anlagensicht). Der Kiosk zeigt den I-Anteil weiterhin nicht.
+- **I-Anteil des PI-Reglers anzeigen (nur Anlagenprofil):** Karte auf der Raumseite mit letztem Reset (Zeit und Grund), eigene Reihe im Verlauf mit Achse 0–100 % und Reset-Markern, Einstellung „I-Anteil zeigen“ der Verlaufskachel und neue Kachel „Regler“. 
 - Entscheidungen ohne PI-Rechnung (Fenster, Frostschutz, Sensorausfall, Ventilschutz, Haltephase, sicherer Anlauf) protokollieren jetzt den gehaltenen bzw. zurückgesetzten Integralanteil (`pi_integral_before`/`after`). Die Regelung selbst ist unverändert.
 
 ### Behoben

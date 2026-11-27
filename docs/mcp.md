@@ -213,7 +213,7 @@ Presets stehen im Code (`thermoctl/domain/token_presets.py`), nicht in der Daten
 
 ## Die Werkzeuge
 
-28 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+31 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -238,6 +238,9 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `cancel_vacation()` | `vacation.manage` | beendet den Urlaub vorzeitig |
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
 | `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
+| `read_pi_state(zone_id)` | `zone.read`, nur Anlagensicht | I-Anteil des PI-Reglers (0 bis 1), vorgemerkter Eingriff, letzter Reset |
+| `reset_pi_integral(zone_id)` | `zone.manage`, nur Anlagensicht | „I zurücksetzen“: der nächste Regelzyklus beginnt mit 0 (Grund `manuell_reset`) |
+| `set_pi_integral(zone_id, value)` | `zone.manage`, nur Anlagensicht | „I setzen“ auf 0 bis 1 (serverseitig geprüft; Grund `manuell_gesetzt`) |
 | `set_fault_notifications(zone_id, enabled)` | `zone.manage` | setzt die Ausfallbenachrichtigungen einer Zone auf an oder aus (nur die Zustellung; die Störung bleibt sichtbar) |
 | `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
 | `force_dry_run(reason)` | `control.disarm` | nimmt die Regelung in den Trockenlauf zurück |
@@ -337,6 +340,16 @@ sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann 
 Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen.
 Das ist Absicht: Ein Modell soll den
 Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
+
+**I-Anteil zurücksetzen und setzen** (`reset_pi_integral`, `set_pi_integral`) wirken nicht sofort:
+Beide merken nur eine Anforderung vor und schreiben einen Audit-Eintrag (Quelle `mcp`, mit
+bisherigem und neuem Wert). Der **nächste Regelzyklus** übernimmt sie und schreibt Grund
+(`manuell_reset` / `manuell_gesetzt`) und Wert ins Schaltprotokoll; `read_pi_state` zeigt bis dahin
+`pending`. Tore (Fenster, Frostschutz, Sensorausfall, Ventilschutz), die Haltephase der Hysterese
+und der sichere Anlauf gelten dabei unverändert und halten den Wert nur fest. Ein Raum ohne
+PI-Regler lehnt beides ab, ein später ausgeschalteter PI-Regler verwirft die Anforderung.
+Wohnungskonten bekommen auch mit `zone.manage` `Forbidden`. Dieselben Rechte gelten in der
+Weboberfläche (Raumseite, mit Bestätigung) und in REST ([`/pi-state`](api.md#i-anteil-pi-regler)).
 
 Die PI-Parameter stehen mit Grenzen und Wert in `read_control_parameters` und lassen sich mit
 `set_control_parameters` einzeln setzen: `pi_gain_per_k` (Kp, 0,05 bis 3,00; über 0,5 steigt die

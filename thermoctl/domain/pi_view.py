@@ -1,8 +1,11 @@
-"""Lesesicht auf den I-Anteil des PI-Reglers. Nur lesend: nichts hier wirkt auf die Regelung.
+"""Lesesicht auf den I-Anteil des PI-Reglers. Nur lesend: nichts hier wirkt auf die Regelung
+(der Eingriff steht in `domain/pi_intervention`).
 
 Ein Zurücksetzen hat keine eigene Spalte. Es steht im Schattenprotokoll: eine Entscheidung mit
 `pi_integrator_action == "zurueckgesetzt"`, der Grund in `pi_reset_reason`. Heute entsteht
-das nur nach mehr als 24 h ohne Heizanforderung; ältere Zeilen tragen auch andere Gründe.
+das nach mehr als 24 h ohne Heizanforderung oder durch „I zurücksetzen“ eines Verwalters
+(`manuell_reset`, `domain/pi_intervention`); ältere Zeilen tragen auch andere Gründe. „I setzen“
+(`gesetzt`, `manuell_gesetzt`) zählt nicht als Reset.
 Die Aufbewahrungsfrist des Protokolls begrenzt, wie weit zurück ein Reset bekannt ist.
 """
 

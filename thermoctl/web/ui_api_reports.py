@@ -336,6 +336,10 @@ def export_history(
 ) -> Response:
     """Dieselben Zeitfächer wie `/history` als CSV (leere Zellen: keine Zeile im Fach)."""
     data, _report = _history(session, principal, zone_id, start, to, resolution)
+    # Anlagentechnik: die Spalte I-Anteil gibt es nur in der Anlagensicht, hinten angehängt,
+    # damit die bisherigen Spalten an ihrem Platz bleiben. Die Wohnungssicht bekommt weder
+    # Spalte noch Werte (`_history` liefert dort ohnehin `null`).
+    with_pi = pi_view.visible_to(principal)
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(
@@ -354,6 +358,7 @@ def export_history(
             "heat_percent",
             "solar_setback_min_k",
             "solar_setback_k",
+            *(["pi_integral"] if with_pi else []),
         ]
     )
     zone_text = csv_cell(data.zone_name)
@@ -377,6 +382,7 @@ def export_history(
                         b.heat_percent,
                         b.solar_setback_min_k,
                         b.solar_setback_k,
+                        *((b.pi_integral,) if with_pi else ()),
                     )
                 ),
             ]

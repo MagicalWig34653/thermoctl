@@ -44,7 +44,7 @@ function room(patch: Partial<Room> = {}): Room {
     emergency: null,
     plan_applies: true,
     day_track: [],
-    actions: { override: true, cancel_override: true, edit_setpoint_step: true, edit_mode_setpoints: true, jump_next: true, set_operating_mode: true },
+    actions: { override: true, cancel_override: true, edit_setpoint_step: true, edit_mode_setpoints: true, jump_next: true, set_operating_mode: true, set_pi_integral: false },
     ...patch,
   };
 }
@@ -122,7 +122,7 @@ test('Anlagenstatus: drei getrennte Zustände', () => {
 });
 
 test('Aktionsflags: fehlendes Flag blendet aus', () => {
-  const none = { override: false, cancel_override: false, edit_setpoint_step: false, edit_mode_setpoints: false, jump_next: false, set_operating_mode: false };
+  const none = { override: false, cancel_override: false, edit_setpoint_step: false, edit_mode_setpoints: false, jump_next: false, set_operating_mode: false, set_pi_integral: false };
   const ui = roomActionsUi(room({ actions: none }), true);
   for (const action of Object.values(ui)) assert.equal(action.show, false);
 });

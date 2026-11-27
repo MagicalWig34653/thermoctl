@@ -139,6 +139,7 @@ def test_list_shows_state_setpoint_and_actions(client_als: Als, session: Session
         "edit_mode_setpoints": True,
         "jump_next": True,
         "set_operating_mode": True,
+        "set_pi_integral": False,  # kein PI-Raum
     }
 
 

@@ -19,7 +19,7 @@ function room(over: Partial<Room> & { id: number; name: string }): Room {
     emergency: null,
     plan_applies: true,
     day_track: [],
-    actions: { override: false, cancel_override: false, edit_setpoint_step: false, edit_mode_setpoints: false, jump_next: false, set_operating_mode: false },
+    actions: { override: false, cancel_override: false, edit_setpoint_step: false, edit_mode_setpoints: false, jump_next: false, set_operating_mode: false, set_pi_integral: false },
     ...over,
   };
 }

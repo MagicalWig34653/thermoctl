@@ -4,6 +4,8 @@ Alles ist nur lesend. Geprüft wird über HTTP: Werte, letzter Reset, Lücken bl
 und Wohnungskonten sehen nichts davon.
 """
 
+import csv
+import io
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -167,7 +169,7 @@ def test_room_without_reset_state_or_pi(client_als: Als, session: Session) -> No
     fresh_pi = _room(client, fresh)["pi"]
     assert Decimal(fresh_pi["integral"]) == 0
     assert fresh_pi["last_reset"] is None
-    assert _room(client, no_state)["pi"] == {"integral": None, "last_reset": None}
+    assert _room(client, no_state)["pi"] == {"integral": None, "last_reset": None, "pending": None}
     assert _room(client, off)["pi"] is None
 
 
@@ -395,6 +397,57 @@ def test_history_series_keeps_gaps_and_takes_the_last_value_of_a_bucket(
             "reason_label": NO_HEATING_LABEL,
         }
     ]
+
+
+def _csv(client: TestClient, zone: Zone, start: datetime, end: datetime) -> list[dict[str, str]]:
+    response = client.get(
+        "/ui-api/history.csv",
+        params={
+            "zone_id": zone.id,
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "resolution": 600,
+        },
+    )
+    assert response.status_code == 200, response.text
+    rows = list(csv.reader(io.StringIO(response.text)))
+    return [dict(zip(rows[0], row, strict=True)) for row in rows[1:]]
+
+
+def test_csv_has_the_integral_column_with_the_same_values_as_the_series(
+    client_als: Als, session: Session
+) -> None:
+    create_settings(session)
+    zone = _pi_zone(session, "csv")
+    start = _now() - timedelta(hours=1)
+    _row(session, zone, start + timedelta(minutes=1), after="0.20", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, start + timedelta(minutes=9), after="0.30", action=INTEGRATOR_CONTINUE)
+    _row(session, zone, start + timedelta(minutes=12))  # Fach ohne I-Wert: leere Zelle
+    _row(session, zone, start + timedelta(minutes=21), after="0.50", action=INTEGRATOR_HOLD)
+    client = client_als(READ)
+    end = start + timedelta(hours=1)
+
+    rows = _csv(client, zone, start, end)
+
+    header = list(rows[0])
+    assert header[-1] == "pi_integral"  # hinten angehängt: bestehende Spalten bleiben, wo sie sind
+    assert [r["pi_integral"] for r in rows][:3] == ["0.3", "", "0.5"]
+    json_values = [b["pi_integral"] for b in _history(client, zone, start, end)["buckets"]]
+    assert [r["pi_integral"] or None for r in rows] == json_values
+
+
+def test_csv_of_the_tenant_profile_has_no_integral_column(
+    tenant_client: Als, session: Session
+) -> None:
+    create_settings(session)
+    zone = _pi_zone(session, "csv-mieter")
+    start = _now() - timedelta(hours=1)
+    _row(session, zone, start + timedelta(minutes=1), after="0.20", action=INTEGRATOR_CONTINUE)
+
+    rows = _csv(tenant_client(READ), zone, start, start + timedelta(hours=1))
+
+    assert "pi_integral" not in rows[0]
+    assert "0.2" not in {value for row in rows for value in row.values()}
 
 
 def test_history_marks_a_run_of_reset_rows_once(client_als: Als, session: Session) -> None:

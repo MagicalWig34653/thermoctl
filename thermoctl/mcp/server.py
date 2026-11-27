@@ -22,7 +22,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain import change_log as change_log_domain
-from thermoctl.domain import pi_view
+from thermoctl.domain import pi_intervention, pi_view
 from thermoctl.domain.authz import (
     Forbidden,
     has_permission,
@@ -44,6 +44,7 @@ from thermoctl.domain.device_commands import (
     list_commands,
 )
 from thermoctl.domain.modes import DomainError
+from thermoctl.domain.pi_intervention import PiInterventionError
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.schedule import (
@@ -90,6 +91,7 @@ _REJECTIONS = (
     DomainError,
     HistoryRangeError,
     ParameterOutOfRange,
+    PiInterventionError,
     PolicyError,
     RemoteControlError,
     ScheduleError,
@@ -749,6 +751,55 @@ def set_control_parameters(
     }
 
 
+def _pi_state_payload(
+    session: Session, zone: Zone, view: pi_intervention.PiStateView
+) -> dict[str, object]:
+    reset = pi_view.last_reset(session, zone.id)
+    return {
+        "zone": zone.name,
+        "zone_id": zone.id,
+        "pi_enabled": view.enabled,
+        "integral": _decimal(view.integral),
+        "pending": (
+            {"reason": view.pending.reason, "integral": _decimal(view.pending.integral)}
+            if view.pending is not None
+            else None
+        ),
+        "last_reset": (
+            {"at": _moment_utc(reset.at), "reason": reset.reason} if reset is not None else None
+        ),
+    }
+
+
+def read_pi_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
+    """The PI controller's integral (0..1) of a zone, a pending manual intervention and the
+    last reset. Plant view only (`zone.read`); tenant accounts get `Forbidden`."""
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    return _pi_state_payload(session, zone, pi_intervention.read_state(session, principal, zone))
+
+
+def reset_pi_integral(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
+    """Requests "reset the integral": the next control cycle starts from 0 and logs the reason
+    `manuell_reset`. Takes effect in the next cycle, not now. `zone.manage`, plant view only."""
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    view = pi_intervention.request_reset(session, principal, zone, source="mcp")
+    return _pi_state_payload(session, zone, view)
+
+
+def set_pi_integral(
+    session: Session, plaintext: str, zone_id: int, value: Decimal
+) -> dict[str, object]:
+    """Requests "set the integral" to a value from 0 to 1 (checked on the server): the next
+    control cycle continues with it and logs the reason `manuell_gesetzt`. Takes effect in the
+    next cycle, not now. `zone.manage`, plant view only."""
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    view = pi_intervention.request_set(session, principal, zone, value, source="mcp")
+    return _pi_state_payload(session, zone, view)
+
+
 def read_control(session: Session, plaintext: str) -> dict[str, object]:
     """The plant's operating state along with the defaults every zone inherits from.
 
@@ -1318,6 +1369,24 @@ def _register_tools(
         """Sets one control parameter of a visible zone within its limits."""
         with session_scope(factory) as session:
             return set_control_parameters(session, current(), zone_id, name, value)
+
+    @server.tool(name="read_pi_state")
+    def mcp_read_pi_state(zone_id: int) -> dict[str, object]:
+        """Reads a visible zone's PI integral (0..1), pending intervention and last reset."""
+        with session_scope(factory) as session:
+            return read_pi_state(session, current(), zone_id)
+
+    @server.tool(name="reset_pi_integral")
+    def mcp_reset_pi_integral(zone_id: int) -> dict[str, object]:
+        """Requests a reset of a zone's PI integral to 0; applies in the next cycle."""
+        with session_scope(factory) as session:
+            return reset_pi_integral(session, current(), zone_id)
+
+    @server.tool(name="set_pi_integral")
+    def mcp_set_pi_integral(zone_id: int, value: Decimal) -> dict[str, object]:
+        """Requests setting a zone's PI integral (0 to 1); applies in the next cycle."""
+        with session_scope(factory) as session:
+            return set_pi_integral(session, current(), zone_id, value)
 
     @server.tool(name="set_fault_notifications")
     def mcp_set_fault_notifications(zone_id: int, enabled: bool) -> dict[str, object]:

@@ -59,6 +59,8 @@ export interface Actions {
   edit_mode_setpoints: boolean;
   jump_next: boolean;
   set_operating_mode: boolean;
+  /** „I zurücksetzen“ / „I setzen“: nur Anlagensicht mit `zone.manage`, Raum mit PI-Regler. */
+  set_pi_integral: boolean;
 }
 
 export interface PiReset {
@@ -67,10 +69,18 @@ export interface PiReset {
   reason_label: string | null;
 }
 
-/** I-Anteil des PI-Reglers (0..1 als Dezimalzeichenkette), nur lesend. */
+/** Ein angeforderter Eingriff, den erst der nächste Regelzyklus übernimmt. */
+export interface PiPending {
+  reason: 'manuell_reset' | 'manuell_gesetzt' | string;
+  reason_label: string | null;
+  integral: string;
+}
+
+/** I-Anteil des PI-Reglers (0..1 als Dezimalzeichenkette). */
 export interface PiInfo {
   integral: string | null;
   last_reset: PiReset | null;
+  pending: PiPending | null;
 }
 
 export interface Room {

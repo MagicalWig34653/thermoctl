@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -512,3 +513,31 @@ class WriteSolarLocation(BaseModel):
     enabled: bool
     latitude: str = ""
     longitude: str = ""
+
+
+class WritePiIntegral(BaseModel):
+    """Gewünschter I-Anteil. Form und Bereich (0 bis 1) prüft die Domäne, für alle
+    Schnittstellen gleich (`domain/pi_intervention.check_value`)."""
+
+    value: Any = None
+
+
+class PiPendingResponse(BaseModel):
+    reason: str  # manuell_reset | manuell_gesetzt
+    integral: Decimal
+
+
+class PiLastResetResponse(BaseModel):
+    at: datetime
+    reason: str | None
+
+
+class PiStateResponse(BaseModel):
+    """I-Anteil eines Raums. `pending` ist ein angeforderter Eingriff, den erst der nächste
+    Regelzyklus übernimmt; `integral` bleibt bis dahin der bisherige Wert."""
+
+    zone_id: int
+    enabled: bool
+    integral: Decimal | None
+    pending: PiPendingResponse | None
+    last_reset: PiLastResetResponse | None

@@ -2,7 +2,7 @@
 
 import { shareAsPercent } from '../operations/logic';
 import { formatInstant } from './logic';
-import type { PiReset, Room } from './types';
+import type { PiPending, PiReset, Room } from './types';
 
 export const NO_RESET_TEXT = 'Keiner im aufbewahrten Schaltprotokoll.';
 
@@ -61,4 +61,23 @@ export function controllerRows(rooms: readonly Room[]): ControllerRow[] {
       },
     ];
   });
+}
+
+/** Eingabe „I setzen“ in Prozent (wie die Karte sie zeigt) als Wert 0..1 für den Server.
+ *  Der Server prüft den Bereich noch einmal; hier nur, damit ein Tippfehler gar nicht erst
+ *  hingeschickt wird. Dezimalkomma und -punkt, höchstens vier Nachkommastellen, 0 bis 100. */
+export function parseIntegralPercent(text: string): { ok: true; value: string } | { ok: false; message: string } {
+  const bad = { ok: false, message: 'Bitte einen Wert von 0 bis 100 Prozent angeben.' } as const;
+  const trimmed = text.trim();
+  if (!/^\d{1,3}([.,]\d{1,4})?$/.test(trimmed)) return bad;
+  const percent = Number(trimmed.replace(',', '.'));
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) return bad;
+  return { ok: true, value: (percent / 100).toFixed(6) };
+}
+
+export const PENDING_TEXT = 'Vorgemerkt, wird im nächsten Regelzyklus übernommen';
+
+export function pendingText(pending: PiPending): string {
+  const what = pending.reason === 'manuell_reset' ? 'I-Anteil zurücksetzen' : `I-Anteil auf ${shareAsPercent(pending.integral)} setzen`;
+  return `${what}. ${PENDING_TEXT}.`;
 }

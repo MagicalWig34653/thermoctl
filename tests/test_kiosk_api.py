@@ -163,6 +163,40 @@ def test_a_kiosk_cookie_reaches_neither_ui_api_nor_rest(
     assert response.status_code in (401, 403, 404, 405)
 
 
+def test_the_kiosk_shows_no_integral_and_cannot_touch_it(
+    client: TestClient, session: Session
+) -> None:
+    """Karte A391AABC: der Kiosk zeigt den I-Anteil nicht, und weder Cookie noch Kiosk-Token
+    kommen an „I zurücksetzen“ / „I setzen“ heran -- auch nicht in einem Raum mit PI-Regler."""
+    zone, _admin_user, _token, plaintext = _setup(session)
+    zone.pi_enabled = True
+    state = create_zone_state(session, zone)
+    state.pi_integral = Decimal("0.42")
+    session.flush()
+    _cookie(client, plaintext)
+
+    body = client.get("/kiosk-api/state")
+    assert body.status_code == 200
+    assert "pi" not in body.json()["rooms"][0]
+    assert "integral" not in body.text.lower()
+
+    calls = [
+        ("POST", f"/ui-api/rooms/{zone.id}/pi/reset", None),
+        ("PUT", f"/ui-api/rooms/{zone.id}/pi/integral", {"value": "0.1"}),
+        ("POST", f"/kiosk-api/rooms/{zone.id}/pi/reset", None),
+        ("PUT", f"/kiosk-api/rooms/{zone.id}/pi/integral", {"value": "0.1"}),
+        ("POST", f"/api/v1/zones/{zone.id}/pi-state/reset", None),
+        ("PUT", f"/api/v1/zones/{zone.id}/pi-state/integral", {"value": "0.1"}),
+        ("GET", f"/api/v1/zones/{zone.id}/pi-state", None),
+    ]
+    for method, path, payload in calls:
+        response = client.request(method, path, json=payload, headers=_csrf(plaintext))
+        assert response.status_code in (401, 403, 404, 405), (path, response.status_code)
+    session.expire_all()
+    assert state.pi_manual_reason is None
+    assert state.pi_integral == Decimal("0.42")
+
+
 # -- Lesen ------------------------------------------------------------------------------
 
 

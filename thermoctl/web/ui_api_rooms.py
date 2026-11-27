@@ -35,8 +35,8 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain import change_log, pi_view
-from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain import change_log, pi_intervention, pi_view
+from thermoctl.domain.authz import Forbidden, has_permission, visible_zones
 from thermoctl.domain.fault import OK
 from thermoctl.domain.modes import DomainError, step_setpoint, update_setpoints
 from thermoctl.domain.outdoor import outdoor_reading
@@ -192,6 +192,8 @@ class ActionsOut(BaseModel):
     edit_mode_setpoints: bool
     jump_next: bool
     set_operating_mode: bool
+    #: „I zurücksetzen“ / „I setzen“ (nur Anlagensicht, `zone.manage`, Raum mit PI-Regler).
+    set_pi_integral: bool
 
 
 class PiResetOut(BaseModel):
@@ -201,12 +203,22 @@ class PiResetOut(BaseModel):
     reason_label: str | None
 
 
+class PiPendingOut(BaseModel):
+    """Ein angeforderter Eingriff, den der nächste Regelzyklus übernimmt."""
+
+    reason: str
+    reason_label: str | None
+    integral: str
+
+
 class PiOut(BaseModel):
-    """I-Anteil des PI-Reglers, nur lesend. `integral` (0..1) ist `null`, solange für den
-    Raum noch kein Zustand gespeichert ist."""
+    """I-Anteil des PI-Reglers. `integral` (0..1) ist `null`, solange für den
+    Raum noch kein Zustand gespeichert ist. `pending`: angeforderter Eingriff, der erst im
+    nächsten Regelzyklus wirkt."""
 
     integral: str | None
     last_reset: PiResetOut | None
+    pending: PiPendingOut | None = None
 
 
 def pi_reset_out(at: str, reason: str | None) -> PiResetOut:
@@ -221,10 +233,20 @@ def _pi(
     if not pi_view.visible_to(principal) or not zone.pi_enabled:
         return None
     reset = pi_view.last_reset(session, zone.id)
+    pending = pi_intervention.read_state(session, principal, zone).pending
     return PiOut(
         integral=_dec(state.pi_integral) if state is not None else None,
         last_reset=(
             pi_reset_out(cast("str", _iso(reset.at)), reset.reason) if reset is not None else None
+        ),
+        pending=(
+            PiPendingOut(
+                reason=pending.reason,
+                reason_label=PI_FALLBACK_LABELS.get(pending.reason),
+                integral=cast("str", _dec(pending.integral)),
+            )
+            if pending is not None
+            else None
         ),
     )
 
@@ -386,6 +408,12 @@ class JumpNextIn(BaseModel):
     replace: bool = False
 
 
+class PiIntegralIn(BaseModel):
+    #: Bewusst ungeprüft hier: Wertebereich und Form prüft die Domäne (`pi_intervention`),
+    #: für alle drei Schnittstellen gleich.
+    value: Any = None
+
+
 # -- Hilfen -----------------------------------------------------------------------------
 
 
@@ -432,6 +460,11 @@ def _actions(principal: Principal, zone: Zone) -> ActionsOut:
         edit_mode_setpoints=has_permission(principal, "setpoint.write", zone.id),
         jump_next=has_permission(principal, "override.create", zone.id),
         set_operating_mode=has_permission(principal, "zone.manage", zone.id),
+        set_pi_integral=(
+            has_permission(principal, "zone.manage", zone.id)
+            and pi_view.visible_to(principal)
+            and bool(zone.pi_enabled)
+        ),
     )
 
 
@@ -954,3 +987,43 @@ def jump_room_to_next_switch(
         ),
     )
     return _detail(session, principal, zone, now)
+
+
+@router.post("/rooms/{zone_id}/pi/reset")
+def reset_room_pi_integral(
+    zone_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> RoomDetailOut:
+    """„I zurücksetzen“ vormerken; der nächste Regelzyklus übernimmt es (nur Verwalter)."""
+    zone = _visible_zone(session, principal, zone_id)
+    try:
+        pi_intervention.request_reset(session, principal, zone, source="web")
+    except Forbidden as exc:
+        raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden") from exc
+    except pi_intervention.PiInterventionError as exc:
+        raise _pi_error(exc) from exc
+    return _detail(session, principal, zone, utcnow())
+
+
+@router.put("/rooms/{zone_id}/pi/integral")
+def set_room_pi_integral(
+    zone_id: int,
+    body: PiIntegralIn,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> RoomDetailOut:
+    """„I setzen“ vormerken (0 bis 1); der nächste Regelzyklus übernimmt es (nur Verwalter)."""
+    zone = _visible_zone(session, principal, zone_id)
+    try:
+        pi_intervention.request_set(session, principal, zone, body.value, source="web")
+    except Forbidden as exc:
+        raise RoomApiError(403, "Dafür fehlt die Berechtigung.", "forbidden") from exc
+    except pi_intervention.PiInterventionError as exc:
+        raise _pi_error(exc) from exc
+    return _detail(session, principal, zone, utcnow())
+
+
+def _pi_error(exc: pi_intervention.PiInterventionError) -> RoomApiError:
+    status = 409 if exc.code == "pi_not_active" else 422
+    return RoomApiError(status, exc.message, exc.code, exc.field)

@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, source, user_with_permissions
-from tests.test_shadow_run_pi import COLD_C, NOW, _pi_zone, _row_for
+from tests.test_shadow_run_pi import COLD_C, NOW, _assign_actuator, _pi_zone, _row_for
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.auth.tokens import issue_token
@@ -157,7 +157,8 @@ def test_rest_rejects_everyone_without_zone_manage(client: TestClient, session: 
     zone = _zone(session)
     headers = _bearer(session, READ_ONLY)
 
-    assert client.post(f"/api/v1/zones/{zone.id}/pi-state/reset", headers=headers).status_code == 403
+    reset = client.post(f"/api/v1/zones/{zone.id}/pi-state/reset", headers=headers)
+    assert reset.status_code == 403
     response = client.put(
         f"/api/v1/zones/{zone.id}/pi-state/integral", json={"value": "0.3"}, headers=headers
     )
@@ -206,7 +207,7 @@ def test_reading_needs_zone_read_and_the_plant_view(
     nothing = client.get(
         f"/api/v1/zones/{zone.id}/pi-state", headers=_bearer(session, [], "ohne")
     )
-    assert nothing.status_code == 403
+    assert nothing.status_code == 404  # ohne zone.read ist der Raum unsichtbar
     with pytest.raises(Forbidden):
         mcp_server.read_pi_state(session, _mcp_plaintext(session, READ_ONLY, WebUiProfile.TENANT,
                                                          "mieter"), zone.id)
@@ -482,6 +483,11 @@ def test_safe_start_stays_unchanged_with_a_pending_request(session: Session) -> 
 
 def test_gates_stay_unchanged_with_a_pending_request(session: Session) -> None:
     zone = _zone(session, "fenster", measured_c=COLD_C)
+    # Das Fenstertor gilt nur mit selbstregelndem Ventil (reine EIN/AUS-Räume sind ausgenommen).
+    _assign_actuator(
+        session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
+        suffix="-heizkörper",
+    )
     state = _state(session, zone)
     state.window_open = True
     session.flush()
@@ -522,3 +528,35 @@ def test_the_cycle_alone_never_invents_a_manual_reason(session: Session) -> None
     row = _row_for(shadow_run.cycle(session, NOW), zone)
 
     assert row.pi_reset_reason not in ("manuell_reset", "manuell_gesetzt")
+
+
+def test_the_registered_mcp_tools_reach_the_domain(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from contextlib import nullcontext
+
+    create_settings(session)
+    zone = _zone(session)
+    plaintext = _mcp_plaintext(session, MANAGE)
+    tools: dict[str, Any] = {}
+
+    class RecordingServer:
+        def tool(self, name: str | None = None) -> Callable[[Any], Any]:
+            def register(function: Any) -> Any:
+                assert name is not None
+                tools[name] = function
+                return function
+
+            return register
+
+        def run(self, transport: str = "stdio", **kwargs: object) -> None:
+            raise AssertionError("Der Test startet keinen Transport")
+
+    monkeypatch.setattr(mcp_server, "session_scope", lambda _factory: nullcontext(session))
+    mcp_server._register_tools(RecordingServer(), object(), plaintext)  # type: ignore[arg-type]
+
+    assert tools["read_pi_state"](zone.id)["pending"] is None
+    chosen = tools["set_pi_integral"](zone.id, Decimal("0.2"))
+    assert chosen["pending"]["reason"] == "manuell_gesetzt"
+    assert tools["reset_pi_integral"](zone.id)["pending"]["reason"] == "manuell_reset"
+    assert tools["read_pi_state"](zone.id)["pending"]["reason"] == "manuell_reset"

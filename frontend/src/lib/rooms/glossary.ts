@@ -9,7 +9,7 @@ export interface Term {
 export const TERMS: Record<string, Term> = {
   pi_integral: {
     title: 'I-Anteil',
-    text: 'Der Teil des PI-Reglers, der sich merkt, wie lange der Raum zu kalt war (0 bis 100 %). Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0.',
+    text: 'Der Teil des PI-Reglers, der sich merkt, wie lange der Raum zu kalt war (0 bis 100 %). Bei offenem Fenster, Frostschutz, Sensorausfall, Ventilschutz und Neustart bleibt er stehen. Zurückgesetzt wird er nach mehr als 24 Stunden ohne Wärmeanforderung; wird der PI-Regler ausgeschaltet oder ist der Raum nicht mehr dafür geeignet, beginnt er danach bei 0. Ein Verwalter kann ihn von Hand zurücksetzen oder setzen; das gilt ab dem nächsten Regelzyklus und steht im Audit- und Schaltprotokoll.',
   },
   setpoint: {
     title: 'Sollwert',

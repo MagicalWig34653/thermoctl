@@ -52,9 +52,11 @@ from thermoctl.domain.number_text import difference_text, percent_text
 from thermoctl.domain.pi_control import (
     INTEGRATOR_HOLD,
     INTEGRATOR_RESET,
+    INTEGRATOR_SET,
     RESET_REASON_ARMING,
     RESET_REASON_FROST,
     RESET_REASON_INVALID_STATE,
+    RESET_REASON_MANUAL_RESET,
     RESET_REASON_NO_HEATING,
     RESET_REASON_SENSOR_FAILURE,
     RESET_REASON_VALVE_PROTECTION,
@@ -1443,6 +1445,10 @@ def _neutralize_pi_state(row: ZoneState) -> None:
     row.pi_last_switch_heating = None
     row.pi_awaiting_boundary_until = None
     row.pi_last_reset_reason = None
+    # Ein vorgemerkter manueller Eingriff gilt nur für einen laufenden PI-Regler: ohne PI
+    # (ausgeschaltet oder nicht geeignet) wird er verworfen, nicht für später aufgehoben.
+    row.pi_manual_reason = None
+    row.pi_manual_integral = None
 
 
 def _neutral_pi_fields() -> dict[str, object]:
@@ -1584,7 +1590,73 @@ def _pi_outcome(
     *,
     sensor_failure_emergency_active: bool = False,
 ) -> tuple[bool, str | None, dict[str, object]]:
+    """`_pi_outcome_core` plus ein vorgemerkter manueller Eingriff in den I-Anteil.
+
+    Ein Verwalter hat „I zurücksetzen“ oder „I setzen“ angefordert (`domain/pi_intervention`,
+    `zone_state.pi_manual_*`). Hier, im Regelzyklus und nirgends sonst, wird der Wert zum
+    gehaltenen I-Anteil -- **vor** der gewöhnlichen Verarbeitung, die ihn dann wie jeden
+    gespeicherten Wert behandelt: Tore, Hysterese-Haltephase und sicherer Anlauf bleiben
+    unverändert und halten ihn nur fest. Die 24-Stunden-Regel verwirft ihn in diesem einen
+    Zyklus nicht (sonst wäre „Setzen“ in einer lange kalten Anlage wirkungslos), danach
+    gilt sie wie gewohnt. Das Schaltprotokoll nennt den Eingriff: Grund `manuell_reset` /
+    `manuell_gesetzt`, Aktion `zurueckgesetzt` / `gesetzt`, „vorher“ ist der verworfene
+    Wert. Ein Raum ohne laufendes PI verwirft die Anforderung (`_neutralize_pi_state`).
+    """
+    manual_reason: str | None = None
+    previous = Decimal(0)
+    if parameter.pi_enabled and state is not None and state.pi_manual_reason is not None:
+        manual_reason = state.pi_manual_reason
+        previous = state.pi_integral
+        if state.pi_manual_integral is not None:
+            state.pi_integral = state.pi_manual_integral
+        state.pi_manual_reason = None
+        state.pi_manual_integral = None
+    effective, suffix, fields = _pi_outcome_core(
+        session,
+        zone,
+        state,
+        situation,
+        decision,
+        parameter,
+        settings,
+        setpoint,
+        override,
+        vacation,
+        phase_started_by,
+        now,
+        sensor_failure_emergency_active=sensor_failure_emergency_active,
+        keep_integral=manual_reason is not None,
+    )
+    if manual_reason is not None and fields["controller_fallback_reason"] != PI_FALLBACK_INELIGIBLE:
+        fields["pi_integral_before"] = previous
+        fields["pi_reset_reason"] = manual_reason
+        fields["pi_integrator_action"] = (
+            INTEGRATOR_RESET if manual_reason == RESET_REASON_MANUAL_RESET else INTEGRATOR_SET
+        )
+    return effective, suffix, fields
+
+
+def _pi_outcome_core(
+    session: Session,
+    zone: Zone,
+    state: ZoneState | None,
+    situation: Situation,
+    decision: Decision,
+    parameter: ControlParameters,
+    settings: Setting,
+    setpoint: Setpoint,
+    override: ZoneOverride | None,
+    vacation: Vacation | None,
+    phase_started_by: str | None,
+    now: datetime,
+    *,
+    sensor_failure_emergency_active: bool = False,
+    keep_integral: bool = False,
+) -> tuple[bool, str | None, dict[str, object]]:
     """Everything PI contributes to one zone's cycle.
+
+    `keep_integral`: the stored integral was just set by a manual intervention
+    (`_pi_outcome`) and is exempt from the 24 h rule in this one cycle.
 
     `sensor_failure_emergency_active` -- see `_pi_gate_reason`'s own docstring
     for why this needs its own flag, independent of `situation.sensor_status`
@@ -1639,7 +1711,7 @@ def _pi_outcome(
     # auch im Gate und beim Neustart. Ohne gespeicherten Wert gibt es nichts zu verwerfen.
     stored_integral = state.pi_integral
     integral_dropped = False
-    if stored_integral > 0:
+    if stored_integral > 0 and not keep_integral:
         last_heating_at, earliest_decision_at = _heating_history(session, zone.id)
         integral_dropped = integral_expired_without_heating(
             now=now,

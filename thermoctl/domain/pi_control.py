@@ -70,10 +70,17 @@ RESET_REASON_NO_HEATING = "keine_heizaktivitaet_24h"
 # it; it is cleared only after this long without any heating.
 NO_HEATING_RESET_AFTER = timedelta(hours=24)
 
+# Manueller Eingriff eines Verwalters (`domain/pi_intervention`), im Schaltprotokoll der Grund
+# des Zyklus, der ihn übernommen hat.
+RESET_REASON_MANUAL_RESET = "manuell_reset"
+RESET_REASON_MANUAL_SET = "manuell_gesetzt"
+
 # --- What happened to the integrator this cycle (section 4's "Integrator" column). ---
 INTEGRATOR_CONTINUE = "weiter"
 INTEGRATOR_HOLD = "angehalten"
 INTEGRATOR_RESET = "zurueckgesetzt"
+# Nur durch den manuellen Eingriff "I setzen": der Wert wurde auf Anweisung gesetzt.
+INTEGRATOR_SET = "gesetzt"
 
 # --- Why the modulator's on/off output is what it is this cycle. ---
 MODULATOR_REASON_REGULAR = "regulaer"

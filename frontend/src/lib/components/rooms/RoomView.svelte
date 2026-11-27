@@ -159,6 +159,11 @@
     if (ok) drafts[modeId] = undefined;
   }
 
+  // I-Anteil (nur Verwalter): nur eine Anforderung, der nächste Regelzyklus übernimmt sie
+  const piDone = 'Vorgemerkt. Der Regler übernimmt es im nächsten Zyklus.';
+  const resetPi = () => run('pi', () => api.post<RoomDetail>(`${base}/pi/reset`, {}), piDone);
+  const setPi = (value: string) => run('pi', () => api.put<RoomDetail>(`${base}/pi/integral`, { value }), piDone);
+
   // Betriebsart
   let pendingOff = $state<string | null>(null);
   async function setOperatingMode(code: string) {
@@ -465,7 +470,18 @@
         {/if}
       </details>
 
-      {#if room.pi}<PiCard pi={room.pi} timezone={tz} />{/if}
+      {#if room.pi}
+        <PiCard
+          pi={room.pi}
+          timezone={tz}
+          canEdit={room.actions.set_pi_integral}
+          busy={busy !== null}
+          error={errors['pi']?.message ?? null}
+          done={done['pi'] ?? null}
+          onReset={resetPi}
+          onSet={setPi}
+        />
+      {/if}
 
       <details class={card} open>
         <summary class="flex cursor-pointer items-center gap-1 text-base font-semibold">Temperaturen je Modus<HelpTip term="mode_setpoints" /></summary>

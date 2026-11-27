@@ -27,6 +27,17 @@ class ZoneState(Base):
     __table_args__ = (
         CheckConstraint("pi_integral BETWEEN 0 AND 1", name="pi_integral_0_bis_1"),
         CheckConstraint(
+            "pi_manual_integral IS NULL OR pi_manual_integral BETWEEN 0 AND 1",
+            name="pi_manual_integral_0_bis_1",
+        ),
+        CheckConstraint(
+            (
+                "(pi_manual_reason IS NULL AND pi_manual_integral IS NULL) "
+                "OR (pi_manual_reason IS NOT NULL AND pi_manual_integral IS NOT NULL)"
+            ),
+            name="pi_manual_gemeinsam",
+        ),
+        CheckConstraint(
             "pi_window_duty IS NULL OR pi_window_duty BETWEEN 0 AND 1",
             name="pi_window_duty_0_bis_1",
         ),
@@ -152,6 +163,12 @@ class ZoneState(Base):
     # Also carries the reason of a visible fallback; both cases neutralise the same
     # PI state and section 5 deliberately asks for one last-reason marker.
     pi_last_reset_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Vorgemerkter manueller Eingriff in den I-Anteil (`domain/pi_intervention`): Grund
+    # (`manuell_reset` / `manuell_gesetzt`) und Zielwert. Beide gehören zusammen und sind leer,
+    # solange nichts ansteht. Der nächste Regelzyklus übernimmt sie und leert sie wieder; ein
+    # Raum ohne PI verwirft sie. So wirkt ein Eingriff nie außerhalb des Regelzyklus.
+    pi_manual_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pi_manual_integral: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
 
 class ShadowDecision(Base):

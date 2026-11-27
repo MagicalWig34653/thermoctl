@@ -273,6 +273,26 @@ Neu angelegte Zonen starten mit `enabled: true` (Profil und Notsollwert geerbt).
 Upgrade auf 0.11 hat eine Migration den Notbetrieb außerdem für alle bestehenden Zonen
 aktiviert; dieser Endpunkt aktiviert oder deaktiviert ihn je Zone.
 
+### I-Anteil (PI-Regler)
+
+`GET /api/v1/zones/{zone_id}/pi-state` benötigt `zone.read`,
+`POST /api/v1/zones/{zone_id}/pi-state/reset` und
+`PUT /api/v1/zones/{zone_id}/pi-state/integral` benötigen `zone.manage` dieser Zone. Alle drei
+gibt es nur in der Anlagensicht: Wohnungskonten bekommen `403`, auch mit `zone.manage`.
+
+```json
+{"value": "0.35"}
+```
+
+`value` liegt zwischen 0 und 1 (sechs Nachkommastellen; sonst `422`). Beide Schreibaufrufe merken
+nur eine Anforderung vor (`pending`: `reason` = `manuell_reset` oder `manuell_gesetzt`, `integral`)
+und schreiben einen Audit-Eintrag (Quelle `api`); `integral` bleibt der bisherige Wert. Der
+**nächste Regelzyklus** übernimmt die Anforderung und schreibt Grund und Wert ins
+Schaltprotokoll. Tore und sicherer Anlauf gelten unverändert. Ein Raum ohne PI-Regler oder ohne
+gespeicherten Zustand antwortet `409`. Dieselben Werkzeuge gibt es über MCP
+(`read_pi_state`, `reset_pi_integral`, `set_pi_integral`). Die CSV-Auswertung der
+Weboberfläche (`/ui-api/history.csv`) trägt in der Anlagensicht die Spalte `pi_integral`.
+
 ### Regelparameter
 
 `GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`,

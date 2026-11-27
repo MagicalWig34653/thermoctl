@@ -24,6 +24,9 @@ from thermoctl.api.schemas import (
     ModeResponse,
     MoveSchedulePoint,
     OverrideResponse,
+    PiLastResetResponse,
+    PiPendingResponse,
+    PiStateResponse,
     SchedulePointResponse,
     SensorFailureDefaultsResponse,
     SetArmed,
@@ -34,6 +37,7 @@ from thermoctl.api.schemas import (
     WriteControl,
     WriteControlParameters,
     WriteParameter,
+    WritePiIntegral,
     WriteSensorFailureDefaults,
     WriteSetpoints,
     WriteSolarLocation,
@@ -59,7 +63,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain import pi_view
+from thermoctl.domain import pi_intervention, pi_view
 from thermoctl.domain.authz import (
     Forbidden,
     principal_for_token,
@@ -1232,3 +1236,78 @@ def reposition_schedule_point(
         mode_id=mode.id,
         mode_name=mode.name,
     )
+
+
+def _pi_state_response(
+    session: Session, zone: Zone, view: pi_intervention.PiStateView
+) -> PiStateResponse:
+    reset = pi_view.last_reset(session, zone.id)
+    return PiStateResponse(
+        zone_id=view.zone_id,
+        enabled=view.enabled,
+        integral=view.integral,
+        pending=(
+            PiPendingResponse(reason=view.pending.reason, integral=view.pending.integral)
+            if view.pending is not None
+            else None
+        ),
+        last_reset=(
+            PiLastResetResponse(at=reset.at, reason=reset.reason) if reset is not None else None
+        ),
+    )
+
+
+def _pi_intervention_error(exc: pi_intervention.PiInterventionError) -> HTTPException:
+    if exc.code == "pi_not_active":
+        return HTTPException(status.HTTP_409_CONFLICT, exc.message)
+    return _domain_error(exc.field or "value", exc.message)
+
+
+@router.get("/zones/{zone_id}/pi-state", response_model=PiStateResponse)
+def read_zone_pi_state(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> PiStateResponse:
+    """I-Anteil des PI-Reglers (`zone.read`, nur Anlagensicht)."""
+    zone = _visible_zone(session, principal, zone_id)
+    try:
+        view = pi_intervention.read_state(session, principal, zone)
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    return _pi_state_response(session, zone, view)
+
+
+@router.post("/zones/{zone_id}/pi-state/reset", response_model=PiStateResponse)
+def reset_zone_pi_integral(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> PiStateResponse:
+    """„I zurücksetzen“ vormerken (`zone.manage`, nur Anlagensicht); wirkt im nächsten Zyklus."""
+    zone = _visible_zone(session, principal, zone_id)
+    try:
+        view = pi_intervention.request_reset(session, principal, zone, source="api")
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except pi_intervention.PiInterventionError as exc:
+        raise _pi_intervention_error(exc) from exc
+    return _pi_state_response(session, zone, view)
+
+
+@router.put("/zones/{zone_id}/pi-state/integral", response_model=PiStateResponse)
+def set_zone_pi_integral(
+    zone_id: int,
+    data: WritePiIntegral,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> PiStateResponse:
+    """„I setzen“ vormerken (0 bis 1; `zone.manage`, nur Anlagensicht); wirkt im nächsten Zyklus."""
+    zone = _visible_zone(session, principal, zone_id)
+    try:
+        view = pi_intervention.request_set(session, principal, zone, data.value, source="api")
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except pi_intervention.PiInterventionError as exc:
+        raise _pi_intervention_error(exc) from exc
+    return _pi_state_response(session, zone, view)
