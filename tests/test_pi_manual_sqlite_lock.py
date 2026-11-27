@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from tests.helpers import source, user_with_permissions
@@ -93,3 +94,18 @@ def test_a_held_write_lock_is_a_refusal_not_a_crash(
     with Session(engine) as after:
         assert after.scalars(select(PiManualRequest)).all() == []
         assert after.scalars(select(AuditEvent)).all() == []
+
+
+def test_any_other_database_error_stays_an_error(
+    file_database: tuple[Engine, Principal, int],
+) -> None:
+    """Nur „belegt“ wird zur Absage; ein echter Datenbankfehler bleibt sichtbar."""
+    engine, principal, zone_id = file_database
+    with Session(engine, expire_on_commit=False) as request:
+        zone = request.get(Zone, zone_id)
+        assert zone is not None
+        request.execute(text("DROP TABLE pi_manual_request"))
+        request.commit()
+
+        with pytest.raises(OperationalError, match="no such table"):
+            pi_intervention.request_reset(request, principal, zone, source="web")
