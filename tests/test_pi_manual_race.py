@@ -22,6 +22,7 @@ from tests.helpers import source, user_with_permissions
 from tests.test_shadow_run_pi import NOW, _pi_zone
 from thermoctl.db.base import Base
 from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.zone import Zone
 from thermoctl.domain import pi_intervention
 from thermoctl.domain.authz import principal_for_user
 from thermoctl.services import shadow_run
@@ -73,7 +74,7 @@ def test_an_intervention_during_a_cycle_costs_no_cycle_and_is_not_lost(
         cycle_session.execute(text(f"SET SESSION innodb_snapshot_isolation={isolation}"))
         cycle_session.execute(select(ZoneState)).all()  # der Zyklus hat seinen Snapshot
 
-        zone = web.get(type(zones[0]), zone_ids[0])
+        zone = web.get(Zone, zone_ids[0])
         assert zone is not None
         pi_intervention.request_reset(web, principal, zone, source="web")
         web.commit()
@@ -95,6 +96,52 @@ def test_an_intervention_during_a_cycle_costs_no_cycle_and_is_not_lost(
         # Der spätere Eingriff wirkt genau einmal, spätestens im Zyklus danach.
         assert reasons.count("manuell_reset") == 1
         view = pi_intervention.read_state(
-            after, principal, after.get(type(zones[0]), zone_ids[0])
+            after, principal, after.get(Zone, zone_ids[0])
         )
         assert view.pending is None
+
+
+@pytest.mark.parametrize("waiting", [1, 30])
+@pytest.mark.parametrize("isolation", ["ON", "OFF"], ids=["snapshot-on", "snapshot-off"])
+def test_many_waiting_requests_neither_break_the_cycle_nor_block_new_ones(
+    own_database: Engine, isolation: str, waiting: int
+) -> None:
+    """Viele offene Anforderungen eines Raums (Automation, wiederholtes Klicken): Löscht der
+    Zyklus sie gesammelt, wählt MariaDB bei der kleinen Tabelle einen vollen Scan, der auch fremde
+    und neu eingefügte Zeilen samt Lücken sperrt -- 1020, oder ein Klick läuft in den
+    Sperr-Timeout. Gezählt wird, was in einer **neuen** Sitzung wirklich gespeichert ist: der
+    Rückgabewert von `cycle()` allein täuscht, wenn die Datenbank die Transaktion zurückrollt."""
+    with Session(own_database) as setup:
+        source(setup, "web")
+        zones = [_pi_zone(setup, name) for name in ("bad", "flur", "kueche")]
+        user = user_with_permissions(
+            setup, "verwalter", [("zone.read", None), ("zone.manage", None)]
+        )
+        principal = principal_for_user(setup, user)
+        for _ in range(waiting):
+            pi_intervention.request_set(setup, principal, zones[1], "0.3", source="web")
+        zone_ids = [zone.id for zone in zones]
+        setup.commit()
+
+    with Session(own_database) as cycle_session, Session(own_database) as web:
+        cycle_session.execute(text(f"SET SESSION innodb_snapshot_isolation={isolation}"))
+        web.execute(text("SET SESSION innodb_lock_wait_timeout=2"))
+        cycle_session.execute(select(ZoneState)).all()
+        first = web.get(Zone, zone_ids[0])
+        assert first is not None
+        pi_intervention.request_reset(web, principal, first, source="web")
+        web.commit()
+
+        shadow_run.cycle(cycle_session, NOW)
+        # Solange die Zyklustransaktion offen ist (in `app.py` samt Versand), muss ein weiterer
+        # Klick sofort durchgehen.
+        web.execute(text("SET SESSION innodb_lock_wait_timeout=2"))
+        other = web.get(Zone, zone_ids[2])
+        assert other is not None
+        pi_intervention.request_reset(web, principal, other, source="web")
+        web.commit()
+        cycle_session.commit()
+
+    with Session(own_database) as after:
+        decided = sorted(after.scalars(select(ShadowDecision.zone_id)))
+        assert decided == sorted(zone_ids)  # kein Raum verloren
