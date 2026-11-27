@@ -156,9 +156,10 @@ def test_the_key_holds_for_other_collations_of_the_column(
 def test_the_key_can_be_computed_under_every_collation_of_the_server(
     session: Session, user: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Jede utf8mb4-Kollation, die der Server kennt: Der Schlüssel lässt sich bilden (eine
-    abgeleitete Schwester, die es nicht gibt, wäre ein Fehler bei jeder Anmeldung), und ein
-    angehängtes Leerzeichen trennt den Zähler nicht, wo die Datenbank es übergeht."""
+    """Jede utf8mb4-Kollation, die der Server kennt: Der Schlüssel lässt sich bilden, und was
+    die Kollation für `lino` hält, hat dessen Schlüssel -- auch mit angehängten Leerzeichen und
+    Auffüll-Zeichen, die in mehrstufigen Gewichten (`_as_ci`, `thai_520_w2`) mitten im Gewicht
+    stehen."""
     _needs_mariadb(session)
     collations = session.execute(
         text(
@@ -166,22 +167,35 @@ def test_the_key_can_be_computed_under_every_collation_of_the_server(
             "applicability WHERE character_set_name = 'utf8mb4'"
         )
     ).scalars().all()
-    if not collations:  # pragma: no cover - ältere Server kennen die Spalte nicht anders
-        pytest.fail("keine Kollationen gefunden")
-    split = []
+    assert len(collations) > 50
+    tails = (
+        "", " ", "  ", "\u00a0", "\u00a0\u00a0\u00a0\u00a0", "\u00a0 ", " \u00a0",
+        "\u034f", "\u00a0\u034f", "\u2000", "\u3000", "\u200b",
+    )
+    candidates = [base + tail for base in ("lino", "li\u034fno", "LINO") for tail in tails]
+    split: dict[str, list[str]] = {}
     for collation in collations:
         monkeypatch.setattr(
             login, "_username_collation", lambda current, name=collation: ("utf8mb4", name)
         )
-        padded = session.execute(
-            text(
-                f"SELECT CONVERT('lino ' USING utf8mb4) COLLATE {collation} = "
-                f"CONVERT('lino' USING utf8mb4) COLLATE {collation}"
-            )
-        ).scalar()
-        if login.throttle_key(session, "lino ") != login.throttle_key(session, "lino") and padded:
-            split.append(collation)
-    assert split == []
+        equal = ", ".join(
+            f"CONVERT(:n{number} USING utf8mb4) COLLATE {collation} = "
+            f"CONVERT('lino' USING utf8mb4) COLLATE {collation}"
+            for number in range(len(candidates))
+        )
+        matches = session.execute(
+            text(f"SELECT {equal}"), {f"n{n}": typed for n, typed in enumerate(candidates)}
+        ).one()
+        expected = login.throttle_key(session, "lino")
+        wrong = [
+            ascii(typed)
+            for typed, same in zip(candidates, matches, strict=True)
+            if same and login.throttle_key(session, typed) != expected
+        ]
+        if wrong:
+            split[collation] = wrong
+        assert login.throttle_key(session, "lina") != expected, collation
+    assert split == {}
 
 
 class _Result:
