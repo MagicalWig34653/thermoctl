@@ -1251,11 +1251,11 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (`zone.fault_notifications_enabled`), then `f7c2a91d4e08` (Hysterese mit vier
     # Nachkommastellen), then `a3e8c5d17b94` (PI-Erweiterungen), then `b5d1f8a3c264`
     # (Einstellungen für die befristete Übersteuerung am Sollwertrad), then `c7e2a9f4d813`
-    # (I-Anteil-Anzeige) -- every time the
+    # (I-Anteil-Anzeige), then `e3b7c1d9a452` (manueller Eingriff) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["c7e2a9f4d813"]
+    assert scripts.get_heads() == ["e3b7c1d9a452"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

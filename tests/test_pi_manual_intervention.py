@@ -214,6 +214,40 @@ def test_reading_needs_zone_read_and_the_plant_view(
                                                          "mieter"), zone.id)
 
 
+def test_rest_rejects_the_tenant_profile_even_with_zone_manage(
+    client: TestClient, session: Session
+) -> None:
+    create_settings(session)
+    zone = _zone(session)
+    source(session, "api")
+    owner = user_with_permissions(session, "mieter-rest", MANAGE, ui_profile=WebUiProfile.TENANT)
+    _token, plaintext = issue_token(session, owner, "mieter", MANAGE, None)
+    headers = {"Authorization": f"Bearer {plaintext}"}
+    base = f"/api/v1/zones/{zone.id}/pi-state"
+
+    assert client.get(base, headers=headers).status_code == 403
+    assert client.post(f"{base}/reset", headers=headers).status_code == 403
+    put = client.put(f"{base}/integral", json={"value": "0.3"}, headers=headers)
+    assert put.status_code == 403
+    assert _state(session, zone).pi_manual_reason is None
+    assert _audit(session) == []
+
+
+def test_rest_refuses_a_room_without_pi_with_a_conflict(
+    client: TestClient, session: Session
+) -> None:
+    create_settings(session)
+    zone = _zone(session, "hysterese", pi_enabled=False)
+    headers = _bearer(session, MANAGE)
+    base = f"/api/v1/zones/{zone.id}/pi-state"
+
+    assert client.post(f"{base}/reset", headers=headers).status_code == 409
+    put = client.put(f"{base}/integral", json={"value": "0.3"}, headers=headers)
+    assert put.status_code == 409
+    assert client.get(base, headers=headers).json()["enabled"] is False
+    assert _audit(session) == []
+
+
 # -- Wertebereich 0..1, serverseitig --------------------------------------------------------
 
 

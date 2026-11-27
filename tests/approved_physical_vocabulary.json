@@ -269,6 +269,7 @@
       "sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen",
       "vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung",
       "| `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |",
+      "`pending`. Tore (Fenster, Frostschutz, Sensorausfall, Ventilschutz), die Haltephase der Hysterese",
       "| `read_sensor_failure_policy(zone_id)` | `zone.read` | wirksame und eigene Notbetriebs-Einstellungen einer Zone samt Ausgleichswerten ihrer Thermostat-Aktor-Zuordnungen |"
     ],
     "docs/mqtt.md": [

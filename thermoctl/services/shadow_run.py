@@ -1612,7 +1612,7 @@ def _pi_outcome(
         if manual is not None and parameter.pi_enabled:
             state.pi_integral = manual[1]
         elif manual is not None:
-            _log_dropped_request(session, zone, manual, "PI ausgeschaltet")
+            _log_dropped_request(session, zone, manual, "PI nicht aktiv")
             manual = None
     effective, suffix, fields = _pi_outcome_core(
         session,
