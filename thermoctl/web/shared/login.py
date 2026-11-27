@@ -153,6 +153,8 @@ def login_key(username: str) -> str:
 # service runs. Only a plain name goes into the SQL text below, never one with other characters.
 _USERNAME_COLLATION: dict[str, tuple[str, str] | None] = {}
 _SQL_NAME = re.compile(r"[A-Za-z0-9_]+")
+# Accent- or case-sensitive UCA collations weigh in several levels, one after the other.
+_MULTI_LEVEL = re.compile(r"_(as_ci|as_cs|ai_cs)$")
 
 
 def _username_collation(session: Session) -> tuple[str, str] | None:
@@ -200,6 +202,10 @@ def throttle_key(session: Session, username: str) -> str:
     if collation is None:
         return login_key(username)
     charset, name = collation
+    # Weighed in one level only: in a multi-level weight the blank sits in the middle and cannot
+    # be cut off the end. The `_ai_ci` sibling of a collation equates everything the collation
+    # does and more, so at worst two accounts that differ in accent or case share a counter.
+    name = _MULTI_LEVEL.sub("_ai_ci", name)
     weights = session.execute(
         text(
             f"SELECT HEX(WEIGHT_STRING(CONVERT(:name USING {charset}) COLLATE {name})), "

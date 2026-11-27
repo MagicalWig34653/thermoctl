@@ -314,6 +314,9 @@ def test_logging_in_through_the_http_route(
     assert response.status_code == 200
     assert response.json() == {"status": "signed_in", "redirect": "/"}
     assert client.cookies.get(COOKIE_NAME)
+    # Committed by the route itself, not only by the clean-up after the response (the test's
+    # session override never commits): no connection stays out -- `tests/test_login_pool.py`.
+    assert not session.in_transaction()
     # And the session really carries: a protected page now responds.
     assert client.get("/passkeys").status_code == 200
 
