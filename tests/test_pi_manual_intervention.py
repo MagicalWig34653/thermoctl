@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, source, user_with_permissions
@@ -24,6 +24,7 @@ from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
+from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
@@ -260,6 +261,17 @@ def test_mcp_rejects_values_outside_zero_to_one(session: Session, value: str) ->
         mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal(value))
     assert _state(session, zone).pi_manual_reason is None
     assert _audit(session) == []
+
+
+@pytest.mark.parametrize("raw", ["-0", "9" * 5000])
+def test_negative_zero_is_zero_and_absurd_numbers_are_refused_cleanly(raw: str) -> None:
+    from thermoctl.domain import pi_intervention
+
+    if raw == "-0":
+        assert str(pi_intervention.check_value(raw)) == "0.000000"
+    else:
+        with pytest.raises(pi_intervention.PiInterventionError):
+            pi_intervention.check_value(raw)
 
 
 @pytest.mark.parametrize("value", ["0", "1", "0.5", "0.123456"])
@@ -520,6 +532,55 @@ def test_a_request_for_a_zone_that_lost_pi_is_dropped_without_effect(
     state = _state(session, zone)
     assert state.pi_integral == 0
     assert state.pi_manual_reason is None and state.pi_manual_integral is None
+
+
+def test_a_request_replaced_while_the_cycle_runs_is_not_lost(session: Session) -> None:
+    """Der Zyklus hat Anforderung A gelesen, ein Verwalter ersetzt sie durch B (anderer Prozess,
+    schon committet). Der Zyklus darf B nicht löschen und nicht mit A rechnen: B bleibt für den
+    nächsten Zyklus vorgemerkt."""
+    zone = _zone(session)
+    plaintext = _mcp_plaintext(session, MANAGE)
+    mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.3"))
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.pi_manual_reason == "manuell_gesetzt"  # A im Speicher
+    session.execute(  # B, an der geladenen Zeile vorbei -- wie ein zweiter Prozess
+        update(ZoneState)
+        .where(ZoneState.zone_id == zone.id)
+        .values(pi_manual_reason="manuell_reset", pi_manual_integral=Decimal(0))
+        .execution_options(synchronize_session=False)
+    )
+
+    row = _row_for(shadow_run.cycle(session, NOW), zone)
+
+    assert row.pi_reset_reason != "manuell_gesetzt"  # A wurde nicht übernommen
+    session.expire_all()
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.pi_manual_reason == "manuell_reset" and state.pi_manual_integral == 0
+    row = _row_for(shadow_run.cycle(session, NOW + timedelta(seconds=60)), zone)
+    assert row.pi_reset_reason == "manuell_reset"  # B wirkt im Zyklus danach
+
+
+@pytest.mark.parametrize("how", ["pi_off", "ineligible"])
+def test_a_dropped_request_is_audited_and_logged(session: Session, how: str) -> None:
+    source(session, "system")
+    zone = _zone(session)
+    plaintext = _mcp_plaintext(session, MANAGE)
+    mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.8"))
+    if how == "pi_off":
+        zone.pi_enabled = False
+    else:
+        zone.pi_enabled = True
+        session.query(ZoneDevice).filter_by(zone_id=zone.id).delete()  # kein EIN/AUS-Aktor mehr
+    session.flush()
+
+    shadow_run.cycle(session, NOW)
+
+    dropped = [e for e in session.scalars(select(AuditEvent)) if e.action == "pi.integral_dropped"]
+    assert len(dropped) == 1
+    assert dropped[0].object_id == str(zone.id)
+    assert "manuell_gesetzt" in (dropped[0].detail or "") and "0.8" in (dropped[0].detail or "")
+    assert _state(session, zone).pi_manual_reason is None
 
 
 def test_the_cycle_alone_never_invents_a_manual_reason(session: Session) -> None:
