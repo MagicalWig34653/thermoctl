@@ -12,9 +12,11 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
+from thermoctl import audit
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, SensorStatus
 from thermoctl.db.models.measurement import Measurement
@@ -1602,15 +1604,16 @@ def _pi_outcome(
     `manuell_gesetzt`, Aktion `zurueckgesetzt` / `gesetzt`, „vorher“ ist der verworfene
     Wert. Ein Raum ohne laufendes PI verwirft die Anforderung (`_neutralize_pi_state`).
     """
-    manual_reason: str | None = None
+    manual: tuple[str, Decimal] | None = None
     previous = Decimal(0)
-    if parameter.pi_enabled and state is not None and state.pi_manual_reason is not None:
-        manual_reason = state.pi_manual_reason
+    if state is not None and state.pi_manual_reason is not None:
+        manual = _claim_manual_request(session, state)
         previous = state.pi_integral
-        if state.pi_manual_integral is not None:
-            state.pi_integral = state.pi_manual_integral
-        state.pi_manual_reason = None
-        state.pi_manual_integral = None
+        if manual is not None and parameter.pi_enabled:
+            state.pi_integral = manual[1]
+        elif manual is not None:
+            _log_dropped_request(session, zone, manual, "PI ausgeschaltet")
+            manual = None
     effective, suffix, fields = _pi_outcome_core(
         session,
         zone,
@@ -1625,15 +1628,73 @@ def _pi_outcome(
         phase_started_by,
         now,
         sensor_failure_emergency_active=sensor_failure_emergency_active,
-        keep_integral=manual_reason is not None,
+        keep_integral=manual is not None,
     )
-    if manual_reason is not None and fields["controller_fallback_reason"] != PI_FALLBACK_INELIGIBLE:
-        fields["pi_integral_before"] = previous
-        fields["pi_reset_reason"] = manual_reason
-        fields["pi_integrator_action"] = (
-            INTEGRATOR_RESET if manual_reason == RESET_REASON_MANUAL_RESET else INTEGRATOR_SET
-        )
+    if manual is None:
+        return effective, suffix, fields
+    if fields["controller_fallback_reason"] == PI_FALLBACK_INELIGIBLE:
+        # `_neutralize_pi_state` hat den Wert schon verworfen: Der Verwalter bekommt eine
+        # Antwort in Audit und Log statt eines stillen Verschwindens.
+        _log_dropped_request(session, zone, manual, "PI für diesen Raum nicht geeignet")
+        return effective, suffix, fields
+    reason = manual[0]
+    fields["pi_integral_before"] = previous
+    fields["pi_reset_reason"] = reason
+    fields["pi_integrator_action"] = (
+        INTEGRATOR_RESET if reason == RESET_REASON_MANUAL_RESET else INTEGRATOR_SET
+    )
     return effective, suffix, fields
+
+
+def _claim_manual_request(session: Session, state: ZoneState) -> tuple[str, Decimal] | None:
+    """Holt die vorgemerkte Anforderung ab und leert sie -- als Vergleich auf genau die gelesene
+    Anforderung (`UPDATE ... WHERE grund = gelesen AND wert = gelesen`). Hat ein Verwalter sie
+    inzwischen ersetzt (anderer Prozess, schon committet), trifft das UPDATE keine Zeile: Dann
+    gilt nichts aus diesem Zyklus, und die neue Anforderung bleibt für den nächsten stehen, statt
+    mit dem Leeren überschrieben zu werden."""
+    reason, value = state.pi_manual_reason, state.pi_manual_integral
+    assert reason is not None and value is not None  # CHECK: beide gesetzt oder beide leer
+    matched = session.execute(
+        update(ZoneState)
+        .where(
+            ZoneState.zone_id == state.zone_id,
+            ZoneState.pi_manual_reason == reason,
+            ZoneState.pi_manual_integral == value,
+        )
+        .values(pi_manual_reason=None, pi_manual_integral=None)
+        .execution_options(synchronize_session=False)
+    ).rowcount  # type: ignore[attr-defined]
+    if matched != 1:
+        session.expire(state, ["pi_manual_reason", "pi_manual_integral"])
+        return None
+    set_committed_value(state, "pi_manual_reason", None)
+    set_committed_value(state, "pi_manual_integral", None)
+    return reason, value
+
+
+def _log_dropped_request(
+    session: Session, zone: Zone, request: tuple[str, Decimal], why: str
+) -> None:
+    """Eine angeforderte Änderung des I-Anteils wird nicht übernommen. Audit (Quelle `system`)
+    und Log nennen Grund, Wert und Warum; geschaltet wird dadurch nichts anders."""
+    reason, value = request
+    log.warning(
+        "pi.manual_request_dropped",
+        extra={"event": "pi.manual_request_dropped", "zone_id": zone.id, "reason": reason,
+               "why": why},
+    )
+    try:
+        audit.record(
+            session,
+            source="system",
+            action="pi.integral_dropped",
+            object_type="zone",
+            object_id=str(zone.id),
+            summary=f"Angeforderter Eingriff in den I-Anteil von {zone.display_name} verworfen",
+            detail=f"{reason}, Wert {value}: {why}",
+        )
+    except ValueError:  # pragma: no cover - Quelle `system` fehlt nur ohne Einrichtung
+        log.warning("pi.manual_request_dropped.no_audit_source")
 
 
 def _pi_outcome_core(

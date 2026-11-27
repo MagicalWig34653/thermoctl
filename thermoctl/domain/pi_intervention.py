@@ -60,7 +60,7 @@ def check_value(raw: object) -> Decimal:
         raise PiInterventionError("validation", "Bitte eine Zahl von 0 bis 1 angeben.", "value")
     try:
         value = raw if isinstance(raw, Decimal) else Decimal(str(raw))
-    except InvalidOperation:
+    except (InvalidOperation, ValueError):
         raise PiInterventionError(
             "validation", "Bitte eine Zahl von 0 bis 1 angeben.", "value"
         ) from None
@@ -68,7 +68,8 @@ def check_value(raw: object) -> Decimal:
         raise PiInterventionError(
             "validation", "Der I-Anteil muss zwischen 0 und 1 liegen.", "value"
         )
-    return value.quantize(_PLACES, rounding=ROUND_HALF_EVEN)
+    value = value.quantize(_PLACES, rounding=ROUND_HALF_EVEN)
+    return value + 0 if value == 0 else value  # "-0" ist 0 (und steht so im Audit)
 
 
 def _require_plant_view(principal: Principal) -> None:
