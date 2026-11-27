@@ -1,11 +1,12 @@
 """Manueller Eingriff in den I-Anteil des PI-Reglers: zurücksetzen und setzen (Karte A391AABC).
 
 Gemeinsame Domäne von Weboberfläche, REST und MCP (Grundsatz 6): Rechteprüfung, Wertebereich,
-Vormerken, Audit. **Hier wirkt nichts auf die Regelung.** Der Eingriff schreibt nur eine
-Anforderung in `zone_state.pi_manual_*`; übernommen wird sie vom nächsten Regelzyklus
-(`services/shadow_run._pi_outcome`), der Wert und Grund (`manuell_reset` / `manuell_gesetzt`) ins
-Schaltprotokoll schreibt. Tore, Hysterese-Haltephase und sicherer Anlauf gelten dabei
-unverändert -- der Eingriff ändert nur den gehaltenen Wert.
+Vormerken, Audit. **Hier wirkt nichts auf die Regelung.** Der Eingriff fügt nur eine
+Anforderung in `pi_manual_request` ein (die Schnittstellen ändern und löschen dort nie);
+übernommen wird sie vom nächsten Regelzyklus (`services/shadow_run._pi_outcome`), der Wert und
+Grund (`manuell_reset` / `manuell_gesetzt`) ins Schaltprotokoll schreibt. Tore,
+Hysterese-Haltephase und sicherer Anlauf gelten dabei unverändert -- der Eingriff ändert nur
+den gehaltenen Wert.
 
 Recht: `zone.manage` dieser Zone (wie jede dauerhafte Änderung an der Regelung) **und** die
 Anlagensicht (`pi_view.visible_to`): Wohnungskonten sehen und ändern den I-Anteil nie, auch nicht
@@ -15,10 +16,12 @@ mit `zone.manage`. Lesen: `zone.read` und Anlagensicht.
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
-from thermoctl.db.models.state import ZoneState
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.state import PiManualRequest, ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain import pi_view
 from thermoctl.domain.authz import Forbidden, require
@@ -77,26 +80,29 @@ def _require_plant_view(principal: Principal) -> None:
         raise Forbidden("Der I-Anteil ist nur in der Anlagensicht zugänglich")
 
 
-def _view(zone: Zone, state: ZoneState | None) -> PiStateView:
-    pending = (
-        Pending(state.pi_manual_reason, state.pi_manual_integral)
-        if state is not None
-        and state.pi_manual_reason is not None
-        and state.pi_manual_integral is not None
-        else None
+def _latest_request(session: Session, zone_id: int) -> PiManualRequest | None:
+    return session.scalar(
+        select(PiManualRequest)
+        .where(PiManualRequest.zone_id == zone_id)
+        .order_by(PiManualRequest.id.desc())
+        .limit(1)
     )
+
+
+def _view(session: Session, zone: Zone, state: ZoneState | None) -> PiStateView:
+    waiting = _latest_request(session, zone.id)
     return PiStateView(
         zone_id=zone.id,
         enabled=bool(zone.pi_enabled),
         integral=state.pi_integral if state is not None else None,
-        pending=pending,
+        pending=Pending(waiting.reason, waiting.integral) if waiting is not None else None,
     )
 
 
 def read_state(session: Session, principal: Principal, zone: Zone) -> PiStateView:
     require(principal, "zone.read", zone.id)
     _require_plant_view(principal)
-    return _view(zone, session.get(ZoneState, zone.id))
+    return _view(session, zone, session.get(ZoneState, zone.id))
 
 
 def _request(
@@ -112,14 +118,16 @@ def _request(
 ) -> PiStateView:
     require(principal, "zone.manage", zone.id)
     _require_plant_view(principal)
-    state = session.get(ZoneState, zone.id, with_for_update=True)
+    state = session.get(ZoneState, zone.id)  # nur lesen, nie sperren oder schreiben
     if not zone.pi_enabled or state is None:
         raise PiInterventionError("pi_not_active", _NOT_ACTIVE)
     detail = f"bisher {state.pi_integral}, neu {value}; wirkt im nächsten Regelzyklus"
-    if state.pi_manual_reason is not None:
-        detail += f"; ersetzt die vorgemerkte Anforderung {state.pi_manual_reason}"
-    state.pi_manual_reason = reason
-    state.pi_manual_integral = value
+    earlier = _latest_request(session, zone.id)
+    if earlier is not None:
+        detail += f"; ersetzt die vorgemerkte Anforderung {earlier.reason}"
+    session.add(
+        PiManualRequest(zone_id=zone.id, reason=reason, integral=value, requested_at=utcnow())
+    )
     audit.record(
         session,
         source=source,
@@ -132,7 +140,7 @@ def _request(
         detail=detail,
     )
     session.flush()
-    return _view(zone, state)
+    return _view(session, zone, state)
 
 
 def request_reset(

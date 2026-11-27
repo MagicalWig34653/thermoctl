@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Browser, Page, expect
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from browser_tests.live_server import LiveServer
 from browser_tests.seed import create_login_user, create_schedule_zone
 from tests.helpers import sensor_status_of
 from thermoctl.db.models.operations import AuditEvent
-from thermoctl.db.models.state import ZoneState
+from thermoctl.db.models.state import PiManualRequest, ZoneState
 
 pytestmark = pytest.mark.browser
 
@@ -71,10 +71,7 @@ def test_reset_and_set_need_a_confirmation_and_stay_pending(
     browser: Browser, live_server: LiveServer, room: int, scheme: str
 ) -> None:
     with live_server.session() as session:  # der Server und sein Raum gelten für beide Läufe
-        state = session.get(ZoneState, room)
-        assert state is not None
-        state.pi_manual_reason = None
-        state.pi_manual_integral = None
+        session.execute(delete(PiManualRequest).where(PiManualRequest.zone_id == room))
         session.commit()
     context = browser.new_context(
         base_url=live_server.base_url, color_scheme=scheme, viewport={"width": 1100, "height": 1000}

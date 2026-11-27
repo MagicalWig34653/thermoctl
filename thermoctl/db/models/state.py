@@ -27,17 +27,6 @@ class ZoneState(Base):
     __table_args__ = (
         CheckConstraint("pi_integral BETWEEN 0 AND 1", name="pi_integral_0_bis_1"),
         CheckConstraint(
-            "pi_manual_integral IS NULL OR pi_manual_integral BETWEEN 0 AND 1",
-            name="pi_manual_integral_0_bis_1",
-        ),
-        CheckConstraint(
-            (
-                "(pi_manual_reason IS NULL AND pi_manual_integral IS NULL) "
-                "OR (pi_manual_reason IS NOT NULL AND pi_manual_integral IS NOT NULL)"
-            ),
-            name="pi_manual_gemeinsam",
-        ),
-        CheckConstraint(
             "pi_window_duty IS NULL OR pi_window_duty BETWEEN 0 AND 1",
             name="pi_window_duty_0_bis_1",
         ),
@@ -163,12 +152,30 @@ class ZoneState(Base):
     # Also carries the reason of a visible fallback; both cases neutralise the same
     # PI state and section 5 deliberately asks for one last-reason marker.
     pi_last_reset_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Vorgemerkter manueller Eingriff in den I-Anteil (`domain/pi_intervention`): Grund
-    # (`manuell_reset` / `manuell_gesetzt`) und Zielwert. Beide gehören zusammen und sind leer,
-    # solange nichts ansteht. Der nächste Regelzyklus übernimmt sie und leert sie wieder; ein
-    # Raum ohne PI verwirft sie. So wirkt ein Eingriff nie außerhalb des Regelzyklus.
-    pi_manual_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    pi_manual_integral: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+
+
+class PiManualRequest(Base):
+    """Vorgemerkter manueller Eingriff in den I-Anteil (`domain/pi_intervention`).
+
+    Weboberfläche, REST und MCP **fügen nur ein**; der nächste Regelzyklus nimmt je Raum die
+    jüngste Zeile und löscht alle, die er gesehen hat. Bewusst eine eigene Tabelle statt Spalten
+    in `zone_state`: Der Regelzyklus ist eine Transaktion über alle Räume, und MariaDB mit
+    Snapshot-Isolation bricht sie ab (Fehler 1020), wenn sie eine Zeile schreibt, die seit ihrem
+    Snapshot jemand anderes geändert hat. Hier schreiben beide Seiten nie dieselbe Zeile.
+    """
+
+    __tablename__ = "pi_manual_request"
+    __table_args__ = (
+        CheckConstraint("integral BETWEEN 0 AND 1", name="integral_0_bis_1"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    zone_id: Mapped[int] = mapped_column(
+        ForeignKey("zone.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # manuell_reset/_gesetzt
+    integral: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class ShadowDecision(Base):

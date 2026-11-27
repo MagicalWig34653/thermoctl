@@ -31,7 +31,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
-from thermoctl.db.models.state import ShadowDecision
+from thermoctl.db.models.state import PiManualRequest, ShadowDecision
 from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.administration import revoke_token
 from thermoctl.domain.kiosk import issue_kiosk_token
@@ -193,7 +193,7 @@ def test_the_kiosk_shows_no_integral_and_cannot_touch_it(
         response = client.request(method, path, json=payload, headers=_csrf(plaintext))
         assert response.status_code in (401, 403, 404, 405), (path, response.status_code)
     session.expire_all()
-    assert state.pi_manual_reason is None
+    assert session.query(PiManualRequest).count() == 0
     assert state.pi_integral == Decimal("0.42")
 
 

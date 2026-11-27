@@ -1,6 +1,6 @@
 """I-Anteil zurücksetzen und setzen (Karte A391AABC, Teil 2): Eingriff in die Regelkette.
 
-Der Eingriff schreibt nur eine **Anforderung** (`zone_state.pi_manual_*`) und einen Audit-Eintrag.
+Der Eingriff fügt nur eine **Anforderung** (`pi_manual_request`) und einen Audit-Eintrag ein.
 Übernommen wird sie vom nächsten Regelzyklus (`shadow_run._pi_outcome`), der Wert und Grund
 (`manuell_reset` / `manuell_gesetzt`) ins Schaltprotokoll schreibt. Tore und sicherer Anlauf
 gelten dabei unverändert.
@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, source, user_with_permissions
@@ -26,7 +26,7 @@ from thermoctl.auth.tokens import issue_token
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.operations import AuditEvent
-from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.state import PiManualRequest, ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.pi_control import (
@@ -59,6 +59,16 @@ def _state(session: Session, zone: Zone) -> ZoneState:
     state = session.get(ZoneState, zone.id)
     assert state is not None
     return state
+
+
+def _pending(session: Session, zone: Zone) -> PiManualRequest | None:
+    session.expire_all()
+    return session.scalar(
+        select(PiManualRequest)
+        .where(PiManualRequest.zone_id == zone.id)
+        .order_by(PiManualRequest.id.desc())
+        .limit(1)
+    )
 
 
 def _audit(session: Session) -> list[AuditEvent]:
@@ -113,7 +123,7 @@ def test_web_rejects_everyone_without_zone_manage(client_als: Als, session: Sess
     assert _ui_reset(client, zone).status_code == 403
     assert _ui_set(client, zone, 0.3).status_code == 403
 
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _state(session, zone).pi_integral == STORED
     assert _audit(session) == []
 
@@ -128,7 +138,7 @@ def test_web_rejects_zone_manage_for_a_different_zone(
 
     assert _ui_reset(client, zone).status_code == 403
     assert _ui_set(client, zone, 0.3).status_code == 403
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
 
 
 def test_web_rejects_the_tenant_profile_even_with_zone_manage(
@@ -140,7 +150,7 @@ def test_web_rejects_the_tenant_profile_even_with_zone_manage(
 
     assert _ui_reset(client, zone).status_code == 403
     assert _ui_set(client, zone, 0.3).status_code == 403
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -164,7 +174,7 @@ def test_rest_rejects_everyone_without_zone_manage(client: TestClient, session: 
         f"/api/v1/zones/{zone.id}/pi-state/integral", json={"value": "0.3"}, headers=headers
     )
     assert response.status_code == 403
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -177,7 +187,7 @@ def test_mcp_rejects_everyone_without_zone_manage(session: Session) -> None:
         mcp_server.reset_pi_integral(session, plaintext, zone.id)
     with pytest.raises(Forbidden):
         mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.3"))
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -229,7 +239,7 @@ def test_rest_rejects_the_tenant_profile_even_with_zone_manage(
     assert client.post(f"{base}/reset", headers=headers).status_code == 403
     put = client.put(f"{base}/integral", json={"value": "0.3"}, headers=headers)
     assert put.status_code == 403
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -263,7 +273,7 @@ def test_web_rejects_values_outside_zero_to_one(
     response = _ui_set(client_als(MANAGE), zone, value)
 
     assert response.status_code == 422, response.text
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -281,7 +291,7 @@ def test_rest_rejects_values_outside_zero_to_one(
     )
 
     assert response.status_code == 422, response.text
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -293,7 +303,7 @@ def test_mcp_rejects_values_outside_zero_to_one(session: Session, value: str) ->
 
     with pytest.raises(mcp_server.PiInterventionError):
         mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal(value))
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     assert _audit(session) == []
 
 
@@ -318,9 +328,10 @@ def test_the_boundaries_themselves_are_accepted(
     response = _ui_set(client_als(MANAGE), zone, value)
 
     assert response.status_code == 200, response.text
-    state = _state(session, zone)
-    assert state.pi_manual_integral == Decimal(value)
-    assert state.pi_manual_reason == "manuell_gesetzt"
+    waiting = _pending(session, zone)
+    assert waiting is not None
+    assert waiting.integral == Decimal(value)
+    assert waiting.reason == "manuell_gesetzt"
 
 
 def test_requests_for_a_room_without_pi_or_state_are_refused(
@@ -354,10 +365,9 @@ def test_web_reset_is_recorded_and_not_applied_yet(client_als: Als, session: Ses
     assert Decimal(pi["integral"]) == STORED  # Wirkung erst im nächsten Zyklus
     assert pi["pending"]["reason"] == "manuell_reset"
     assert Decimal(pi["pending"]["integral"]) == 0
-    state = _state(session, zone)
-    assert state.pi_integral == STORED
-    assert state.pi_manual_reason == "manuell_reset"
-    assert state.pi_manual_integral == 0
+    assert _state(session, zone).pi_integral == STORED
+    waiting = _pending(session, zone)
+    assert waiting is not None and waiting.reason == "manuell_reset" and waiting.integral == 0
     [event] = _audit(session)
     assert event.action == "pi.integral_reset"
     assert event.object_type == "zone"
@@ -420,9 +430,8 @@ def test_a_later_request_replaces_an_earlier_one(client_als: Als, session: Sessi
     _ui_set(client, zone, "0.9")
     _ui_reset(client, zone)
 
-    state = _state(session, zone)
-    assert state.pi_manual_reason == "manuell_reset"
-    assert state.pi_manual_integral == 0
+    waiting = _pending(session, zone)
+    assert waiting is not None and waiting.reason == "manuell_reset" and waiting.integral == 0
     assert len(_audit(session)) == 2
 
 
@@ -460,7 +469,7 @@ def test_reset_takes_effect_in_the_next_cycle_and_is_logged(session: Session) ->
     assert row.pi_integral_after is not None and row.pi_integral_after < Decimal("0.01")
     state = _state(session, zone)
     assert state.pi_integral < Decimal("0.01")
-    assert state.pi_manual_reason is None and state.pi_manual_integral is None
+    assert _pending(session, zone) is None
 
     nxt = _row_for(shadow_run.cycle(session, NOW + timedelta(seconds=60)), zone)
     assert nxt.pi_reset_reason != "manuell_reset"  # nur dieser eine Zyklus
@@ -480,7 +489,7 @@ def test_set_takes_effect_in_the_next_cycle_and_is_logged(session: Session) -> N
     assert row.pi_integral_before == STORED
     assert row.pi_integral_after is not None
     assert Decimal("0.3") <= row.pi_integral_after < Decimal("0.31")
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
     # Der Regler rechnet ab jetzt mit dem gesetzten Wert, nicht mit dem alten.
     nxt = _row_for(shadow_run.cycle(session, NOW + timedelta(seconds=60)), zone)
     assert nxt.pi_integral_before is not None
@@ -524,7 +533,7 @@ def test_safe_start_stays_unchanged_with_a_pending_request(session: Session) -> 
     assert row.pi_integral_before == STORED
     assert row.pi_integral_after == Decimal("0.4")
     assert row.pi_reset_reason == "manuell_gesetzt"
-    assert state.pi_manual_reason is None
+    assert _pending(session, zone) is None
 
 
 def test_gates_stay_unchanged_with_a_pending_request(session: Session) -> None:
@@ -565,34 +574,23 @@ def test_a_request_for_a_zone_that_lost_pi_is_dropped_without_effect(
     assert row.pi_reset_reason is None
     state = _state(session, zone)
     assert state.pi_integral == 0
-    assert state.pi_manual_reason is None and state.pi_manual_integral is None
+    assert _pending(session, zone) is None
 
 
-def test_a_request_replaced_while_the_cycle_runs_is_not_lost(session: Session) -> None:
-    """Der Zyklus hat Anforderung A gelesen, ein Verwalter ersetzt sie durch B (anderer Prozess,
-    schon committet). Der Zyklus darf B nicht löschen und nicht mit A rechnen: B bleibt für den
-    nächsten Zyklus vorgemerkt."""
+def test_of_several_waiting_requests_the_latest_wins_and_all_are_consumed(
+    session: Session,
+) -> None:
     zone = _zone(session)
     plaintext = _mcp_plaintext(session, MANAGE)
-    mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.3"))
-    state = session.get(ZoneState, zone.id)
-    assert state is not None and state.pi_manual_reason == "manuell_gesetzt"  # A im Speicher
-    session.execute(  # B, an der geladenen Zeile vorbei -- wie ein zweiter Prozess
-        update(ZoneState)
-        .where(ZoneState.zone_id == zone.id)
-        .values(pi_manual_reason="manuell_reset", pi_manual_integral=Decimal(0))
-        .execution_options(synchronize_session=False)
-    )
+    mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.9"))
+    mcp_server.set_pi_integral(session, plaintext, zone.id, Decimal("0.2"))
 
     row = _row_for(shadow_run.cycle(session, NOW), zone)
 
-    assert row.pi_reset_reason != "manuell_gesetzt"  # A wurde nicht übernommen
-    session.expire_all()
-    state = session.get(ZoneState, zone.id)
-    assert state is not None
-    assert state.pi_manual_reason == "manuell_reset" and state.pi_manual_integral == 0
-    row = _row_for(shadow_run.cycle(session, NOW + timedelta(seconds=60)), zone)
-    assert row.pi_reset_reason == "manuell_reset"  # B wirkt im Zyklus danach
+    assert row.pi_reset_reason == "manuell_gesetzt"
+    assert row.pi_integral_after is not None
+    assert Decimal("0.2") <= row.pi_integral_after < Decimal("0.21")
+    assert _pending(session, zone) is None
 
 
 @pytest.mark.parametrize("how", ["pi_off", "ineligible"])
@@ -614,7 +612,7 @@ def test_a_dropped_request_is_audited_and_logged(session: Session, how: str) -> 
     assert len(dropped) == 1
     assert dropped[0].object_id == str(zone.id)
     assert "manuell_gesetzt" in (dropped[0].detail or "") and "0.8" in (dropped[0].detail or "")
-    assert _state(session, zone).pi_manual_reason is None
+    assert _pending(session, zone) is None
 
 
 def test_the_cycle_alone_never_invents_a_manual_reason(session: Session) -> None:

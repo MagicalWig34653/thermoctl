@@ -12,9 +12,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import set_committed_value
 
 from thermoctl import audit
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
@@ -29,7 +28,7 @@ from thermoctl.db.models.sensor_failure import (
     SensorFailureSourceComparison,
     ZoneSensorFailureState,
 )
-from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.state import PiManualRequest, ShadowDecision, ZoneState
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain import (
@@ -1447,10 +1446,6 @@ def _neutralize_pi_state(row: ZoneState) -> None:
     row.pi_last_switch_heating = None
     row.pi_awaiting_boundary_until = None
     row.pi_last_reset_reason = None
-    # Ein vorgemerkter manueller Eingriff gilt nur für einen laufenden PI-Regler: ohne PI
-    # (ausgeschaltet oder nicht geeignet) wird er verworfen, nicht für später aufgehoben.
-    row.pi_manual_reason = None
-    row.pi_manual_integral = None
 
 
 def _neutral_pi_fields() -> dict[str, object]:
@@ -1595,19 +1590,20 @@ def _pi_outcome(
     """`_pi_outcome_core` plus ein vorgemerkter manueller Eingriff in den I-Anteil.
 
     Ein Verwalter hat „I zurücksetzen“ oder „I setzen“ angefordert (`domain/pi_intervention`,
-    `zone_state.pi_manual_*`). Hier, im Regelzyklus und nirgends sonst, wird der Wert zum
+    `pi_manual_request`). Hier, im Regelzyklus und nirgends sonst, wird der Wert zum
     gehaltenen I-Anteil -- **vor** der gewöhnlichen Verarbeitung, die ihn dann wie jeden
     gespeicherten Wert behandelt: Tore, Hysterese-Haltephase und sicherer Anlauf bleiben
     unverändert und halten ihn nur fest. Die 24-Stunden-Regel verwirft ihn in diesem einen
     Zyklus nicht (sonst wäre „Setzen“ in einer lange kalten Anlage wirkungslos), danach
     gilt sie wie gewohnt. Das Schaltprotokoll nennt den Eingriff: Grund `manuell_reset` /
     `manuell_gesetzt`, Aktion `zurueckgesetzt` / `gesetzt`, „vorher“ ist der verworfene
-    Wert. Ein Raum ohne laufendes PI verwirft die Anforderung (`_neutralize_pi_state`).
+    Wert. Ein Raum ohne laufendes PI verwirft die Anforderung (Audit und Log), statt sie für
+    später aufzuheben.
     """
     manual: tuple[str, Decimal] | None = None
     previous = Decimal(0)
-    if state is not None and state.pi_manual_reason is not None:
-        manual = _claim_manual_request(session, state)
+    if state is not None:
+        manual = _claim_manual_request(session, state.zone_id)
         previous = state.pi_integral
         if manual is not None and parameter.pi_enabled:
             state.pi_integral = manual[1]
@@ -1646,30 +1642,21 @@ def _pi_outcome(
     return effective, suffix, fields
 
 
-def _claim_manual_request(session: Session, state: ZoneState) -> tuple[str, Decimal] | None:
-    """Holt die vorgemerkte Anforderung ab und leert sie -- als Vergleich auf genau die gelesene
-    Anforderung (`UPDATE ... WHERE grund = gelesen AND wert = gelesen`). Hat ein Verwalter sie
-    inzwischen ersetzt (anderer Prozess, schon committet), trifft das UPDATE keine Zeile: Dann
-    gilt nichts aus diesem Zyklus, und die neue Anforderung bleibt für den nächsten stehen, statt
-    mit dem Leeren überschrieben zu werden."""
-    reason, value = state.pi_manual_reason, state.pi_manual_integral
-    assert reason is not None and value is not None  # CHECK: beide gesetzt oder beide leer
-    matched = session.execute(
-        update(ZoneState)
-        .where(
-            ZoneState.zone_id == state.zone_id,
-            ZoneState.pi_manual_reason == reason,
-            ZoneState.pi_manual_integral == value,
-        )
-        .values(pi_manual_reason=None, pi_manual_integral=None)
-        .execution_options(synchronize_session=False)
-    ).rowcount  # type: ignore[attr-defined]
-    if matched != 1:
-        session.expire(state, ["pi_manual_reason", "pi_manual_integral"])
+def _claim_manual_request(session: Session, zone_id: int) -> tuple[str, Decimal] | None:
+    """Holt den vorgemerkten Eingriff ab: Es gilt die jüngste Zeile, gelöscht werden genau die
+    gesehenen. Was danach (oder während dieses Zyklus) eingefügt wird, bleibt für den nächsten
+    stehen. Keine der beiden Seiten ändert je eine Zeile der anderen (`PiManualRequest`)."""
+    waiting = session.execute(
+        select(PiManualRequest.id, PiManualRequest.reason, PiManualRequest.integral)
+        .where(PiManualRequest.zone_id == zone_id)
+        .order_by(PiManualRequest.id)
+    ).all()
+    if not waiting:
         return None
-    set_committed_value(state, "pi_manual_reason", None)
-    set_committed_value(state, "pi_manual_integral", None)
-    return reason, value
+    session.execute(
+        delete(PiManualRequest).where(PiManualRequest.id.in_([row.id for row in waiting]))
+    )
+    return waiting[-1].reason, waiting[-1].integral
 
 
 def _log_dropped_request(

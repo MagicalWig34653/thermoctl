@@ -14,7 +14,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Beim Upgrade zu wissen
 
 - Wohnungskonten bekommen die PI-Zahlen einer Regelentscheidung auch in der Betriebsübersicht und über MCP (`shadow_decisions`) nicht mehr; die Felder sind dort `null`, und der Tastgrad fehlt auch im Begründungstext (Entscheidung und Schaltprotokoll, auch über REST). Bisher genügte das Leserecht.
-- **Migration** `e3b7c1d9a452`: zwei leere Spalten in `zone_state` für den vorgemerkten Eingriff in den I-Anteil (beim Zurückstufen entfallen sie). Keine Zeile ändert sich.
+- **Migration** `e3b7c1d9a452`: neue Tabelle `pi_manual_request` für vorgemerkte Eingriffe in den I-Anteil (beim Zurückstufen entfällt sie). Keine bestehende Tabelle ändert sich.
 - **Eine Migration** (`c7e2a9f4d813`): Spalte `show_pi` an den Übersichtskacheln, neue Kachelart `controller` und ein Index auf dem Schattenprotokoll (bei großem Protokoll dauert der erste Start etwas länger). Beim Zurückstufen entfallen die Regler-Kacheln, die Spalte und der Index.
 
 ### Neu
