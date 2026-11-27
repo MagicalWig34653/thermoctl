@@ -1653,9 +1653,11 @@ def _claim_manual_request(session: Session, zone_id: int) -> tuple[str, Decimal]
     ).all()
     if not waiting:
         return None
-    session.execute(
-        delete(PiManualRequest).where(PiManualRequest.id.in_([row.id for row in waiting]))
-    )
+    # Einzeln über den Primärschlüssel, nie gesammelt: Bei `id IN (...)` wählt MariaDB für die
+    # kleine Tabelle ab etwa einem Dutzend Zeilen einen vollen Scan, der auch fremde und eben erst
+    # eingefügte Zeilen samt Lücken sperrt -- Fehler 1020 bzw. gesperrte neue Anforderungen.
+    for row in waiting:
+        session.execute(delete(PiManualRequest).where(PiManualRequest.id == row.id))
     return waiting[-1].reason, waiting[-1].integral
 
 
