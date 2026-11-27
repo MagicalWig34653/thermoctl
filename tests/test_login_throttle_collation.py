@@ -15,7 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, make_url, select
+from sqlalchemy import func, make_url, select, text
 from sqlalchemy.orm import Session
 
 import thermoctl.web.shared.login as login
@@ -44,7 +44,8 @@ def _needs_mariadb(session: Session) -> None:
 
 def _post(client: Any, typed: str) -> None:
     client.cookies.clear()
-    client.post("/ui-api/login", json={"username": typed, "password": FALSCH})
+    response = client.post("/ui-api/login", json={"username": typed, "password": FALSCH})
+    assert response.status_code == 401
 
 
 def test_spellings_only_the_collation_equates_share_one_counter(
@@ -112,6 +113,44 @@ def test_trailing_blanks_do_not_split_the_counter(session: Session, user: User) 
     """MariaDB füllt beim Vergleich mit Leerzeichen auf (PAD SPACE): `lino ` ist `lino`."""
     assert login.throttle_key(session, "lino  ") == login.throttle_key(session, "lino")
     assert login.throttle_key(session, "lino ") == login.throttle_key(session, "lino")
+
+
+@pytest.mark.parametrize(
+    "collation",
+    [
+        "utf8mb4_uca1400_ai_ci",
+        "utf8mb4_uca1400_as_ci",
+        "utf8mb4_uca1400_as_cs",
+        "utf8mb4_uca1400_ai_cs",
+        "utf8mb4_uca1400_swedish_as_ci",
+        "utf8mb4_general_ci",
+        "utf8mb4_bin",
+    ],
+)
+def test_the_key_holds_for_other_collations_of_the_column(
+    client: Any, session: Session, user: User, monkeypatch: pytest.MonkeyPatch, collation: str
+) -> None:
+    """Auch wenn die Spalte anders vergleicht als der Standard: Was diese Kollation für `lino`
+    hält, hat dessen Schlüssel. Akzentsensitive Kollationen gewichten in mehreren Ebenen; das
+    Auffüll-Leerzeichen steht dort mitten im Gewicht und lässt sich nicht hinten abschneiden."""
+    _needs_mariadb(session)
+    monkeypatch.setattr(
+        login, "_username_collation", lambda current: ("utf8mb4", collation)
+    )
+    candidates = (
+        "lino", "lino ", "lino\u00a0", "lino\u00a0\u00a0", "lino\u00a0 ", "lino \u00a0",
+        "lino\u034f", "lino\u00a0\u034f", "li\u034fno", "LINO\u00a0", "li\u0640no\u00a0 ",
+    )
+    equal = text(
+        f"SELECT CONVERT(:typed USING utf8mb4) COLLATE {collation} = "
+        f"CONVERT('lino' USING utf8mb4) COLLATE {collation}"
+    )
+    same_account = [t for t in candidates if session.execute(equal, {"typed": t}).scalar()]
+    assert "lino " in same_account or "nopad" in collation  # die Probe misst etwas
+    expected = login.throttle_key(session, "lino")
+    for typed in same_account:
+        assert login.throttle_key(session, typed) == expected, repr(typed)
+    assert login.throttle_key(session, "lina") != expected
 
 
 class _Result:
