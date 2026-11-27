@@ -153,6 +153,37 @@ def test_the_key_holds_for_other_collations_of_the_column(
     assert login.throttle_key(session, "lina") != expected
 
 
+def test_the_key_can_be_computed_under_every_collation_of_the_server(
+    session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Jede utf8mb4-Kollation, die der Server kennt: Der Schlüssel lässt sich bilden (eine
+    abgeleitete Schwester, die es nicht gibt, wäre ein Fehler bei jeder Anmeldung), und ein
+    angehängtes Leerzeichen trennt den Zähler nicht, wo die Datenbank es übergeht."""
+    _needs_mariadb(session)
+    collations = session.execute(
+        text(
+            "SELECT full_collation_name FROM information_schema.collation_character_set_"
+            "applicability WHERE character_set_name = 'utf8mb4'"
+        )
+    ).scalars().all()
+    if not collations:  # pragma: no cover - ältere Server kennen die Spalte nicht anders
+        pytest.fail("keine Kollationen gefunden")
+    split = []
+    for collation in collations:
+        monkeypatch.setattr(
+            login, "_username_collation", lambda current, name=collation: ("utf8mb4", name)
+        )
+        padded = session.execute(
+            text(
+                f"SELECT CONVERT('lino ' USING utf8mb4) COLLATE {collation} = "
+                f"CONVERT('lino' USING utf8mb4) COLLATE {collation}"
+            )
+        ).scalar()
+        if login.throttle_key(session, "lino ") != login.throttle_key(session, "lino") and padded:
+            split.append(collation)
+    assert split == []
+
+
 class _Result:
     def __init__(self, row: tuple[Any, ...] | None) -> None:
         self.row = row
@@ -226,3 +257,21 @@ def test_an_unreadable_collation_falls_back_to_the_python_fold(
     fake = _FakeSession("mariadb", column)
     assert _key(fake, "Lino") == login.login_key("Lino")
     assert len(fake.statements) == 1
+
+
+@pytest.mark.parametrize(
+    ("column", "weighed_with"),
+    [
+        ("utf8mb4_uca1400_as_ci", "utf8mb4_uca1400_ai_ci"),
+        ("utf8mb4_uca1400_swedish_nopad_as_cs", "utf8mb4_uca1400_swedish_nopad_ai_ci"),
+        ("utf8mb4_0900_as_cs", "utf8mb4_0900_ai_ci"),
+        # Hier gibt es keine `_ai_ci`-Schwester: Gewichtet wird mit der Kollation selbst.
+        ("utf8mb4_general1400_as_ci", "utf8mb4_general1400_as_ci"),
+        ("utf8mb4_ja_0900_as_cs", "utf8mb4_ja_0900_as_cs"),
+        ("utf8mb4_uca1400_ai_ci", "utf8mb4_uca1400_ai_ci"),
+    ],
+)
+def test_only_a_sibling_that_exists_is_derived(column: str, weighed_with: str) -> None:
+    fake = _FakeSession("mariadb", ("utf8mb4", column), ("21B0", "0209"))
+    _key(fake, "a")
+    assert f"COLLATE {weighed_with})" in fake.statements[1]
