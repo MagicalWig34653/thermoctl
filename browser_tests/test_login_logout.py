@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from browser_tests.conftest import LiveServer
 
@@ -63,6 +63,68 @@ def test_slow_login_explains_the_wait_and_removes_the_note_with_the_answer(
     expect(page.get_by_role("alert")).to_contain_text(
         "Benutzername oder Passwort falsch", timeout=15_000
     )
+    expect(hint).to_have_count(0)
+
+
+def _submit_and_hold(page: Page) -> list[Route]:
+    """Füllt das Formular, schickt es mit der Eingabetaste ab und hält die Anfrage fest,
+    damit der Test den Zeitpunkt und die Art der Antwort selbst bestimmt."""
+    held: list[Route] = []
+    page.route("**/ui-api/login", lambda route: held.append(route))
+    page.goto("/app/login")
+    page.get_by_label("Benutzername").fill("wartezeit-fehlerfall")
+    page.get_by_label("Passwort").fill("ganz-offensichtlich-falsch")
+    page.get_by_label("Passwort").press("Enter")
+    expect(page.get_by_role("button", name="Anmelden …")).to_be_visible()
+    return held
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        ("network", "Der Server ist nicht erreichbar."),
+        ("server-error", "Anmeldung nicht möglich."),
+    ],
+)
+def test_slow_login_note_disappears_when_the_login_fails_technically(
+    page: Page, answer: str, message: str
+) -> None:
+    held = _submit_and_hold(page)
+    hint = page.get_by_test_id("slow-login-hint")
+    expect(hint).to_have_count(0)
+    expect(hint).to_be_visible(timeout=3_000)
+
+    if answer == "network":
+        held[0].abort()
+    else:
+        held[0].fulfill(status=500, content_type="text/plain", body="kaputt")
+
+    expect(page.get_by_role("alert")).to_have_text(message)
+    expect(hint).to_have_count(0)
+    expect(page.get_by_role("button", name="Anmelden", exact=True)).to_be_visible()
+
+
+def test_quick_answer_never_shows_the_slow_login_note(page: Page) -> None:
+    held = _submit_and_hold(page)
+    held[0].fulfill(status=500, content_type="text/plain", body="kaputt")
+    expect(page.get_by_role("alert")).to_be_visible()
+    page.wait_for_timeout(1_500)  # über die Schwelle hinaus: der Zeitgeber ist abgebrochen
+    expect(page.get_by_test_id("slow-login-hint")).to_have_count(0)
+
+
+def test_slow_successful_login_removes_the_note_with_the_app(
+    page: Page, live_server: LiveServer
+) -> None:
+    held: list[Route] = []
+    page.route("**/ui-api/login", lambda route: held.append(route))
+    page.goto("/app/login")
+    page.get_by_label("Benutzername").fill(live_server.admin_username)
+    page.get_by_label("Passwort").fill(live_server.admin_password)
+    page.get_by_label("Passwort").press("Enter")
+    hint = page.get_by_test_id("slow-login-hint")
+    expect(hint).to_be_visible(timeout=3_000)
+    held[0].continue_()
+    expect(page.get_by_text("Abmelden").first).to_be_visible()
     expect(hint).to_have_count(0)
 
 
