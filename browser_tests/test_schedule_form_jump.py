@@ -4,17 +4,33 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterator
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from browser_tests.conftest import LiveServer
+from browser_tests.live_server import _live_server
 from browser_tests.seed import create_schedule_zone
 
 pytestmark = pytest.mark.browser
 
 PHONE = {"width": 390, "height": 844}
 SHOTS = os.environ.get("THERMOCTL_SHOT_DIR")
+
+
+@pytest.fixture(scope="module")
+def live_server() -> Iterator[LiveServer]:
+    """Ein eigener Server nur für diese Datei (überschreibt den geteilten aus `conftest.py`).
+
+    Der Test misst, wie weit unten der Link steht (`top < 1.5 * Bildschirmhöhe`), und die
+    Raumauswahl über dem Plan wächst mit jedem Raum, den ein früherer Test auf dem geteilten
+    Server angelegt hat: am Handy zwei Räume je Zeile, 64 px je Zeile (gemessen: 915 px bei
+    einem bis zwei Räumen, 979 px bei drei bis vier, ...). Ab 17 Räumen liegt der Link bei
+    ~1427 px, über der Grenze von 1266 px -- im vollen Lauf war der Test deshalb rot, allein
+    grün (Karte 9838BEE1). Die Zahl der Räume gehört zum Test, nicht zur Reihenfolge der Läufe.
+    """
+    yield from _live_server("")
 
 
 def _shot(page: Page, name: str) -> None:
