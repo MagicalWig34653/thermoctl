@@ -143,6 +143,20 @@
     }
   }
 
+  /** In der Leiste wurde ein Ziel gewählt. Auch die aktuelle Seite: Dann ändert sich der Pfad
+   *  nicht, und der Effekt zum Ansichtswechsel läuft nicht. */
+  function picked() {
+    drawer = false;
+    void tick().then(() => content?.focus({ preventScroll: true }));
+  }
+
+  // Verweise in der offenen Schublade; ein Klick mit Zusatztaste (neuer Tab) lässt sie offen.
+  function sidebarClick(event: MouseEvent) {
+    if (!drawer || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if ((event.target as Element).closest('a[href]')) picked();
+  }
+
   async function logout() {
     logoutError = await session.logout();
   }
@@ -163,12 +177,15 @@
   }}>Zum Inhalt</a
 >
 
+<!-- Nur Delegation: Die Tastatur löst auf Verweisen selbst einen Klick aus. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <aside
   id="app-sidebar"
   class="app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-sidebar px-3 py-4"
   data-open={drawer}
   bind:this={sidebarEl}
   inert={mobile && !drawer}
+  onclick={sidebarClick}
 >
   <a
     class="mb-3 flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 hover:border-border hover:bg-muted"
@@ -178,7 +195,7 @@
     <strong class="text-[15px] tracking-tight">thermoctl</strong>
   </a>
 
-  <SettingsSearch {areas} bind:query bind:input={searchInput} onpick={() => (drawer = false)} />
+  <SettingsSearch {areas} bind:query bind:input={searchInput} onpick={picked} />
 
   {#if !query.trim()}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
