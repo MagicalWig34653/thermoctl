@@ -107,7 +107,9 @@
       firstPath = false;
       return;
     }
-    content?.focus({ preventScroll: true });
+    // Erst nach der DOM-Aktualisierung: Aus der offenen Schublade heraus ist der Inhalt bis dahin
+    // noch inert und nimmt keinen Fokus an.
+    void tick().then(() => content?.focus({ preventScroll: true }));
   });
 
   // Fokusführung der Schublade (nur Handy): beim Öffnen in die Schublade, beim Schließen zurück auf
