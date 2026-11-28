@@ -16,7 +16,7 @@ _WHERE = """() => {
   const a = document.activeElement;
   if (!a) return 'none';
   if (a.closest('#app-sidebar')) return 'drawer';
-  if (a.closest('header')) return 'trigger';
+  if (a.matches('header [aria-controls="app-sidebar"]')) return 'trigger';
   if (a.getAttribute('aria-label') === 'Navigation schließen') return 'overlay';
   if (a.closest('#content')) return 'content';
   return 'other:' + a.tagName;
@@ -126,7 +126,9 @@ def test_closing_via_the_overlay_by_keyboard_returns_focus_to_the_trigger(phone:
     page.locator("button[aria-label='Navigation schließen']:not([aria-controls])").focus()
     page.keyboard.press("Enter")
     page.wait_for_function(_CLOSED)
-    page.wait_for_function("document.activeElement.closest('header') !== null")
+    page.wait_for_function(
+        """document.activeElement.matches('header [aria-controls="app-sidebar"]')"""
+    )
 
 
 def test_following_a_drawer_link_moves_focus_to_the_new_content(phone: Page) -> None:
@@ -148,6 +150,51 @@ def test_picking_a_search_result_moves_focus_to_the_new_content(phone: Page) -> 
     search.fill("Abwesenheit")
     page.get_by_text("Treffer").wait_for()
     search.press("Enter")
+    page.wait_for_url("**/app/zeit/**")
     page.wait_for_function(_CLOSED)
     page.wait_for_timeout(100)
+    assert page.evaluate(_FOCUS_IS_CONTENT), page.evaluate(_WHERE)
+
+
+def _on_account_page_with_open_drawer(page: Page) -> None:
+    page.goto("/app/konto")
+    page.get_by_role("button", name="Navigation öffnen").wait_for()
+    _open_drawer_by_keyboard(page)
+
+
+def _assert_closed_with_focus_in_content(page: Page) -> None:
+    page.wait_for_function(_CLOSED, timeout=3_000)
+    page.wait_for_timeout(100)
+    assert page.url.endswith("/app/konto"), page.url
+    assert page.evaluate(_FOCUS_IS_CONTENT), page.evaluate(_WHERE)
+
+
+def test_choosing_the_current_page_link_again_closes_the_drawer_into_the_content(
+    phone: Page,
+) -> None:
+    _on_account_page_with_open_drawer(phone)
+    phone.locator("#app-sidebar").get_by_role("link", name="Konto & Sicherheit").focus()
+    phone.keyboard.press("Enter")
+    _assert_closed_with_focus_in_content(phone)
+
+
+def test_picking_the_current_page_in_the_search_again_moves_focus_to_the_content(
+    phone: Page,
+) -> None:
+    page = phone
+
+    def pick() -> None:
+        _open_drawer_by_keyboard(page)
+        search = page.get_by_label("Einstellung suchen")
+        search.fill("Abwesenheit")
+        page.get_by_text("Treffer").wait_for()
+        search.press("Enter")
+        page.wait_for_url("**/app/zeit/**")
+        page.wait_for_function(_CLOSED)
+        page.wait_for_timeout(100)
+
+    pick()
+    url = page.url
+    pick()  # dieselbe Seite noch einmal: der Pfad aendert sich nicht
+    assert page.url == url
     assert page.evaluate(_FOCUS_IS_CONTENT), page.evaluate(_WHERE)

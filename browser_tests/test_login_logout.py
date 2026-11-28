@@ -105,11 +105,17 @@ def test_slow_login_note_disappears_when_the_login_fails_technically(
 
 
 def test_quick_answer_never_shows_the_slow_login_note(page: Page) -> None:
+    page.add_init_script(
+        """new MutationObserver(() => {
+          if (document.querySelector('[data-testid="slow-login-hint"]')) window.hintSeen = true;
+        }).observe(document, { childList: true, subtree: true });"""
+    )
     held = _submit_and_hold(page)
     held[0].fulfill(status=500, content_type="text/plain", body="kaputt")
     expect(page.get_by_role("alert")).to_be_visible()
     page.wait_for_timeout(1_500)  # über die Schwelle hinaus: der Zeitgeber ist abgebrochen
     expect(page.get_by_test_id("slow-login-hint")).to_have_count(0)
+    assert page.evaluate("window.hintSeen === true") is False
 
 
 def test_slow_successful_login_removes_the_note_with_the_app(
